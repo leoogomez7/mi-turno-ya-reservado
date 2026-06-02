@@ -39,6 +39,7 @@ function SuccessPage() {
   const services = booking.serviceIds.map((sid) => SERVICES.find((s) => s.id === sid)?.name).filter(Boolean).join(", ");
 
   function downloadIcs() {
+    if (!booking) return;
     const dt = (d: Date) => format(d, "yyyyMMdd'T'HHmmss");
     const end = new Date(date.getTime() + booking.duration * 60000);
     const ics = [
