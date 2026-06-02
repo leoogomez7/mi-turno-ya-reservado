@@ -80,9 +80,14 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { name: "viewport", content: "width=device-width, initial-scale=1" },
       { title: "Atelier Barber — Reservá tu turno online" },
       { name: "description", content: "Sistema de reservas premium para peluquerías. Elegí peluquero, servicio y horario en segundos." },
-      { property: "og:title", content: "Atelier Barber" },
-      { property: "og:description", content: "Reservá tu turno online en segundos." },
+      { property: "og:title", content: "Atelier Barber — Reservá tu turno online" },
+      { property: "og:description", content: "Sistema de reservas premium para peluquerías. Elegí peluquero, servicio y horario en segundos." },
       { property: "og:type", content: "website" },
+      { name: "twitter:title", content: "Atelier Barber — Reservá tu turno online" },
+      { name: "twitter:description", content: "Sistema de reservas premium para peluquerías. Elegí peluquero, servicio y horario en segundos." },
+      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/d253350e-1e1d-4794-93ea-6c49feb3dede/id-preview-1eaa9ad7--04a9c48a-8151-476d-91c6-595e3ac10785.lovable.app-1780407925821.png" },
+      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/d253350e-1e1d-4794-93ea-6c49feb3dede/id-preview-1eaa9ad7--04a9c48a-8151-476d-91c6-595e3ac10785.lovable.app-1780407925821.png" },
+      { name: "twitter:card", content: "summary_large_image" },
     ],
     links: [
       {
