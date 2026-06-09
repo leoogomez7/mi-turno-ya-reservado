@@ -5,7 +5,6 @@ import { addDays, format, isBefore, isSameDay, parseISO, startOfToday } from "da
 import { es } from "date-fns/locale";
 
 import { SiteHeader } from "@/components/site-header";
-import { WhatsappButton } from "@/components/whatsapp-button";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -157,7 +156,6 @@ Notas: ${customer.notes || "Ninguna"}`;
           )}
         </div>
       </main>
-      <WhatsappButton />
     </div>
   );
 }
