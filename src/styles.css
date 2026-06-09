@@ -98,6 +98,12 @@
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
   }
+  input[type="date"]::-webkit-calendar-picker-indicator {
+    filter: invert(1) brightness(1.4);
+  }
+  input[type="date"]::-moz-calendar-picker-indicator {
+    filter: invert(1) brightness(1.4);
+  }
   h1, h2, h3, h4, h5 {
     font-family: var(--font-display);
     letter-spacing: -0.02em;

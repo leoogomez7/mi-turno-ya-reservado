@@ -7,10 +7,12 @@ import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip, TooltipProps } from 
 
 import { SiteHeader } from "@/components/site-header";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
+import { SERVICES } from "@/lib/salon-data";
 import { bookingStore, getBarber, type Booking } from "@/lib/booking-store";
-import { professionalStore, getProfessional, getProfessionalService, type Professional } from "@/lib/professional-store";
+import { professionalStore, getProfessional, getProfessionalService, getAvailableSlotsForDate, type Professional } from "@/lib/professional-store";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/admin")({
@@ -20,6 +22,15 @@ export const Route = createFileRoute("/admin")({
 
 function AdminPage() {
   const [bookings, setBookings] = useState<Booking[]>([]);
+  const [bookingEditDialogOpen, setBookingEditDialogOpen] = useState(false);
+  const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
+  const [editMode, setEditMode] = useState<"attendance" | "turno" | null>(null);
+  const [attendanceChoice, setAttendanceChoice] = useState<"completed" | "no-show">("completed");
+  const [editedDate, setEditedDate] = useState("");
+  const [editedTime, setEditedTime] = useState("");
+  const [editedProfessionalId, setEditedProfessionalId] = useState("");
+  const [editedServiceId, setEditedServiceId] = useState("");
+
   useEffect(() => {
     const reload = () => setBookings(bookingStore.all());
     reload();
@@ -27,7 +38,72 @@ function AdminPage() {
     return () => window.removeEventListener("bookings:changed", reload);
   }, []);
 
+  useEffect(() => {
+    if (!selectedBooking) return;
+    setAttendanceChoice(selectedBooking.status === "completed" ? "completed" : "no-show");
+    setEditedDate(selectedBooking.date);
+    setEditedTime(selectedBooking.time);
+    setEditedProfessionalId(selectedBooking.barberId);
+    setEditedServiceId(selectedBooking.serviceIds[0] ?? SERVICES[0]?.id ?? "");
+  }, [selectedBooking]);
+
   const stats = useMemo(() => computeStats(bookings), [bookings]);
+  const professionals = professionalStore.all();
+  const editedProfessional = professionals.find((p) => p.id === editedProfessionalId) ?? professionals[0];
+  const availableSlotsForDate = useMemo(() => {
+    if (!editedProfessional || !editedDate) return [];
+    return getAvailableSlotsForDate(editedProfessional, new Date(editedDate));
+  }, [editedProfessional, editedDate]);
+
+  function openBookingDialog(booking: Booking, mode: "attendance" | "turno") {
+    setSelectedBooking(booking);
+    setEditMode(mode);
+    setBookingEditDialogOpen(true);
+  }
+
+  function closeBookingDialog() {
+    setBookingEditDialogOpen(false);
+    setSelectedBooking(null);
+    setEditMode(null);
+  }
+
+  function saveBookingEdit() {
+    if (!selectedBooking || !editMode) return;
+    if (editMode === "turno") {
+      const professional = professionalStore.get(editedProfessionalId);
+      if (!professional) {
+        toast.error("No se encontró profesional válido");
+        return;
+      }
+      const service = professional.services.find((svc) => svc.id === editedServiceId) ?? professional.services[0];
+      if (!service) {
+        toast.error("No hay servicios disponibles para este profesional");
+        return;
+      }
+      bookingStore.update(selectedBooking.id, {
+        barberId: professional.id,
+        serviceIds: [service.id],
+        duration: service.duration,
+        totalPrice: service.price,
+        date: editedDate,
+        time: editedTime,
+      });
+      toast.success("Turno modificado");
+    }
+    closeBookingDialog();
+  }
+
+  function confirmAttendance(choice: "completed" | "no-show") {
+    if (!selectedBooking) return;
+    bookingStore.update(selectedBooking.id, { status: choice });
+    toast.success(choice === "completed" ? "Asistencia registrada" : "Turno indicado como no asistió");
+    closeBookingDialog();
+  }
+
+  function deleteBooking(id: string) {
+    bookingStore.remove(id);
+    toast("Turno eliminado");
+  }
 
   return (
     <div className="min-h-screen bg-gradient-dark">
@@ -54,7 +130,7 @@ function AdminPage() {
           </TabsList>
 
           <TabsContent value="agenda" className="mt-6">
-            <AgendaList bookings={bookings} />
+            <AgendaList bookings={bookings} onOpenBookingDialog={openBookingDialog} onDeleteBooking={deleteBooking} />
           </TabsContent>
 
           <TabsContent value="stats" className="mt-6 grid gap-6 md:grid-cols-2">
@@ -62,6 +138,103 @@ function AdminPage() {
             <ChartCard title="Turnos por profesionales" data={stats.barbersChart} />
           </TabsContent>
         </Tabs>
+
+        <Dialog open={bookingEditDialogOpen} onOpenChange={setBookingEditDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>
+                {editMode === "attendance" && "Asistencia"}
+                {editMode === "turno" && "Modificar turno"}
+              </DialogTitle>
+              <DialogDescription>
+                {editMode === "attendance" && "Selecciona si el cliente asistió o no al turno."}
+                {editMode === "turno" && "Modifica profesional, servicio y horario en un solo paso."}
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4 py-4">
+              {editMode === "attendance" && (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Button className="bg-emerald-500 text-white" onClick={() => confirmAttendance("completed")}>Sí asistió</Button>
+                  <Button className="bg-red-500 text-white" onClick={() => confirmAttendance("no-show")}>No asistió</Button>
+                </div>
+              )}
+
+              {editMode === "turno" && (
+                <div className="grid gap-4">
+                  <label className="text-sm text-muted-foreground block">
+                    Profesional
+                    <select
+                      className="mt-2 block w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-gold focus:ring-2 focus:ring-gold/20"
+                      value={editedProfessionalId}
+                      onChange={(e) => {
+                        setEditedProfessionalId(e.target.value);
+                        const newProfessional = professionals.find((professional) => professional.id === e.target.value);
+                        setEditedServiceId(newProfessional?.services[0]?.id ?? "");
+                      }}
+                    >
+                      {professionals.map((professional) => (
+                        <option key={professional.id} value={professional.id}>
+                          {professional.name} — {professional.specialty}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="text-sm text-muted-foreground block">
+                    Servicio
+                    <select
+                      className="mt-2 block w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-gold focus:ring-2 focus:ring-gold/20"
+                      value={editedServiceId}
+                      onChange={(e) => setEditedServiceId(e.target.value)}
+                    >
+                      {(editedProfessional?.services ?? []).map((service) => (
+                        <option key={service.id} value={service.id}>
+                          {service.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="text-sm text-muted-foreground">
+                    Fecha
+                    <input
+                      type="date"
+                      className="mt-2 block w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-gold focus:ring-2 focus:ring-gold/20"
+                      value={editedDate}
+                      onChange={(e) => setEditedDate(e.target.value)}
+                    />
+                  </label>
+
+                  <label className="text-sm text-muted-foreground">
+                    Hora
+                    <select
+                      className="mt-2 block w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-gold focus:ring-2 focus:ring-gold/20"
+                      value={editedTime}
+                      onChange={(e) => setEditedTime(e.target.value)}
+                    >
+                      <option value="">Seleccionar hora</option>
+                      {availableSlotsForDate.map((slot) => (
+                        <option key={slot} value={slot}>{slot}</option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+              )}
+            </div>
+
+            {editMode && editMode !== "attendance" ? (
+              <DialogFooter>
+                <Button className="bg-gold text-primary-foreground hover:bg-gold-soft" onClick={saveBookingEdit}>
+                  Guardar cambios
+                </Button>
+                <Button variant="outline" onClick={closeBookingDialog}>
+                  Cancelar
+                </Button>
+              </DialogFooter>
+            ) : null}
+          </DialogContent>
+        </Dialog>
       </main>
     </div>
   );
@@ -79,8 +252,23 @@ function Stat({ icon: Icon, label, value }: { icon: any; label: string; value: s
   );
 }
 
-function AgendaList({ bookings }: { bookings: Booking[] }) {
-  const upcoming = bookings.filter((b) => b.status === "confirmed");
+function AgendaList({
+  bookings,
+  onOpenBookingDialog,
+  onDeleteBooking,
+}: {
+  bookings: Booking[];
+  onOpenBookingDialog: (booking: Booking, mode: "attendance" | "turno") => void;
+  onDeleteBooking: (id: string) => void;
+}) {
+  const upcoming = bookings
+    .filter((b) => b.status !== "cancelled")
+    .sort((a, b) => {
+      if (!!a.isTest === !!b.isTest) {
+        return (a.date + a.time).localeCompare(b.date + b.time);
+      }
+      return a.isTest ? 1 : -1;
+    });
   if (!upcoming.length) {
     return <p className="rounded-xl border border-dashed border-border p-10 text-center text-muted-foreground">No hay turnos confirmados todavía.</p>;
   }
@@ -100,21 +288,22 @@ function AgendaList({ bookings }: { bookings: Booking[] }) {
             <div className="min-w-0 flex-1">
               <div className="font-medium">{b.customer.fullName}</div>
               <div className="truncate text-sm text-muted-foreground">{services} · {b.duration} min</div>
-              <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+              <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                 <Badge variant="outline" className="border-gold/30 text-gold">{barber?.name}</Badge>
+                {b.isTest && <Badge variant="outline" className="border-emerald-300 text-emerald-400">Turno de prueba</Badge>}
+                {b.status === "completed" && <Badge variant="outline" className="border-emerald-300 text-emerald-400">Asistió</Badge>}
+                {b.status === "no-show" && <Badge variant="outline" className="border-red-300 text-red-400">No asistió</Badge>}
                 <span>{b.customer.phone}</span>
               </div>
             </div>
             <div className="font-display text-lg font-semibold text-gold">${b.totalPrice.toLocaleString("es-AR")}</div>
-            <div className="flex gap-2">
-              <Button size="sm" variant="outline" onClick={() => { bookingStore.update(b.id, { status: "completed" }); toast.success("Asistencia marcada"); }}>
-                <Check className="h-3.5 w-3.5" />
-              </Button>
-              <Button size="sm" variant="outline" onClick={() => { bookingStore.update(b.id, { status: "no-show" }); toast("Marcado como ausente"); }}>
-                <X className="h-3.5 w-3.5" />
-              </Button>
-              <Button size="sm" variant="outline" onClick={() => { bookingStore.remove(b.id); toast("Turno eliminado"); }}>
-                <Trash2 className="h-3.5 w-3.5" />
+            <div className="flex flex-wrap gap-2">
+              {b.status === "confirmed" && (
+                <Button size="sm" variant="outline" onClick={() => onOpenBookingDialog(b, "attendance")}>Indicar asistencia</Button>
+              )}
+              <Button size="sm" variant="outline" onClick={() => onOpenBookingDialog(b, "turno")}>Modificar turno</Button>
+              <Button size="sm" variant="destructive" disabled={b.isTest} onClick={() => onDeleteBooking(b.id)}>
+                Borrar turno
               </Button>
             </div>
           </div>

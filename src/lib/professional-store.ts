@@ -1,4 +1,5 @@
-import { BARBERS, SERVICES, type Service } from "./salon-data";
+import { BARBERS, SERVICES, type Service, BUSINESS } from "./salon-data";
+import { parseISO } from "date-fns";
 
 export interface ProfessionalService {
   id: string;
@@ -7,25 +8,62 @@ export interface ProfessionalService {
   price: number;
 }
 
-export interface ProfessionalScheduleDay {
-  day: number; // 0 = Sunday, 6 = Saturday
-  active: boolean;
+export interface ProfessionalScheduleDate {
+  date: string; // yyyy-MM-dd
   start: string;
   end: string;
 }
 
-export interface WeeklySchedule {
-  weekOffset: number;
-  days: ProfessionalScheduleDay[];
+export function getScheduleForDate(professional: Professional, date: Date) {
+  const target = date.toISOString().slice(0, 10);
+  return professional.scheduleDates?.find((entry) => entry.date === target);
+}
+
+export function getUpcomingScheduleDates(professional: Professional) {
+  const today = new Date();
+  return (professional.scheduleDates ?? [])
+    .map((entry) => ({
+      ...entry,
+      parsed: parseISO(entry.date),
+    }))
+    .filter((entry) => !Number.isNaN(entry.parsed.getTime()) && entry.parsed >= today)
+    .sort((a, b) => a.parsed.getTime() - b.parsed.getTime());
+}
+
+export function generateSlotsFromSchedule(scheduleDay: ProfessionalScheduleDate) {
+  const startMatch = scheduleDay.start.match(/^(\d{2}):(\d{2})$/);
+  const endMatch = scheduleDay.end.match(/^(\d{2}):(\d{2})$/);
+  if (!startMatch || !endMatch) return [];
+
+  let current = Number(startMatch[1]) * 60 + Number(startMatch[2]);
+  const end = Number(endMatch[1]) * 60 + Number(endMatch[2]);
+  if (current >= end) return [];
+
+  const slots: string[] = [];
+  while (current + 30 <= end) {
+    slots.push(`${String(Math.floor(current / 60)).padStart(2, "0")}:${String(current % 60).padStart(2, "0")}`);
+    current += 30;
+  }
+  return slots;
+}
+
+export function getAvailableSlotsForDate(professional: Professional, date: Date) {
+  const scheduleDay = getScheduleForDate(professional, date);
+  if (scheduleDay) {
+    return generateSlotsFromSchedule(scheduleDay);
+  }
+  return professional.availableSlots;
 }
 
 export interface Professional {
   id: string;
   name: string;
   specialty: string;
+  address?: string;
   availableSlots: string[];
   services: ProfessionalService[];
-  weeklySchedule?: WeeklySchedule[];
+  scheduleDates?: ProfessionalScheduleDate[];
+  isTest?: boolean;
 }
 
 const KEY = "salon_professionals_v1";
@@ -65,24 +103,56 @@ function parseSlots(raw: string): string[] {
   )).sort();
 }
 
+const PROFESSIONAL_ADDRESSES: Record<string, string> = {
+  peluquero: "Av. Corrientes 1234, CABA",
+  medico: "Córdoba 5678, CABA",
+};
+
 function createDefaultProfessional(barberId: string) {
   const barber = BARBERS.find((b) => b.id === barberId);
   if (!barber) return undefined;
+
+  const defaultServiceIdsByProfessional: Record<string, string[]> = {
+    peluquero: [
+      "corte-clasico",
+      "fade",
+      "degradado",
+      "tijera",
+      "barba",
+      "perfilado",
+      "afeitado",
+      "lavado",
+      "peinado",
+    ],
+    medico: [
+      "consulta-general",
+      "control-medico",
+      "seguimiento",
+    ],
+  };
+
+  const serviceIds = defaultServiceIdsByProfessional[barber.id] ?? SERVICES.map((service) => service.id);
+
   return {
     id: barber.id,
     name: barber.name,
     specialty: barber.specialty,
+    address: PROFESSIONAL_ADDRESSES[barber.id] ?? BUSINESS.address,
     availableSlots: Array.from({ length: 22 }, (_, index) => {
       const hour = 8 + Math.floor(index / 2);
       const minute = index % 2 === 0 ? "00" : "30";
       return `${String(hour).padStart(2, "0")}:${minute}`;
     }).filter((slot) => slot >= "09:00" && slot <= "19:30"),
-    services: SERVICES.map((service) => ({
-      id: service.id,
-      name: service.name,
-      duration: service.duration,
-      price: service.price,
-    })),
+    services: serviceIds.map((serviceId) => {
+      const service = SERVICES.find((s) => s.id === serviceId);
+      return {
+        id: service?.id ?? serviceId,
+        name: service?.name ?? serviceId,
+        duration: service?.duration ?? 30,
+        price: service?.price ?? 0,
+      };
+    }),
+    isTest: true,
   };
 }
 
@@ -90,14 +160,33 @@ function getDefaultProfessionals(): Professional[] {
   return BARBERS.map((barber) => createDefaultProfessional(barber.id)).filter(Boolean) as Professional[];
 }
 
+const FIXED_PROFESSIONALS = getDefaultProfessionals();
+const FIXED_IDS = new Set(FIXED_PROFESSIONALS.map((professional) => professional.id));
+
+function isFixedProfessional(id: string) {
+  return FIXED_IDS.has(id);
+}
+
 export const professionalStore = {
   all(): Professional[] {
     const saved = read();
-    return saved.length > 0 ? saved : getDefaultProfessionals();
+    if (saved.length === 0) return FIXED_PROFESSIONALS;
+
+    const savedMap = new Map(saved.map((professional) => [professional.id, professional]));
+    const merged = FIXED_PROFESSIONALS.map((professional) => savedMap.get(professional.id) ?? professional);
+    const extras = saved.filter((professional) => !FIXED_IDS.has(professional.id));
+    return [...merged, ...extras];
   },
   add(professional: Omit<Professional, "id">) {
     const list = read();
-    const id = professional.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || crypto.randomUUID();
+    const existingIds = new Set(list.map((p) => p.id));
+    for (const fixedId of FIXED_IDS) {
+      existingIds.add(fixedId);
+    }
+    let id = professional.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || crypto.randomUUID();
+    if (existingIds.has(id)) {
+      id = crypto.randomUUID();
+    }
     const newProfessional: Professional = { id, ...professional };
     write([...list.filter((p) => p.id !== id), newProfessional]);
     return newProfessional;
@@ -106,6 +195,7 @@ export const professionalStore = {
     write(read().map((p) => (p.id === id ? { ...p, ...patch } : p)));
   },
   remove(id: string) {
+    if (isFixedProfessional(id)) return;
     write(read().filter((p) => p.id !== id));
   },
   get(id: string) {

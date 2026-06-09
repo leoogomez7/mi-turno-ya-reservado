@@ -12,14 +12,12 @@ export interface Service {
   name: string;
   duration: number; // minutes
   price: number;
-  category: "corte" | "barba" | "color" | "tratamiento";
+  category: "corte" | "barba" | "color" | "tratamiento" | "medico";
 }
 
 export const BARBERS: Barber[] = [
-  { id: "juan", name: "Juan Martínez", specialty: "Especialista en fades", years: 8, rating: 4.9, initials: "JM" },
-  { id: "lucas", name: "Lucas Gómez", specialty: "Especialista en barba", years: 6, rating: 4.8, initials: "LG" },
-  { id: "matias", name: "Matías Fernández", specialty: "Cortes clásicos", years: 12, rating: 5.0, initials: "MF" },
-  { id: "diego", name: "Diego Ruiz", specialty: "Coloración y estilo", years: 5, rating: 4.7, initials: "DR" },
+  { id: "peluquero", name: "Carlos López", specialty: "Peluquero", years: 10, rating: 4.9, initials: "CL" },
+  { id: "medico", name: "Dra. Laura Medina", specialty: "Médico", years: 14, rating: 4.8, initials: "LM" },
 ];
 
 export const SERVICES: Service[] = [
@@ -37,6 +35,9 @@ export const SERVICES: Service[] = [
   { id: "alisado", name: "Alisado", duration: 90, price: 22000, category: "tratamiento" },
   { id: "tratamiento", name: "Tratamiento capilar", duration: 60, price: 14000, category: "tratamiento" },
   { id: "peinado", name: "Peinado", duration: 30, price: 7500, category: "corte" },
+  { id: "consulta-general", name: "Consulta general", duration: 30, price: 12000, category: "medico" },
+  { id: "control-medico", name: "Control médico", duration: 40, price: 15000, category: "medico" },
+  { id: "seguimiento", name: "Seguimiento de tratamiento", duration: 30, price: 11000, category: "medico" },
 ];
 
 export const BUSINESS = {

@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { Check, ChevronLeft, ChevronRight, Star, Clock, Calendar as CalIcon, Scissors, User } from "lucide-react";
-import { addDays, format, isBefore, isSameDay, startOfToday } from "date-fns";
+import { Check, ChevronLeft, ChevronRight, Star, Clock, Calendar as CalIcon, Briefcase, User } from "lucide-react";
+import { addDays, format, isBefore, isSameDay, parseISO, startOfToday } from "date-fns";
 import { es } from "date-fns/locale";
 
 import { SiteHeader } from "@/components/site-header";
@@ -15,7 +15,7 @@ import { toast } from "sonner";
 
 import { SERVICES, BUSINESS, generateSlots } from "@/lib/salon-data";
 import { bookingStore, getBarber, sumDuration, sumPrice, type Customer } from "@/lib/booking-store";
-import { professionalStore, getProfessionalServiceList } from "@/lib/professional-store";
+import { professionalStore, getProfessionalServiceList, getScheduleForDate, generateSlotsFromSchedule } from "@/lib/professional-store";
 
 export const Route = createFileRoute("/book")({
   head: () => ({
@@ -35,7 +35,7 @@ function BookPage() {
   const navigate = useNavigate();
 
   const [customer, setCustomer] = useState<Customer>({
-    fullName: "", phone: "", email: "", birthday: "", notes: "", hairType: undefined,
+    fullName: "", phone: "", email: "", birthday: "", paymentMethod: "efectivo", notes: "", hairType: undefined,
   });
   const [barberId, setBarberId] = useState<string>("");
   const [serviceIds, setServiceIds] = useState<string[]>([]);
@@ -58,11 +58,32 @@ function BookPage() {
       toast.error("Seleccioná fecha y horario antes de confirmar.");
       return;
     }
+
     bookingStore.add({
       customer, barberId, serviceIds,
       date: format(date, "yyyy-MM-dd"),
       time, duration, totalPrice: price,
     });
+
+    const barber = getBarber(barberId);
+    const serviceNames = getProfessionalServiceList(barberId)
+      .filter((s) => serviceIds.includes(s.id))
+      .map((s) => s.name)
+      .join(", ");
+    const message = `Hola! Quiero confirmar un turno.
+Nombre: ${customer.fullName}
+Teléfono: ${customer.phone}
+Email: ${customer.email}
+Profesional: ${barber?.name ?? ""}
+Servicios: ${serviceNames}
+Fecha: ${format(date, "EEEE d 'de' MMMM yyyy", { locale: es })}
+Horario: ${time}
+Método de pago: ${customer.paymentMethod ?? "Efectivo"}
+Precio total: $${price}
+Notas: ${customer.notes || "Ninguna"}`;
+    const whatsappUrl = `https://wa.me/${BUSINESS.whatsapp}?text=${encodeURIComponent(message)}`;
+    window.open(whatsappUrl, "_blank");
+
     toast.success("¡Turno confirmado!");
     navigate({ to: "/" });
   }
@@ -185,10 +206,21 @@ function StepCustomer({ customer, setCustomer }: { customer: Customer; setCustom
         <Field label="Nombre completo *"><Input value={customer.fullName} onChange={(e) => setCustomer({ ...customer, fullName: e.target.value })} placeholder="Juan Pérez" /></Field>
         <Field label="Teléfono *"><Input value={customer.phone} onChange={(e) => setCustomer({ ...customer, phone: e.target.value })} placeholder="+54 11 5555 5555" /></Field>
         <Field label="Correo electrónico *"><Input type="email" value={customer.email} onChange={(e) => setCustomer({ ...customer, email: e.target.value })} placeholder="vos@email.com" /></Field>
-        <Field label="Fecha de nacimiento"><Input type="date" value={customer.birthday} onChange={(e) => setCustomer({ ...customer, birthday: e.target.value })} /></Field>
+        <Field label="Método de pago">
+          <select
+            className="mt-2 block w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-gold focus:ring-2 focus:ring-gold/20"
+            value={customer.paymentMethod ?? "efectivo"}
+            onChange={(e) => setCustomer({ ...customer, paymentMethod: e.target.value as Customer["paymentMethod"] })}
+          >
+            <option value="efectivo">Efectivo</option>
+            <option value="transferencia">Transferencia</option>
+            <option value="tarjeta de crédito">Tarjeta de crédito</option>
+            <option value="tarjeta de débito">Tarjeta de débito</option>
+          </select>
+        </Field>
         <div className="sm:col-span-2">
           <Field label="Observaciones">
-            <Textarea rows={3} value={customer.notes} onChange={(e) => setCustomer({ ...customer, notes: e.target.value })} placeholder="Ej: Quiero mantener el largo / Primera vez" />
+            <Textarea rows={3} value={customer.notes} onChange={(e) => setCustomer({ ...customer, notes: e.target.value })} placeholder="Ej: ¿Puedo ir acompañado? / ¿Hay televisión?" />
           </Field>
         </div>
       </div>
@@ -210,7 +242,7 @@ function StepBarber({ value, onChange }: { value: string; onChange: (v: string) 
 
   return (
     <div>
-      <SectionTitle icon={Scissors} title="Paso 2" subtitle="Elegí tu profesional" />
+      <SectionTitle icon={Briefcase} title="Paso 2" subtitle="Elegí tu profesional" />
       {professionals.length === 0 ? (
         <div className="rounded-2xl border border-border bg-card p-6 text-sm text-muted-foreground">
           No hay profesionales cargados. Crealos en el <Link to="/professionals" className="text-gold underline">administrador de profesionales</Link>.
@@ -235,7 +267,8 @@ function StepBarber({ value, onChange }: { value: string; onChange: (v: string) 
                 <div className="min-w-0 flex-1">
                   <div className="font-display text-lg font-semibold">{b.name}</div>
                   <div className="text-sm text-muted-foreground">{b.specialty}</div>
-                  <div className="mt-1 text-xs text-muted-foreground">{b.availableSlots.length} horarios disponibles · {b.services.length} servicios</div>
+                  {b.address && <div className="text-sm text-muted-foreground">{b.address}</div>}
+                  <div className="mt-1 text-xs text-muted-foreground">{b.scheduleDates?.length ?? b.availableSlots.length} fechas disponibles · {b.services.length} servicios</div>
                 </div>
                 {selected && <Check className="h-5 w-5 text-gold" />}
               </button>
@@ -261,7 +294,7 @@ function StepServices({
 
   return (
     <div>
-      <SectionTitle icon={Scissors} title="Paso 3" subtitle="Servicios" />
+      <SectionTitle icon={Star} title="Paso 3" subtitle="Servicios" />
       <p className="mb-4 text-sm text-muted-foreground">Podés seleccionar varios. El tiempo se suma automáticamente.</p>
 
       <div className="grid gap-2 sm:grid-cols-2">
@@ -334,13 +367,18 @@ function StepDateTime({
   barberId: string; duration: number;
 }) {
   const today = startOfToday();
-  const days = Array.from({ length: 21 }, (_, i) => addDays(today, i));
   const professional = barberId ? professionalStore.all().find((p) => p.id === barberId) : undefined;
+  const scheduledDates = professional?.scheduleDates
+    ?.map((entry) => ({ ...entry, parsed: parseISO(entry.date) }))
+    .filter((entry) => !Number.isNaN(entry.parsed.getTime()) && entry.parsed >= today)
+    .sort((a, b) => a.parsed.getTime() - b.parsed.getTime());
+  const days = scheduledDates?.map((entry) => entry.parsed) ?? Array.from({ length: 21 }, (_, i) => addDays(today, i));
   const professionalSlots = professional?.availableSlots ?? generateSlots();
-  const slots = professionalSlots;
   const dateKey = date ? format(date, "yyyy-MM-dd") : "";
   const occupied = date && barberId ? bookingStore.occupiedSlots(dateKey, barberId) : new Set<string>();
   const slotsNeeded = Math.max(1, Math.ceil(duration / 30));
+  const scheduleDay = date && professional ? getScheduleForDate(professional, date) : undefined;
+  const slots = scheduleDay ? generateSlotsFromSchedule(scheduleDay) : professionalSlots;
 
   function isSlotAvailable(slot: string): boolean {
     const [h, m] = slot.split(":").map(Number);
@@ -362,7 +400,8 @@ function StepDateTime({
       <Label className="mb-3 block text-xs uppercase tracking-wider text-muted-foreground">Fecha</Label>
       <div className="-mx-1 flex gap-2 overflow-x-auto pb-3">
         {days.map((d) => {
-          const closed = BUSINESS.closedDays.includes(d.getDay());
+          const scheduleForDay = professional ? getScheduleForDate(professional, d) : undefined;
+          const closed = scheduledDates ? !scheduleForDay : BUSINESS.closedDays.includes(d.getDay());
           const selected = date && isSameDay(d, date);
           const past = isBefore(d, today);
           const disabled = closed || past;
@@ -391,6 +430,8 @@ function StepDateTime({
       </Label>
       {!date ? (
         <p className="text-sm text-muted-foreground">Elegí primero una fecha.</p>
+      ) : slots.length === 0 ? (
+        <p className="text-sm text-muted-foreground">No hay horarios disponibles para esta fecha. Elegí otro día o revisá la disponibilidad del profesional.</p>
       ) : (
         <div className="grid grid-cols-3 gap-2 sm:grid-cols-5 md:grid-cols-6">
           {slots.map((s) => {
@@ -439,6 +480,7 @@ function StepConfirm({
         <Row label="Servicios" value={serviceNames || "-"} />
         <Row label="Fecha" value={format(date, "EEEE d 'de' MMMM, yyyy", { locale: es })} />
         <Row label="Hora" value={time} />
+        <Row label="Método de pago" value={customer.paymentMethod ?? "Efectivo"} />
         <Row label="Duración" value={`${duration} min`} icon={Clock} />
         {customer.notes && <Row label="Observaciones" value={customer.notes} />}
       </div>
