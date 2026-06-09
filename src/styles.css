@@ -89,14 +89,29 @@
 }
 
 @layer base {
+  html {
+    box-sizing: border-box;
+    overflow-x: hidden;
+  }
+
+  *, *::before, *::after {
+    box-sizing: inherit;
+  }
+
   * {
     border-color: var(--color-border);
   }
   html, body {
+    margin: 0;
+    min-height: 100%;
+    width: 100%;
     background-color: var(--color-background);
     color: var(--color-foreground);
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
+  }
+  body {
+    overflow-x: hidden;
   }
   input[type="date"]::-webkit-calendar-picker-indicator {
     filter: invert(1) brightness(1.4);
