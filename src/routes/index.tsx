@@ -24,7 +24,7 @@ function Home() {
       {/* HERO */}
       <section className="relative overflow-hidden">
         <div className="pointer-events-none absolute inset-0 opacity-30">
-          <div className="absolute -top-40 left-1/2 h-[500px] w-[500px] -translate-x-1/2 rounded-full bg-gold/20 blur-3xl" />
+          <div className="absolute -top-40 left-1/2 .h-[500px] .w-[500px] -translate-x-1/2 rounded-full bg-gold/20 blur-3xl" />
         </div>
         <div className="relative mx-auto max-w-6xl px-6 pt-24 pb-32 text-center">
           <h1 className="font-display text-5xl font-semibold leading-[1.05] tracking-tight md:text-7xl">
