@@ -32,7 +32,7 @@ export function SiteHeader() {
         </button>
 
         {open && (
-          <div className="absolute right-4 top-full z-50 mt-2 w-[calc(100vw-2rem)] max-w-xs rounded-3xl border border-border/60 bg-slate-950 p-3 shadow-2xl md:hidden">
+          <div className="absolute right-4 top-full z-50 mt-2 w-[calc(100vw-2rem)] max-w-xs rounded-3xl border border-border/60 bg-black p-3 shadow-2xl md:hidden">
             <nav className="flex flex-col gap-2 text-sm">
               <Link
                 to="/"
