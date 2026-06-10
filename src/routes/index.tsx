@@ -33,7 +33,7 @@ function Home() {
             <span className="text-gradient-gold">online</span>
           </h1>
           <p className="mx-auto mt-6 max-w-xl text-lg text-muted-foreground">
-            Reservá en segundos el turno que necesitás.
+            Tu turno listo en un clic.
           </p>
           <div className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row">
             <Button asChild size="lg" className="h-14 bg-gold px-10 text-base font-semibold text-primary-foreground shadow-gold hover:bg-gold-soft">
