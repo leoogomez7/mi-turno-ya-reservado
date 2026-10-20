@@ -34,7 +34,6 @@ export function SiteHeader() {
           <div className="absolute left-1/2 top-full z-50 mt-2 w-[calc(100vw-2rem)] max-w-xs -translate-x-1/2 rounded-3xl border border-border/60 bg-black p-3 shadow-2xl md:hidden">
             <nav className="flex flex-col gap-2 text-sm">
               <Link
-              <Link
                 to="/book"
                 onClick={() => setOpen(false)}
                 className="block rounded-2xl px-4 py-3 text-foreground hover:bg-border/10 [&.active]:bg-gold/10 [&.active]:text-gold"
