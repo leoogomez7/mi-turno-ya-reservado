@@ -117,10 +117,10 @@ Notas: ${customer.notes || "Ninguna"}`;
   return (
     <div className="min-h-screen bg-gradient-dark">
       <SiteHeader />
-      <main className="mx-auto max-w-4xl px-6 py-10 md:py-14">
+      <main className="mx-auto flex min-h-[calc(100svh-56px)] w-full max-w-4xl flex-col justify-center px-4 py-4 sm:px-6 md:py-5">
         <Stepper step={step} />
 
-        <div className="mt-8 rounded-2xl border border-border bg-card/60 p-6 md:p-10">
+        <div className="mt-4 rounded-2xl border border-border bg-card/60 p-5 sm:p-6">
           {step === 0 && <StepCustomer customer={customer} setCustomer={setCustomer} />}
           {step === 1 && <StepBarber value={barberId} onChange={setBarberId} />}
           {step === 2 && <StepServices value={serviceIds} onChange={setServiceIds} hairType={customer.hairType} setHairType={(v) => setCustomer({ ...customer, hairType: v })} barberId={barberId} />}
@@ -129,11 +129,11 @@ Notas: ${customer.notes || "Ninguna"}`;
         </div>
 
         {stepError && (
-          <div className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-700">
+          <div className="mb-3 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-700">
             {stepError}
           </div>
         )}
-        <div className="mt-6 flex items-center justify-between">
+        <div className="mt-3 flex items-center justify-between">
           <Button
             type="button"
             variant="ghost"
@@ -187,11 +187,11 @@ function Stepper({ step }: { step: number }) {
 
 function SectionTitle({ icon: Icon, title, subtitle }: { icon: any; title: string; subtitle: string }) {
   return (
-    <div className="mb-6">
-      <div className="mb-2 inline-flex items-center gap-2 text-xs uppercase tracking-widest text-gold">
+    <div className="mb-3">
+      <div className="mb-1 inline-flex items-center gap-2 text-xs uppercase tracking-widest text-gold">
         <Icon className="h-3 w-3" /> {title}
       </div>
-      <h2 className="font-display text-3xl font-semibold">{subtitle}</h2>
+      <h2 className="font-display text-2xl font-semibold">{subtitle}</h2>
     </div>
   );
 }
@@ -200,7 +200,7 @@ function StepCustomer({ customer, setCustomer }: { customer: Customer; setCustom
   return (
     <div>
       <SectionTitle icon={User} title="Paso 1" subtitle="Tus datos" />
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Nombre completo *"><Input value={customer.fullName} onChange={(e) => setCustomer({ ...customer, fullName: e.target.value })} placeholder="Juan Pérez" /></Field>
         <Field label="Teléfono *"><Input value={customer.phone} onChange={(e) => setCustomer({ ...customer, phone: e.target.value })} placeholder="+54 11 5555 5555" /></Field>
         <Field label="Correo electrónico *"><Input type="email" value={customer.email} onChange={(e) => setCustomer({ ...customer, email: e.target.value })} placeholder="vos@email.com" /></Field>
@@ -218,7 +218,7 @@ function StepCustomer({ customer, setCustomer }: { customer: Customer; setCustom
         </Field>
         <div className="sm:col-span-2">
           <Field label="Observaciones">
-            <Textarea rows={3} value={customer.notes} onChange={(e) => setCustomer({ ...customer, notes: e.target.value })} placeholder="Ej: ¿Puedo ir acompañado? / ¿Hay televisión?" />
+            <Textarea rows={2} value={customer.notes} onChange={(e) => setCustomer({ ...customer, notes: e.target.value })} placeholder="Ej: ¿Puedo ir acompañado? / ¿Hay televisión?" />
           </Field>
         </div>
       </div>

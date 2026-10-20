@@ -7,7 +7,7 @@ export function SiteHeader() {
 
   return (
     <header className="sticky top-0 z-40 border-b border-border/60 bg-background/80 backdrop-blur-xl">
-      <div className="relative flex w-full flex-wrap items-center justify-between gap-2 px-5 py-3 md:px-8 lg:px-12">
+      <div className="relative flex w-full flex-wrap items-center justify-between gap-2 px-3 py-2.5 md:px-4 lg:px-5">
         <Link to="/book" className="flex items-center gap-2">
           <span className="flex h-9 w-9 items-center justify-center rounded-full border border-gold/30 text-gold">
             <CalendarDays className="h-4 w-4" />
@@ -15,7 +15,7 @@ export function SiteHeader() {
           <span className="font-display text-lg font-semibold tracking-tight">Mi Turno Ya</span>
         </Link>
 
-        <nav className="hidden md:flex flex-wrap items-center justify-center gap-1 text-sm">
+        <nav className="hidden items-center justify-end gap-1 text-sm md:flex">
           <Link to="/book" className="px-3 py-2 text-muted-foreground hover:text-foreground [&.active]:text-gold">Reservar</Link>
           <Link to="/professionals" className="px-3 py-2 text-muted-foreground hover:text-foreground [&.active]:text-foreground">Profesionales</Link>
           <Link to="/admin" className="px-3 py-2 text-muted-foreground hover:text-foreground [&.active]:text-foreground">Administración</Link>
