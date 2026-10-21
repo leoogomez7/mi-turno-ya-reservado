@@ -28,7 +28,7 @@ function SuccessPage() {
         <SiteHeader />
         <main className="mx-auto max-w-xl px-6 py-20 text-center">
           <p className="text-muted-foreground">No encontramos tu reserva.</p>
-          <Button asChild className="mt-6"><Link to="/book">Reservar un turno</Link></Button>
+          <Button asChild className="mt-6"><Link to="/reserva">Reservar un turno</Link></Button>
         </main>
       </div>
     );

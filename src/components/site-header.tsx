@@ -8,7 +8,7 @@ export function SiteHeader() {
   return (
     <header className="sticky top-0 z-40 border-b border-border/60 bg-background/80 backdrop-blur-xl">
       <div className="relative flex w-full flex-wrap items-center justify-between gap-2 px-3 py-2.5 md:px-4 lg:px-5">
-        <Link to="/book" className="flex items-center gap-2">
+        <Link to="/reserva" className="flex items-center gap-2">
           <span className="flex h-9 w-9 items-center justify-center rounded-full border border-gold/30 text-gold">
             <CalendarDays className="h-4 w-4" />
           </span>
@@ -16,8 +16,8 @@ export function SiteHeader() {
         </Link>
 
         <nav className="hidden items-center justify-end gap-1 text-sm md:flex">
-          <Link to="/book" className="px-3 py-2 text-muted-foreground hover:text-foreground [&.active]:text-gold">Reservar</Link>
-          <Link to="/professionals" className="px-3 py-2 text-muted-foreground hover:text-foreground [&.active]:text-foreground">Profesionales</Link>
+          <Link to="/reserva" className="px-3 py-2 text-muted-foreground hover:text-foreground [&.active]:text-gold">Reservar</Link>
+          <Link to="/profesionales" className="px-3 py-2 text-muted-foreground hover:text-foreground [&.active]:text-foreground">Profesionales</Link>
           <Link to="/admin" className="px-3 py-2 text-muted-foreground hover:text-foreground [&.active]:text-foreground">Administración</Link>
         </nav>
 
@@ -34,14 +34,14 @@ export function SiteHeader() {
           <div className="absolute left-1/2 top-full z-50 mt-2 w-[calc(100vw-2rem)] max-w-xs -translate-x-1/2 rounded-3xl border border-border/60 bg-black p-3 shadow-2xl md:hidden">
             <nav className="flex flex-col gap-2 text-sm">
               <Link
-                to="/book"
+                to="/reserva"
                 onClick={() => setOpen(false)}
                 className="block rounded-2xl px-4 py-3 text-foreground hover:bg-border/10 [&.active]:bg-gold/10 [&.active]:text-gold"
               >
                 Reservar
               </Link>
               <Link
-                to="/professionals"
+                to="/profesionales"
                 onClick={() => setOpen(false)}
                 className="block rounded-2xl px-4 py-3 text-foreground hover:bg-border/10"
               >

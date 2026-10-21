@@ -12,8 +12,13 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as BookRouteImport } from './routes/book'
-import { Route as ProfessionalsRouteImport } from './routes/professionals'
+import { Route as ProfesionalesRouteImport } from './routes/profesionales'
+import { Route as ReservaRouteImport } from './routes/reserva'
 import { Route as BookSuccessRouteImport } from './routes/book.success'
+import { Route as ReservaConfirmacionRouteImport } from './routes/reserva.confirmacion'
+import { Route as ReservaHorarioRouteImport } from './routes/reserva.horario'
+import { Route as ReservaProfesionalRouteImport } from './routes/reserva.profesional'
+import { Route as ReservaServiciosRouteImport } from './routes/reserva.servicios'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -30,9 +35,14 @@ const BookRoute = BookRouteImport.update({
   path: '/book',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ProfessionalsRoute = ProfessionalsRouteImport.update({
-  id: '/professionals',
-  path: '/professionals',
+const ProfesionalesRoute = ProfesionalesRouteImport.update({
+  id: '/profesionales',
+  path: '/profesionales',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ReservaRoute = ReservaRouteImport.update({
+  id: '/reserva',
+  path: '/reserva',
   getParentRoute: () => rootRouteImport,
 } as any)
 const BookSuccessRoute = BookSuccessRouteImport.update({
@@ -40,42 +50,109 @@ const BookSuccessRoute = BookSuccessRouteImport.update({
   path: '/success',
   getParentRoute: () => BookRoute,
 } as any)
+const ReservaConfirmacionRoute = ReservaConfirmacionRouteImport.update({
+  id: '/confirmacion',
+  path: '/confirmacion',
+  getParentRoute: () => ReservaRoute,
+} as any)
+const ReservaHorarioRoute = ReservaHorarioRouteImport.update({
+  id: '/horario',
+  path: '/horario',
+  getParentRoute: () => ReservaRoute,
+} as any)
+const ReservaProfesionalRoute = ReservaProfesionalRouteImport.update({
+  id: '/profesional',
+  path: '/profesional',
+  getParentRoute: () => ReservaRoute,
+} as any)
+const ReservaServiciosRoute = ReservaServiciosRouteImport.update({
+  id: '/servicios',
+  path: '/servicios',
+  getParentRoute: () => ReservaRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
   '/book': typeof BookRouteWithChildren
-  '/professionals': typeof ProfessionalsRoute
+  '/profesionales': typeof ProfesionalesRoute
+  '/reserva': typeof ReservaRouteWithChildren
   '/book/success': typeof BookSuccessRoute
+  '/reserva/confirmacion': typeof ReservaConfirmacionRoute
+  '/reserva/horario': typeof ReservaHorarioRoute
+  '/reserva/profesional': typeof ReservaProfesionalRoute
+  '/reserva/servicios': typeof ReservaServiciosRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
   '/book': typeof BookRouteWithChildren
-  '/professionals': typeof ProfessionalsRoute
+  '/profesionales': typeof ProfesionalesRoute
+  '/reserva': typeof ReservaRouteWithChildren
   '/book/success': typeof BookSuccessRoute
+  '/reserva/confirmacion': typeof ReservaConfirmacionRoute
+  '/reserva/horario': typeof ReservaHorarioRoute
+  '/reserva/profesional': typeof ReservaProfesionalRoute
+  '/reserva/servicios': typeof ReservaServiciosRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
   '/book': typeof BookRouteWithChildren
-  '/professionals': typeof ProfessionalsRoute
+  '/profesionales': typeof ProfesionalesRoute
+  '/reserva': typeof ReservaRouteWithChildren
   '/book/success': typeof BookSuccessRoute
+  '/reserva/confirmacion': typeof ReservaConfirmacionRoute
+  '/reserva/horario': typeof ReservaHorarioRoute
+  '/reserva/profesional': typeof ReservaProfesionalRoute
+  '/reserva/servicios': typeof ReservaServiciosRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/admin' | '/book' | '/professionals' | '/book/success'
+  fullPaths:
+    | '/'
+    | '/admin'
+    | '/book'
+    | '/profesionales'
+    | '/reserva'
+    | '/book/success'
+    | '/reserva/confirmacion'
+    | '/reserva/horario'
+    | '/reserva/profesional'
+    | '/reserva/servicios'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/admin' | '/book' | '/professionals' | '/book/success'
-  id: '__root__' | '/' | '/admin' | '/book' | '/professionals' | '/book/success'
+  to:
+    | '/'
+    | '/admin'
+    | '/book'
+    | '/profesionales'
+    | '/reserva'
+    | '/book/success'
+    | '/reserva/confirmacion'
+    | '/reserva/horario'
+    | '/reserva/profesional'
+    | '/reserva/servicios'
+  id:
+    | '__root__'
+    | '/'
+    | '/admin'
+    | '/book'
+    | '/profesionales'
+    | '/reserva'
+    | '/book/success'
+    | '/reserva/confirmacion'
+    | '/reserva/horario'
+    | '/reserva/profesional'
+    | '/reserva/servicios'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AdminRoute: typeof AdminRoute
   BookRoute: typeof BookRouteWithChildren
-  ProfessionalsRoute: typeof ProfessionalsRoute
+  ProfesionalesRoute: typeof ProfesionalesRoute
+  ReservaRoute: typeof ReservaRouteWithChildren
 }
 
 declare module '@tanstack/react-router' {
@@ -101,11 +178,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof BookRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/professionals': {
-      id: '/professionals'
-      path: '/professionals'
-      fullPath: '/professionals'
-      preLoaderRoute: typeof ProfessionalsRouteImport
+    '/profesionales': {
+      id: '/profesionales'
+      path: '/profesionales'
+      fullPath: '/profesionales'
+      preLoaderRoute: typeof ProfesionalesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/reserva': {
+      id: '/reserva'
+      path: '/reserva'
+      fullPath: '/reserva'
+      preLoaderRoute: typeof ReservaRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/book/success': {
@@ -114,6 +198,34 @@ declare module '@tanstack/react-router' {
       fullPath: '/book/success'
       preLoaderRoute: typeof BookSuccessRouteImport
       parentRoute: typeof BookRoute
+    }
+    '/reserva/confirmacion': {
+      id: '/reserva/confirmacion'
+      path: '/confirmacion'
+      fullPath: '/reserva/confirmacion'
+      preLoaderRoute: typeof ReservaConfirmacionRouteImport
+      parentRoute: typeof ReservaRoute
+    }
+    '/reserva/horario': {
+      id: '/reserva/horario'
+      path: '/horario'
+      fullPath: '/reserva/horario'
+      preLoaderRoute: typeof ReservaHorarioRouteImport
+      parentRoute: typeof ReservaRoute
+    }
+    '/reserva/profesional': {
+      id: '/reserva/profesional'
+      path: '/profesional'
+      fullPath: '/reserva/profesional'
+      preLoaderRoute: typeof ReservaProfesionalRouteImport
+      parentRoute: typeof ReservaRoute
+    }
+    '/reserva/servicios': {
+      id: '/reserva/servicios'
+      path: '/servicios'
+      fullPath: '/reserva/servicios'
+      preLoaderRoute: typeof ReservaServiciosRouteImport
+      parentRoute: typeof ReservaRoute
     }
   }
 }
@@ -128,11 +240,29 @@ const BookRouteChildren: BookRouteChildren = {
 
 const BookRouteWithChildren = BookRoute._addFileChildren(BookRouteChildren)
 
+interface ReservaRouteChildren {
+  ReservaConfirmacionRoute: typeof ReservaConfirmacionRoute
+  ReservaHorarioRoute: typeof ReservaHorarioRoute
+  ReservaProfesionalRoute: typeof ReservaProfesionalRoute
+  ReservaServiciosRoute: typeof ReservaServiciosRoute
+}
+
+const ReservaRouteChildren: ReservaRouteChildren = {
+  ReservaConfirmacionRoute: ReservaConfirmacionRoute,
+  ReservaHorarioRoute: ReservaHorarioRoute,
+  ReservaProfesionalRoute: ReservaProfesionalRoute,
+  ReservaServiciosRoute: ReservaServiciosRoute,
+}
+
+const ReservaRouteWithChildren =
+  ReservaRoute._addFileChildren(ReservaRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AdminRoute: AdminRoute,
   BookRoute: BookRouteWithChildren,
-  ProfessionalsRoute: ProfessionalsRoute,
+  ProfesionalesRoute: ProfesionalesRoute,
+  ReservaRoute: ReservaRouteWithChildren,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

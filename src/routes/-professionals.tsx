@@ -1,4 +1,3 @@
-import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, Plus, Trash2 } from "lucide-react";
 import { SiteHeader } from "@/components/site-header";
@@ -19,11 +18,6 @@ const defaultFormState: Partial<Professional> = {
 };
 
 const ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD ?? "";
-
-export const Route = createFileRoute("/professionals")({
-  head: () => ({ meta: [{ title: "Profesionales" }] }),
-  component: ProfessionalsPage,
-});
 
 export function ProfessionalsManager() {
   const formRef = useRef<HTMLDivElement | null>(null);

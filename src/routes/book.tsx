@@ -1,6 +1,6 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
-import { Check, ChevronLeft, ChevronRight, Star, Clock, Calendar as CalIcon, Briefcase, User } from "lucide-react";
+import { createFileRoute, Link, redirect, useLocation, useNavigate } from "@tanstack/react-router";
+import { useEffect, useMemo, useState } from "react";
+import { Check, ChevronLeft, ChevronRight, Star, Clock, Calendar as CalIcon, Briefcase, User, LoaderCircle, Copy } from "lucide-react";
 import { addDays, format, isBefore, isSameDay, parseISO, startOfToday } from "date-fns";
 import { es } from "date-fns/locale";
 
@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -17,21 +18,45 @@ import { bookingStore, getBarber, sumDuration, sumPrice, type Customer } from "@
 import { professionalStore, getProfessionalServiceList, getScheduleForDate, generateSlotsFromSchedule } from "@/lib/professional-store";
 
 export const Route = createFileRoute("/book")({
-  head: () => ({
-    meta: [
-      { title: "Reservar turno" },
-      { name: "description", content: "Reservá tu turno en pocos pasos: elegí el rubro profesional, servicio, fecha y horario." },
-    ],
-  }),
-  component: BookPage,
+  beforeLoad: () => {
+    throw redirect({ to: "/reserva" });
+  },
 });
 
 const STEPS = ["Datos", "Profesional", "Servicios", "Fecha & hora", "Confirmar"] as const;
+const STEP_PATHS = {
+  0: "/reserva",
+  1: "/reserva/profesional",
+  2: "/reserva/servicios",
+  3: "/reserva/horario",
+  4: "/reserva/confirmacion",
+} as const;
+const RESERVATION_DRAFT_KEY = "mi-turno-ya-reservado-draft";
 
-function BookPage() {
-  const [step, setStep] = useState(0);
+interface ReservationDraft {
+  customer: Customer;
+  barberId: string;
+  serviceIds: string[];
+  date: string | null;
+  time: string;
+}
+
+function stepForPath(pathname: string) {
+  return Object.entries(STEP_PATHS).find(([, path]) => path === pathname)?.[0] as keyof typeof STEP_PATHS | undefined;
+}
+
+export function BookPage() {
+  const location = useLocation();
+  const initialStep = stepForPath(location.pathname) ?? 0;
+  const [step, setStep] = useState<number>(Number(initialStep));
+  const [draftLoaded, setDraftLoaded] = useState(false);
   const [stepError, setStepError] = useState<string | null>(null);
+  const [paymentDialog, setPaymentDialog] = useState<"transfer" | "mercadopago" | null>(null);
+  const [paymentLoading, setPaymentLoading] = useState(false);
+  const [paymentUrl, setPaymentUrl] = useState<string | null>(null);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
   const navigate = useNavigate();
+  const paymentReturn = new URLSearchParams(location.searchStr).get("payment");
 
   const [customer, setCustomer] = useState<Customer>({
     fullName: "", phone: "", email: "", birthday: "", paymentMethod: "efectivo", notes: "", hairType: undefined,
@@ -41,28 +66,72 @@ function BookPage() {
   const [date, setDate] = useState<Date | null>(null);
   const [time, setTime] = useState<string>("");
 
+  useEffect(() => {
+    try {
+      const saved = sessionStorage.getItem(RESERVATION_DRAFT_KEY);
+      if (saved) {
+        const draft = JSON.parse(saved) as ReservationDraft;
+        if (draft.customer) setCustomer(draft.customer);
+        if (typeof draft.barberId === "string") setBarberId(draft.barberId);
+        if (Array.isArray(draft.serviceIds)) setServiceIds(draft.serviceIds);
+        if (draft.date) setDate(new Date(`${draft.date}T12:00:00`));
+        if (typeof draft.time === "string") setTime(draft.time);
+      }
+    } catch {
+      sessionStorage.removeItem(RESERVATION_DRAFT_KEY);
+    }
+    setDraftLoaded(true);
+  }, []);
+
+  useEffect(() => {
+    if (!draftLoaded) return;
+    const draft: ReservationDraft = {
+      customer,
+      barberId,
+      serviceIds,
+      date: date ? format(date, "yyyy-MM-dd") : null,
+      time,
+    };
+    sessionStorage.setItem(RESERVATION_DRAFT_KEY, JSON.stringify(draft));
+  }, [draftLoaded, customer, barberId, serviceIds, date, time]);
+
+  function clearReservationDraft() {
+    sessionStorage.removeItem(RESERVATION_DRAFT_KEY);
+  }
+
   const duration = sumDuration(barberId, serviceIds);
   const price = sumPrice(barberId, serviceIds);
 
+  useEffect(() => {
+    const pathStep = stepForPath(location.pathname);
+    if (pathStep !== undefined) setStep(Number(pathStep));
+  }, [location.pathname]);
+
+  function goToStep(nextStep: number) {
+    const safeStep = Math.max(0, Math.min(STEPS.length - 1, nextStep));
+    setStep(safeStep);
+    setStepError(null);
+    navigate({ to: STEP_PATHS[safeStep as keyof typeof STEP_PATHS] });
+  }
+
   const canNext = useMemo(() => {
-    if (step === 0) return /.+@.+\..+/.test(customer.email) && customer.phone.trim().length >= 6;
+    if (step === 0) {
+      return customer.fullName.trim().length > 0
+        && customer.phone.trim().length >= 6
+        && /.+@.+\..+/.test(customer.email)
+        && !!customer.paymentMethod;
+    }
     if (step === 1) return !!barberId;
     if (step === 2) return serviceIds.length > 0;
     if (step === 3) return !!date && !!time;
     return true;
   }, [step, customer, barberId, serviceIds, date, time]);
 
-  function confirm() {
+  async function confirm() {
     if (!date || !time) {
       toast.error("Seleccioná fecha y horario antes de confirmar.");
       return;
     }
-
-    bookingStore.add({
-      customer, barberId, serviceIds,
-      date: format(date, "yyyy-MM-dd"),
-      time, duration, totalPrice: price,
-    });
 
     const barber = getBarber(barberId);
     const serviceNames = getProfessionalServiceList(barberId)
@@ -80,6 +149,60 @@ Horario: ${time}
 Método de pago: ${customer.paymentMethod ?? "Efectivo"}
 Precio total: $${price}
 Notas: ${customer.notes || "Ninguna"}`;
+
+    if (customer.paymentMethod === "transferencia") {
+      bookingStore.add({
+        customer, barberId, serviceIds,
+        date: format(date, "yyyy-MM-dd"),
+        time, duration, totalPrice: price, status: "pending-payment",
+      });
+      setPaymentDialog("transfer");
+      return;
+    }
+
+    if (["tarjeta de crédito", "tarjeta de débito", "mercadopago"].includes(customer.paymentMethod ?? "")) {
+      setPaymentDialog("mercadopago");
+      setPaymentLoading(true);
+      setPaymentUrl(null);
+      setPaymentError(null);
+      try {
+        const response = await fetch("/api/mercadopago/preference", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            amount: price,
+            description: serviceNames || "Reserva de turno",
+            email: customer.email,
+            customerName: customer.fullName,
+            reservationDate: format(date, "yyyy-MM-dd"),
+            reservationTime: time,
+          }),
+        });
+        const result = await response.json() as { initPoint?: string; error?: string };
+        if (!response.ok || !result.initPoint) {
+          throw new Error(result.error || "No se pudo preparar el pago.");
+        }
+        bookingStore.add({
+          customer, barberId, serviceIds,
+          date: format(date, "yyyy-MM-dd"),
+          time, duration, totalPrice: price, status: "pending-payment",
+        });
+        setPaymentUrl(result.initPoint);
+        window.setTimeout(() => window.location.assign(result.initPoint!), 1200);
+      } catch (error) {
+        setPaymentError(error instanceof Error ? error.message : "No se pudo preparar el pago.");
+      } finally {
+        setPaymentLoading(false);
+      }
+      return;
+    }
+
+    bookingStore.add({
+      customer, barberId, serviceIds,
+      date: format(date, "yyyy-MM-dd"),
+      time, duration, totalPrice: price,
+    });
+    clearReservationDraft();
     const whatsappUrl = `https://wa.me/${BUSINESS.whatsapp}?text=${encodeURIComponent(message)}`;
     window.open(whatsappUrl, "_blank");
 
@@ -87,15 +210,35 @@ Notas: ${customer.notes || "Ninguna"}`;
     navigate({ to: "/" });
   }
 
+  function sendTransferConfirmation() {
+    const message = `Hola, quiero enviar el comprobante de transferencia de mi turno por $${price.toLocaleString("es-AR")}. Nombre: ${customer.fullName}, fecha: ${date ? format(date, "dd/MM/yyyy") : ""}, horario: ${time}.`;
+    window.open(`https://wa.me/${BUSINESS.whatsapp}?text=${encodeURIComponent(message)}`, "_blank");
+    setPaymentDialog(null);
+    clearReservationDraft();
+  }
+
+  async function copyTransferValue(value: string) {
+    try {
+      await navigator.clipboard.writeText(value);
+      toast.success("Dato copiado.");
+    } catch {
+      toast.error("No se pudo copiar el dato.");
+    }
+  }
+
   function handleContinue() {
     if (!canNext) {
       let message = "Completá los datos antes de continuar.";
 
       if (step === 0) {
-        if (!/.+@.+\..+/.test(customer.email)) {
-          message = "El correo electrónico no es válido.";
+        if (!customer.fullName.trim()) {
+          message = "Ingresá tu nombre completo.";
         } else if (customer.phone.trim().length < 6) {
           message = "El teléfono debe tener al menos 6 caracteres.";
+        } else if (!/.+@.+\..+/.test(customer.email)) {
+          message = "El correo electrónico no es válido.";
+        } else if (!customer.paymentMethod) {
+          message = "Elegí un método de pago.";
         }
       } else if (step === 1) {
         message = "Elegí un profesional para continuar.";
@@ -110,14 +253,22 @@ Notas: ${customer.notes || "Ninguna"}`;
       return;
     }
 
-    setStepError(null);
-    setStep((s) => s + 1);
+    goToStep(step + 1);
   }
 
   return (
     <div className="min-h-screen bg-gradient-dark">
       <SiteHeader />
       <main className="mx-auto flex min-h-[calc(100svh-56px)] w-full max-w-4xl flex-col justify-center px-4 py-4 sm:px-6 md:py-5">
+        {paymentReturn && (
+          <div role="status" className="mb-4 rounded-xl border border-gold/30 bg-gold/10 px-4 py-3 text-sm text-foreground">
+            {paymentReturn === "success"
+              ? "Mercado Pago informó que el pago fue aprobado. El turno queda pendiente hasta que administración verifique la acreditación."
+              : paymentReturn === "pending"
+                ? "El pago está pendiente de acreditación. El turno se confirmará cuando administración lo verifique."
+                : "El pago no se completó. Podés volver a intentarlo desde este paso."}
+          </div>
+        )}
         <Stepper step={step} />
 
         <div className="mt-4 rounded-2xl border border-border bg-card/60 p-5 sm:p-6">
@@ -125,11 +276,11 @@ Notas: ${customer.notes || "Ninguna"}`;
           {step === 1 && <StepBarber value={barberId} onChange={setBarberId} />}
           {step === 2 && <StepServices value={serviceIds} onChange={setServiceIds} hairType={customer.hairType} setHairType={(v) => setCustomer({ ...customer, hairType: v })} barberId={barberId} />}
           {step === 3 && <StepDateTime date={date} setDate={setDate} time={time} setTime={setTime} barberId={barberId} duration={duration} />}
-          {step === 4 && <StepConfirm customer={customer} barberId={barberId} serviceIds={serviceIds} date={date!} time={time} duration={duration} price={price} />}
+          {step === 4 && (draftLoaded && date ? <StepConfirm customer={customer} barberId={barberId} serviceIds={serviceIds} date={date} time={time} duration={duration} price={price} /> : <p className="py-8 text-center text-sm text-muted-foreground">Cargando los datos de tu reserva…</p>)}
         </div>
 
         {stepError && (
-          <div className="mb-3 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-700">
+          <div className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-700">
             {stepError}
           </div>
         )}
@@ -138,8 +289,7 @@ Notas: ${customer.notes || "Ninguna"}`;
             type="button"
             variant="ghost"
             onClick={() => {
-              setStep((s) => Math.max(0, s - 1));
-              setStepError(null);
+              goToStep(step - 1);
             }}
             disabled={step === 0}
           >
@@ -156,6 +306,50 @@ Notas: ${customer.notes || "Ninguna"}`;
           )}
         </div>
       </main>
+      <Dialog open={paymentDialog !== null} onOpenChange={(open) => { if (!open && !paymentLoading) setPaymentDialog(null); }}>
+        <DialogContent>
+          {paymentDialog === "transfer" ? (
+            <>
+              <DialogHeader>
+                <DialogTitle>Datos para la transferencia</DialogTitle>
+                <DialogDescription>Transferí el total de ${price.toLocaleString("es-AR")} y envianos el comprobante para confirmar tu turno.</DialogDescription>
+              </DialogHeader>
+              <div className="space-y-3 rounded-xl border border-border bg-card p-4 text-sm">
+                <TransferDetail label="Titular" value={import.meta.env.VITE_TRANSFER_HOLDER || "Configurar VITE_TRANSFER_HOLDER"} onCopy={copyTransferValue} />
+                <TransferDetail label="Banco" value={import.meta.env.VITE_TRANSFER_BANK || "Configurar VITE_TRANSFER_BANK"} onCopy={copyTransferValue} />
+                <TransferDetail label="CBU" value={import.meta.env.VITE_TRANSFER_CBU || "Configurar VITE_TRANSFER_CBU"} onCopy={copyTransferValue} />
+                <TransferDetail label="Alias" value={import.meta.env.VITE_TRANSFER_ALIAS || "Configurar VITE_TRANSFER_ALIAS"} onCopy={copyTransferValue} />
+              </div>
+              <DialogFooter>
+                <Button onClick={sendTransferConfirmation} className="bg-gold text-primary-foreground hover:bg-gold-soft">Enviar comprobante por WhatsApp</Button>
+              </DialogFooter>
+            </>
+          ) : (
+            <>
+              <DialogHeader>
+                <DialogTitle>Preparando el pago</DialogTitle>
+                <DialogDescription>Estamos recalculando y preparando el checkout seguro de Mercado Pago.</DialogDescription>
+              </DialogHeader>
+              {paymentLoading ? (
+                <div className="flex items-center justify-center gap-3 py-6 text-muted-foreground"><LoaderCircle className="h-5 w-5 animate-spin text-gold" /> Recalculando el total…</div>
+              ) : paymentError ? (
+                <p role="alert" className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-400">{paymentError}</p>
+              ) : paymentUrl ? (
+                <Button asChild className="bg-gold text-primary-foreground hover:bg-gold-soft"><a href={paymentUrl}>Ir a pagar</a></Button>
+              ) : null}
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+function TransferDetail({ label, value, onCopy }: { label: string; value: string; onCopy: (value: string) => void }) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <div className="min-w-0"><p className="text-xs text-muted-foreground">{label}</p><p className="break-all font-medium">{value}</p></div>
+      <Button type="button" size="icon" variant="ghost" aria-label={`Copiar ${label}`} onClick={() => onCopy(value)}><Copy className="h-4 w-4" /></Button>
     </div>
   );
 }
@@ -201,12 +395,13 @@ function StepCustomer({ customer, setCustomer }: { customer: Customer; setCustom
     <div>
       <SectionTitle icon={User} title="Paso 1" subtitle="Tus datos" />
       <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Nombre completo *"><Input value={customer.fullName} onChange={(e) => setCustomer({ ...customer, fullName: e.target.value })} placeholder="Juan Pérez" /></Field>
-        <Field label="Teléfono *"><Input value={customer.phone} onChange={(e) => setCustomer({ ...customer, phone: e.target.value })} placeholder="+54 11 5555 5555" /></Field>
-        <Field label="Correo electrónico *"><Input type="email" value={customer.email} onChange={(e) => setCustomer({ ...customer, email: e.target.value })} placeholder="vos@email.com" /></Field>
-        <Field label="Método de pago">
+        <Field label="Nombre completo *"><Input required value={customer.fullName} onChange={(e) => setCustomer({ ...customer, fullName: e.target.value })} placeholder="Juan Pérez" /></Field>
+        <Field label="Teléfono *"><Input required value={customer.phone} onChange={(e) => setCustomer({ ...customer, phone: e.target.value })} placeholder="+54 11 5555 5555" /></Field>
+        <Field label="Correo electrónico *"><Input required type="email" value={customer.email} onChange={(e) => setCustomer({ ...customer, email: e.target.value })} placeholder="vos@email.com" /></Field>
+        <Field label="Método de pago *">
           <select
-            className="mt-2 block w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-gold focus:ring-2 focus:ring-gold/20"
+            required
+            className="block w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-gold focus:ring-2 focus:ring-gold/20"
             value={customer.paymentMethod ?? "efectivo"}
             onChange={(e) => setCustomer({ ...customer, paymentMethod: e.target.value as Customer["paymentMethod"] })}
           >
@@ -214,6 +409,7 @@ function StepCustomer({ customer, setCustomer }: { customer: Customer; setCustom
             <option value="transferencia">Transferencia</option>
             <option value="tarjeta de crédito">Tarjeta de crédito</option>
             <option value="tarjeta de débito">Tarjeta de débito</option>
+            <option value="mercadopago">Mercado Pago</option>
           </select>
         </Field>
         <div className="sm:col-span-2">
@@ -243,7 +439,7 @@ function StepBarber({ value, onChange }: { value: string; onChange: (v: string) 
       <SectionTitle icon={Briefcase} title="Paso 2" subtitle="Elegí tu profesional" />
       {professionals.length === 0 ? (
         <div className="rounded-2xl border border-border bg-card p-6 text-sm text-muted-foreground">
-          No hay profesionales cargados. Crealos en el <Link to="/professionals" className="text-gold underline">administrador de profesionales</Link>.
+          No hay profesionales cargados. Crealos en el <Link to="/profesionales" className="text-gold underline">administrador de profesionales</Link>.
         </div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2">

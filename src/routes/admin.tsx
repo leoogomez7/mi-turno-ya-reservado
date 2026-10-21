@@ -105,6 +105,11 @@ function AdminPage() {
     toast("Turno eliminado");
   }
 
+  function confirmPayment(id: string) {
+    bookingStore.update(id, { status: "confirmed" });
+    toast.success("Pago verificado y turno confirmado");
+  }
+
   return (
     <div className="min-h-screen bg-gradient-dark">
       <SiteHeader />
@@ -130,7 +135,7 @@ function AdminPage() {
           </TabsList>
 
           <TabsContent value="agenda" className="mt-6">
-            <AgendaList bookings={bookings} onOpenBookingDialog={openBookingDialog} onDeleteBooking={deleteBooking} />
+            <AgendaList bookings={bookings} onOpenBookingDialog={openBookingDialog} onDeleteBooking={deleteBooking} onConfirmPayment={confirmPayment} />
           </TabsContent>
 
           <TabsContent value="stats" className="mt-6 grid gap-6 md:grid-cols-2">
@@ -256,10 +261,12 @@ function AgendaList({
   bookings,
   onOpenBookingDialog,
   onDeleteBooking,
+  onConfirmPayment,
 }: {
   bookings: Booking[];
   onOpenBookingDialog: (booking: Booking, mode: "attendance" | "turno") => void;
   onDeleteBooking: (id: string) => void;
+  onConfirmPayment: (id: string) => void;
 }) {
   const upcoming = bookings
     .filter((b) => b.status !== "cancelled")
@@ -291,6 +298,7 @@ function AgendaList({
               <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                 <Badge variant="outline" className="border-gold/30 text-gold">{barber?.name}</Badge>
                 {b.isTest && <Badge variant="outline" className="border-emerald-300 text-emerald-400">Turno de prueba</Badge>}
+                {b.status === "pending-payment" && <Badge variant="outline" className="border-amber-300 text-amber-300">Pago pendiente · {b.customer.paymentMethod}</Badge>}
                 {b.status === "completed" && <Badge variant="outline" className="border-emerald-300 text-emerald-400">Asistió</Badge>}
                 {b.status === "no-show" && <Badge variant="outline" className="border-red-300 text-red-400">No asistió</Badge>}
                 <span>{b.customer.phone}</span>
@@ -298,6 +306,9 @@ function AgendaList({
             </div>
             <div className="font-display text-lg font-semibold text-gold">${b.totalPrice.toLocaleString("es-AR")}</div>
             <div className="flex flex-wrap gap-2">
+              {b.status === "pending-payment" && (
+                <Button size="sm" variant="outline" onClick={() => onConfirmPayment(b.id)}>Confirmar pago</Button>
+              )}
               {b.status === "confirmed" && (
                 <Button size="sm" variant="outline" onClick={() => onOpenBookingDialog(b, "attendance")}>Indicar asistencia</Button>
               )}

@@ -6,7 +6,7 @@ export interface Customer {
   phone: string;
   email: string;
   birthday?: string;
-  paymentMethod?: "efectivo" | "transferencia" | "tarjeta de crédito" | "tarjeta de débito";
+  paymentMethod?: "efectivo" | "transferencia" | "tarjeta de crédito" | "tarjeta de débito" | "mercadopago";
   notes?: string;
   hairType?: "corto" | "medio" | "largo";
 }
@@ -20,7 +20,7 @@ export interface Booking {
   time: string; // HH:mm
   duration: number;
   totalPrice: number;
-  status: "confirmed" | "cancelled" | "completed" | "no-show";
+  status: "pending-payment" | "confirmed" | "cancelled" | "completed" | "no-show";
   createdAt: string;
   isTest?: boolean;
 }
@@ -100,11 +100,11 @@ export const bookingStore = {
     const extraBookings = saved.filter((booking) => !FIXED_IDS.has(booking.id));
     return [...mergedFixed, ...extraBookings].sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
   },
-  add(b: Omit<Booking, "id" | "createdAt" | "status">): Booking {
+  add(b: Omit<Booking, "id" | "createdAt" | "status"> & { status?: Booking["status"] }): Booking {
     const booking: Booking = {
       ...b,
       id: crypto.randomUUID(),
-      status: "confirmed",
+      status: b.status ?? "confirmed",
       createdAt: new Date().toISOString(),
     };
     write([...read(), booking]);
