@@ -7,7 +7,8 @@ import { es } from "date-fns/locale";
 import { SiteHeader } from "@/components/site-header";
 import { Button } from "@/components/ui/button";
 import { bookingStore, getBarber, type Booking } from "@/lib/booking-store";
-import { BUSINESS, SERVICES } from "@/lib/salon-data";
+import { getProfessionalServiceList } from "@/lib/professional-store";
+import { getAvailableStores, type Store } from "@/lib/cloud-sync";
 
 export const Route = createFileRoute("/book/success")({
   validateSearch: (s: Record<string, unknown>) => ({ id: (s.id as string) ?? "" }),
@@ -17,9 +18,20 @@ export const Route = createFileRoute("/book/success")({
 function SuccessPage() {
   const { id } = Route.useSearch();
   const [booking, setBooking] = useState<Booking | null>(null);
+  const [stores, setStores] = useState<Store[]>(getAvailableStores());
 
   useEffect(() => {
-    setBooking(bookingStore.all().find((b) => b.id === id) ?? null);
+    const reload = () => {
+      setBooking(bookingStore.all().find((b) => b.id === id) ?? null);
+      setStores(getAvailableStores());
+    };
+    reload();
+    window.addEventListener("mi-turno-ya:cloud-ready", reload);
+    window.addEventListener("bookings:changed", reload);
+    return () => {
+      window.removeEventListener("mi-turno-ya:cloud-ready", reload);
+      window.removeEventListener("bookings:changed", reload);
+    };
   }, [id]);
 
   if (!booking) {
@@ -35,8 +47,10 @@ function SuccessPage() {
   }
 
   const barber = getBarber(booking.barberId);
+  const store = stores.find((item) => item.code === booking.storeCode);
+  const storeAddress = store?.settings.address ?? "";
   const date = new Date(booking.date + "T" + booking.time);
-  const services = booking.serviceIds.map((sid) => SERVICES.find((s) => s.id === sid)?.name).filter(Boolean).join(", ");
+  const services = booking.serviceIds.map((sid) => getProfessionalServiceList(booking.barberId).find((service) => service.id === sid)?.name).filter(Boolean).join(", ");
 
   function downloadIcs() {
     if (!booking) return;
@@ -48,9 +62,9 @@ function SuccessPage() {
       `DTSTAMP:${dt(new Date())}`,
       `DTSTART:${dt(date)}`,
       `DTEND:${dt(end)}`,
-      `SUMMARY:Turno - ${BUSINESS.name}`,
+      `SUMMARY:Turno - ${store?.name ?? ""}`,
       `DESCRIPTION:${services} con ${barber?.name ?? ""}`,
-      `LOCATION:${BUSINESS.address}`,
+      `LOCATION:${storeAddress}`,
       "END:VEVENT", "END:VCALENDAR",
     ].join("\r\n");
     const url = URL.createObjectURL(new Blob([ics], { type: "text/calendar" }));
@@ -78,7 +92,7 @@ function SuccessPage() {
             <Row icon={Scissors} label="Servicios" value={services} />
             <Row icon={Calendar} label="Fecha" value={format(date, "EEEE d 'de' MMMM, yyyy", { locale: es })} />
             <Row icon={Clock} label="Hora" value={`${booking.time} (${booking.duration} min)`} />
-            <Row icon={MapPin} label="Lugar" value={BUSINESS.address} />
+            <Row icon={MapPin} label="Lugar" value={storeAddress || "Dirección no configurada"} />
           </div>
 
           <div className="mt-8 flex flex-col gap-3 sm:flex-row">

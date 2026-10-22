@@ -66,8 +66,9 @@ function MyBookingsPage() {
                     <span className="font-semibold text-gold">${booking.totalPrice.toLocaleString("es-AR")}</span>
                     {booking.status === "confirmed" && booking.appointmentConfirmation !== "confirmed" && (
                       <Button size="sm" className="bg-gold text-primary-foreground hover:bg-gold-soft" onClick={() => {
-                        bookingStore.update(booking.id, { appointmentConfirmation: "confirmed" });
-                        toast.success("Confirmaste tu turno.");
+                        void bookingStore.update(booking.id, { appointmentConfirmation: "confirmed" })
+                          .then(() => toast.success("Confirmaste tu turno."))
+                          .catch((error: unknown) => toast.error(error instanceof Error ? error.message : "No se pudo guardar la confirmación en la base."));
                       }}>
                         Confirmar turno
                       </Button>

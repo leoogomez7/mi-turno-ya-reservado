@@ -1,8 +1,24 @@
+import { useEffect, useState } from "react";
 import { MessageCircle } from "lucide-react";
-import { BUSINESS } from "@/lib/salon-data";
+import { getAvailableStores, getCurrentStoreCode } from "@/lib/cloud-sync";
 
 export function WhatsappButton() {
-  const href = `https://wa.me/${BUSINESS.whatsapp}?text=${encodeURIComponent("Hola, quiero consultar sobre un turno.")}`;
+  const [whatsapp, setWhatsapp] = useState("");
+  useEffect(() => {
+    const update = () => {
+      const store = getAvailableStores().find((item) => item.code === getCurrentStoreCode());
+      setWhatsapp(store?.settings.whatsapp?.replace(/\D/g, "") ?? "");
+    };
+    update();
+    window.addEventListener("mi-turno-ya:cloud-ready", update);
+    window.addEventListener("mi-turno-ya:store-changed", update);
+    return () => {
+      window.removeEventListener("mi-turno-ya:cloud-ready", update);
+      window.removeEventListener("mi-turno-ya:store-changed", update);
+    };
+  }, []);
+  if (!whatsapp) return null;
+  const href = `https://wa.me/${whatsapp}?text=${encodeURIComponent("Hola, quiero consultar sobre un turno.")}`;
   return (
     <a
       href={href}

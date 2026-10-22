@@ -10,7 +10,6 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { SERVICES } from "@/lib/salon-data";
 import { bookingStore, getBarber, type Booking } from "@/lib/booking-store";
 import { professionalStore, getProfessional, getProfessionalService, getAvailableSlotsForDate, type Professional } from "@/lib/professional-store";
 import { toast } from "sonner";
@@ -47,7 +46,7 @@ function AdminPage() {
     setEditedDate(selectedBooking.date);
     setEditedTime(selectedBooking.time);
     setEditedProfessionalId(selectedBooking.barberId);
-    setEditedServiceId(selectedBooking.serviceIds[0] ?? SERVICES[0]?.id ?? "");
+    setEditedServiceId(selectedBooking.serviceIds[0] ?? "");
   }, [selectedBooking]);
 
   const stats = useMemo(() => computeStats(bookings), [bookings]);
@@ -73,7 +72,7 @@ function AdminPage() {
     setEditMode(null);
   }
 
-  function saveBookingEdit() {
+  async function saveBookingEdit() {
     if (!selectedBooking || !editMode) return;
     if (editMode === "turno") {
       const professional = professionalStore.get(editedProfessionalId);
@@ -86,41 +85,62 @@ function AdminPage() {
         toast.error("No hay servicios disponibles para este profesional");
         return;
       }
-      bookingStore.update(selectedBooking.id, {
-        barberId: professional.id,
-        serviceIds: [service.id],
-        duration: service.duration,
-        totalPrice: service.price,
-        date: editedDate,
-        time: editedTime,
-      });
-      toast.success("Turno modificado");
+      try {
+        await bookingStore.update(selectedBooking.id, {
+          barberId: professional.id,
+          serviceIds: [service.id],
+          duration: service.duration,
+          totalPrice: service.price,
+          date: editedDate,
+          time: editedTime,
+        });
+        toast.success("Turno modificado y guardado en la base.");
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "No se pudo guardar el cambio en la base.");
+        return;
+      }
     }
     closeBookingDialog();
   }
 
-  function confirmAttendance(choice: "completed" | "no-show") {
+  async function confirmAttendance(choice: "completed" | "no-show") {
     if (!selectedBooking) return;
-    bookingStore.update(selectedBooking.id, { status: choice });
-    toast.success(choice === "completed" ? "Asistencia registrada" : "Turno indicado como no asistió");
-    closeBookingDialog();
+    try {
+      await bookingStore.update(selectedBooking.id, { status: choice });
+      toast.success(choice === "completed" ? "Asistencia registrada" : "Turno indicado como no asistió");
+      closeBookingDialog();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo guardar la asistencia en la base.");
+    }
   }
 
-  function setAppointmentConfirmation(choice: "confirmed" | "pending") {
+  async function setAppointmentConfirmation(choice: "confirmed" | "pending") {
     if (!selectedBooking) return;
-    bookingStore.update(selectedBooking.id, { appointmentConfirmation: choice });
-    toast.success(choice === "confirmed" ? "Turno confirmado por el cliente" : "El cliente todavía no confirmó el turno");
-    closeBookingDialog();
+    try {
+      await bookingStore.update(selectedBooking.id, { appointmentConfirmation: choice });
+      toast.success(choice === "confirmed" ? "Turno confirmado por el cliente" : "El cliente todavía no confirmó el turno");
+      closeBookingDialog();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo actualizar la confirmación.");
+    }
   }
 
-  function deleteBooking(id: string) {
-    bookingStore.remove(id);
-    toast("Turno eliminado");
+  async function deleteBooking(id: string) {
+    try {
+      await bookingStore.remove(id);
+      toast("Turno eliminado de la base de datos.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo eliminar el turno.");
+    }
   }
 
-  function confirmPayment(id: string) {
-    bookingStore.update(id, { status: "confirmed" });
-    toast.success("Pago verificado y turno confirmado");
+  async function confirmPayment(id: string) {
+    try {
+      await bookingStore.update(id, { status: "confirmed" });
+      toast.success("Pago verificado y turno confirmado");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo guardar el pago verificado.");
+    }
   }
 
   return (
@@ -306,7 +326,7 @@ function AgendaList({
     <div className="space-y-2">
       {upcoming.map((b) => {
         const barber = getBarber(b.barberId);
-        const services = b.serviceIds.map((id) => SERVICES.find((s) => s.id === id)?.name).filter(Boolean).join(", ");
+        const services = b.serviceIds.map((id) => getProfessionalService(b.barberId, id)?.name).filter(Boolean).join(", ");
         const date = parseISO(`${b.date}T${b.time}`);
         return (
           <div key={b.id} className="flex flex-wrap items-center gap-4 rounded-xl border border-border bg-card p-4">

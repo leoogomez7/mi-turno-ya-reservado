@@ -13,7 +13,6 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
-import { SERVICES, BUSINESS, generateSlots } from "@/lib/salon-data";
 import { bookingStore, getBarber, sumDuration, sumPrice, type Customer } from "@/lib/booking-store";
 import { professionalStore, getProfessionalServiceList, getScheduleForDate, generateSlotsFromSchedule } from "@/lib/professional-store";
 import { useAppAuth } from "@/lib/auth";
@@ -33,17 +32,6 @@ const STEP_PATHS = {
   3: "/reserva/horario",
   4: "/reserva/confirmacion",
 } as const;
-const RESERVATION_DRAFT_KEY = "mi-turno-ya-reservado-draft";
-
-interface ReservationDraft {
-  storeCode?: string;
-  customer: Customer;
-  barberId: string;
-  serviceIds: string[];
-  date: string | null;
-  time: string;
-}
-
 function stepForPath(pathname: string) {
   return Object.entries(STEP_PATHS).find(([, path]) => path === pathname)?.[0] as keyof typeof STEP_PATHS | undefined;
 }
@@ -54,7 +42,6 @@ export function BookPage() {
   const location = useLocation();
   const initialStep = stepForPath(location.pathname) ?? 0;
   const [step, setStep] = useState<number>(Number(initialStep));
-  const [draftLoaded, setDraftLoaded] = useState(false);
   const [stepError, setStepError] = useState<string | null>(null);
   const [paymentDialog, setPaymentDialog] = useState<"transfer" | "mercadopago" | null>(null);
   const [paymentLoading, setPaymentLoading] = useState(false);
@@ -62,7 +49,7 @@ export function BookPage() {
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [stores, setStores] = useState<Store[]>(getAvailableStores());
   const [selectedStoreCode, setSelectedStoreCode] = useState(getCurrentStoreCode());
-  const [storePickerOpen, setStorePickerOpen] = useState(true);
+  const [storePickerOpen, setStorePickerOpen] = useState(() => !getCurrentStoreCode());
   const [storeSearch, setStoreSearch] = useState("");
   const [storeSearchSubmitted, setStoreSearchSubmitted] = useState(false);
   const [storeNotFound, setStoreNotFound] = useState(false);
@@ -97,47 +84,15 @@ export function BookPage() {
     };
   }, []);
 
-  useEffect(() => {
-    try {
-      const saved = sessionStorage.getItem(RESERVATION_DRAFT_KEY);
-      if (saved) {
-        const draft = JSON.parse(saved) as ReservationDraft;
-        if (typeof draft.storeCode === "string" && draft.storeCode !== getCurrentStoreCode()) {
-          sessionStorage.removeItem(RESERVATION_DRAFT_KEY);
-        } else {
-            if (draft.customer) setCustomer(draft.customer);
-            if (typeof draft.barberId === "string") setBarberId(draft.barberId);
-            if (Array.isArray(draft.serviceIds)) setServiceIds(draft.serviceIds);
-            if (draft.date) setDate(new Date(`${draft.date}T12:00:00`));
-            if (typeof draft.time === "string") setTime(draft.time);
-        }
-      }
-    } catch {
-      sessionStorage.removeItem(RESERVATION_DRAFT_KEY);
-    }
-    setDraftLoaded(true);
-  }, []);
-
-  useEffect(() => {
-    if (!draftLoaded) return;
-    const draft: ReservationDraft = {
-      storeCode: selectedStoreCode,
-      customer,
-      barberId,
-      serviceIds,
-      date: date ? format(date, "yyyy-MM-dd") : null,
-      time,
-    };
-    sessionStorage.setItem(RESERVATION_DRAFT_KEY, JSON.stringify(draft));
-  }, [draftLoaded, customer, barberId, serviceIds, date, time, selectedStoreCode]);
-
   const matchingStores = stores.filter((store) => `${store.name} ${store.code}`.toLowerCase().includes(storeSearch.trim().toLowerCase()));
+  const selectedStore = stores.find((store) => store.code === selectedStoreCode);
+  const storeSettings = selectedStore?.settings;
 
   async function chooseStore(store: Store) {
     setStoreLoading(true);
     try {
       if (store.code !== selectedStoreCode) {
-        await selectStore(store.code, user?.email ?? "guest", auth.getIdToken, role ?? undefined);
+        await selectStore(store.code, user?.email ?? "guest", auth.getIdToken);
       }
       setSelectedStoreCode(store.code);
       setStorePickerOpen(false);
@@ -148,7 +103,6 @@ export function BookPage() {
       setServiceIds([]);
       setDate(null);
       setTime("");
-      clearReservationDraft();
       setStepError(null);
       toast.success(`Seleccionaste ${store.name}.`);
     } catch (error) {
@@ -156,10 +110,6 @@ export function BookPage() {
     } finally {
       setStoreLoading(false);
     }
-  }
-
-  function clearReservationDraft() {
-    sessionStorage.removeItem(RESERVATION_DRAFT_KEY);
   }
 
   const duration = sumDuration(barberId, serviceIds);
@@ -219,13 +169,17 @@ Precio total: $${price}
 Notas: ${customer.notes || "Ninguna"}`;
 
     if (customer.paymentMethod === "transferencia") {
-      bookingStore.add({
+      try {
+        await bookingStore.add({
         storeCode: selectedStoreCode,
         customer, barberId, serviceIds,
         date: format(date, "yyyy-MM-dd"),
         time, duration, totalPrice: price, status: "pending-payment",
-      });
-      setPaymentDialog("transfer");
+        });
+        setPaymentDialog("transfer");
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "No se pudo guardar el turno en la base de datos.");
+      }
       return;
     }
 
@@ -251,7 +205,7 @@ Notas: ${customer.notes || "Ninguna"}`;
         if (!response.ok || !result.initPoint) {
           throw new Error(result.error || "No se pudo preparar el pago.");
         }
-        bookingStore.add({
+        await bookingStore.add({
           storeCode: selectedStoreCode,
           customer, barberId, serviceIds,
           date: format(date, "yyyy-MM-dd"),
@@ -267,25 +221,32 @@ Notas: ${customer.notes || "Ninguna"}`;
       return;
     }
 
-    bookingStore.add({
-      storeCode: selectedStoreCode,
-      customer, barberId, serviceIds,
-      date: format(date, "yyyy-MM-dd"),
-      time, duration, totalPrice: price,
-    });
-    clearReservationDraft();
-    const whatsappUrl = `https://wa.me/${BUSINESS.whatsapp}?text=${encodeURIComponent(message)}`;
-    window.open(whatsappUrl, "_blank");
-
-    toast.success("¡Turno confirmado!");
-    navigate({ to: "/" });
+    try {
+      await bookingStore.add({
+        storeCode: selectedStoreCode,
+        customer, barberId, serviceIds,
+        date: format(date, "yyyy-MM-dd"),
+        time, duration, totalPrice: price,
+      });
+      if (storeSettings?.whatsapp) {
+        const whatsappUrl = `https://wa.me/${storeSettings.whatsapp.replace(/\D/g, "")}?text=${encodeURIComponent(message)}`;
+        window.open(whatsappUrl, "_blank");
+      }
+      toast.success("¡Turno guardado en la base de datos!");
+      navigate({ to: "/" });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo guardar el turno en la base de datos.");
+    }
   }
 
   function sendTransferConfirmation() {
+    if (!storeSettings?.whatsapp) {
+      toast.error("La tienda todavía no configuró su WhatsApp.");
+      return;
+    }
     const message = `Hola, quiero enviar el comprobante de transferencia de mi turno por $${price.toLocaleString("es-AR")}. Nombre: ${customer.fullName}, fecha: ${date ? format(date, "dd/MM/yyyy") : ""}, horario: ${time}.`;
-    window.open(`https://wa.me/${BUSINESS.whatsapp}?text=${encodeURIComponent(message)}`, "_blank");
+    window.open(`https://wa.me/${storeSettings.whatsapp.replace(/\D/g, "")}?text=${encodeURIComponent(message)}`, "_blank");
     setPaymentDialog(null);
-    clearReservationDraft();
   }
 
   async function copyTransferValue(value: string) {
@@ -334,18 +295,22 @@ Notas: ${customer.notes || "Ninguna"}`;
         <section className="mb-4 rounded-2xl border border-gold/30 bg-card/70 p-4 sm:p-5">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
-              <p className="text-xs uppercase tracking-widest text-gold">Tienda seleccionada</p>
+              <p className="text-xs uppercase tracking-widest text-gold">{selectedStoreCode ? "Tienda seleccionada" : "Antes de reservar"}</p>
               <h2 className="mt-1 font-display text-xl font-semibold">
-                {stores.find((store) => store.code === selectedStoreCode)?.name ?? (selectedStoreCode === "GENERAL" ? "Mi Turno Ya" : selectedStoreCode)}
+                {selectedStoreCode
+                  ? stores.find((store) => store.code === selectedStoreCode)?.name ?? selectedStoreCode
+                  : "Seleccioná una tienda"}
               </h2>
             </div>
             <div className="flex items-center gap-3">
-              <p className="text-xs text-muted-foreground">Código: {selectedStoreCode}</p>
-              <Button type="button" size="sm" variant="outline" onClick={() => setStorePickerOpen(true)}>Cambiar tienda</Button>
+              {selectedStoreCode && <p className="text-xs text-muted-foreground">Código: {selectedStoreCode}</p>}
+              {selectedStoreCode && <Button type="button" size="sm" variant="outline" onClick={() => setStorePickerOpen(true)}>Cambiar tienda</Button>}
             </div>
           </div>
         </section>
-        <Dialog open={storePickerOpen} onOpenChange={setStorePickerOpen}>
+        <Dialog open={storePickerOpen} onOpenChange={(open) => {
+          if (open || selectedStoreCode) setStorePickerOpen(open);
+        }}>
           <DialogContent className="max-h-[85vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="font-display text-2xl">Elegí una tienda</DialogTitle>
@@ -407,7 +372,7 @@ Notas: ${customer.notes || "Ninguna"}`;
           {step === 1 && <StepBarber value={barberId} onChange={setBarberId} />}
           {step === 2 && <StepServices value={serviceIds} onChange={setServiceIds} hairType={customer.hairType} setHairType={(v) => setCustomer({ ...customer, hairType: v })} barberId={barberId} />}
           {step === 3 && <StepDateTime date={date} setDate={setDate} time={time} setTime={setTime} barberId={barberId} duration={duration} />}
-          {step === 4 && (draftLoaded && date ? <StepConfirm storeName={stores.find((store) => store.code === selectedStoreCode)?.name ?? selectedStoreCode} storeCode={selectedStoreCode} customer={customer} barberId={barberId} serviceIds={serviceIds} date={date} time={time} duration={duration} price={price} /> : <p className="py-8 text-center text-sm text-muted-foreground">Cargando los datos de tu reserva…</p>)}
+          {step === 4 && (date ? <StepConfirm storeName={stores.find((store) => store.code === selectedStoreCode)?.name ?? selectedStoreCode} storeCode={selectedStoreCode} customer={customer} barberId={barberId} serviceIds={serviceIds} date={date} time={time} duration={duration} price={price} /> : <p className="py-8 text-center text-sm text-muted-foreground">Seleccioná fecha y horario para ver el resumen.</p>)}
         </div>
 
         {stepError && (
@@ -446,10 +411,10 @@ Notas: ${customer.notes || "Ninguna"}`;
                 <DialogDescription>Transferí el total de ${price.toLocaleString("es-AR")} y envianos el comprobante para confirmar tu turno.</DialogDescription>
               </DialogHeader>
               <div className="space-y-3 rounded-xl border border-border bg-card p-4 text-sm">
-                <TransferDetail label="Titular" value={import.meta.env.VITE_TRANSFER_HOLDER || "Configurar VITE_TRANSFER_HOLDER"} onCopy={copyTransferValue} />
-                <TransferDetail label="Banco" value={import.meta.env.VITE_TRANSFER_BANK || "Configurar VITE_TRANSFER_BANK"} onCopy={copyTransferValue} />
-                <TransferDetail label="CBU" value={import.meta.env.VITE_TRANSFER_CBU || "Configurar VITE_TRANSFER_CBU"} onCopy={copyTransferValue} />
-                <TransferDetail label="Alias" value={import.meta.env.VITE_TRANSFER_ALIAS || "Configurar VITE_TRANSFER_ALIAS"} onCopy={copyTransferValue} />
+                <TransferDetail label="Titular" value={storeSettings?.transferHolder ?? ""} onCopy={copyTransferValue} />
+                <TransferDetail label="Banco" value={storeSettings?.transferBank ?? ""} onCopy={copyTransferValue} />
+                <TransferDetail label="CBU" value={storeSettings?.transferCbu ?? ""} onCopy={copyTransferValue} />
+                <TransferDetail label="Alias" value={storeSettings?.transferAlias ?? ""} onCopy={copyTransferValue} />
               </div>
               <DialogFooter>
                 <Button onClick={sendTransferConfirmation} className="bg-gold text-primary-foreground hover:bg-gold-soft">Enviar comprobante por WhatsApp</Button>
@@ -697,8 +662,13 @@ function StepDateTime({
     ?.map((entry) => ({ ...entry, parsed: parseISO(entry.date) }))
     .filter((entry) => !Number.isNaN(entry.parsed.getTime()) && entry.parsed >= today)
     .sort((a, b) => a.parsed.getTime() - b.parsed.getTime());
-  const days = scheduledDates?.map((entry) => entry.parsed) ?? Array.from({ length: 21 }, (_, i) => addDays(today, i));
-  const professionalSlots = professional?.availableSlots ?? generateSlots();
+  const hasSpecificSchedule = (professional?.scheduleDates?.length ?? 0) > 0;
+  const days = hasSpecificSchedule
+    ? scheduledDates?.map((entry) => entry.parsed) ?? []
+    : professional?.availableSlots.length
+      ? Array.from({ length: 21 }, (_, i) => addDays(today, i))
+      : [];
+  const professionalSlots = professional?.availableSlots ?? [];
   const dateKey = date ? format(date, "yyyy-MM-dd") : "";
   const occupied = date && barberId ? bookingStore.occupiedSlots(dateKey, barberId) : new Set<string>();
   const slotsNeeded = Math.max(1, Math.ceil(duration / 30));
@@ -710,9 +680,8 @@ function StepDateTime({
     const start = h * 60 + m;
     for (let i = 0; i < slotsNeeded; i++) {
       const t = start + i * 30;
-      const closeMin = BUSINESS.hours.close * 60;
-      if (t >= closeMin) return false;
       const key = `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`;
+      if (!slots.includes(key)) return false;
       if (occupied.has(key)) return false;
     }
     return true;
@@ -726,7 +695,7 @@ function StepDateTime({
       <div className="-mx-1 flex gap-2 overflow-x-auto pb-3">
         {days.map((d) => {
           const scheduleForDay = professional ? getScheduleForDate(professional, d) : undefined;
-          const closed = scheduledDates ? !scheduleForDay : BUSINESS.closedDays.includes(d.getDay());
+          const closed = hasSpecificSchedule ? !scheduleForDay : professionalSlots.length === 0;
           const selected = date && isSameDay(d, date);
           const past = isBefore(d, today);
           const disabled = closed || past;

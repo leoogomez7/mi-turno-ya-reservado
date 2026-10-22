@@ -1,6 +1,5 @@
-import { BARBERS, SERVICES, type Service, BUSINESS } from "./salon-data";
 import { parseISO } from "date-fns";
-import { getCloudRecords, getCurrentStoreCode, isCloudInitialized, isCloudReady, persistCloudCollection } from "./cloud-sync";
+import { getCloudRecords, getCurrentStoreCode, isCloudInitialized, persistCloudCollection } from "./cloud-sync";
 
 export interface ProfessionalService {
   id: string;
@@ -68,8 +67,6 @@ export interface Professional {
   isTest?: boolean;
 }
 
-const KEY = "salon_professionals_v1";
-
 function normalizeSlot(slot: string): string {
   const trimmed = slot.trim();
   const match = trimmed.match(/^(\d{1,2}):(\d{2})$/);
@@ -84,22 +81,11 @@ function normalizeSlot(slot: string): string {
 
 function read(): Professional[] {
   if (isCloudInitialized()) return getCloudRecords("professionals");
-  if (typeof window === "undefined") return [];
-  try {
-    return JSON.parse(localStorage.getItem(KEY) || "null") ?? [];
-  } catch {
-    return [];
-  }
+  return [];
 }
 
-function write(list: Professional[]) {
-  if (typeof window === "undefined") return;
-  if (isCloudReady()) {
-    persistCloudCollection("professionals", list);
-    window.dispatchEvent(new Event("professionals:changed"));
-    return;
-  }
-  localStorage.setItem(KEY, JSON.stringify(list));
+async function write(list: Professional[]) {
+  await persistCloudCollection("professionals", list);
   window.dispatchEvent(new Event("professionals:changed"));
 }
 
@@ -111,105 +97,28 @@ function parseSlots(raw: string): string[] {
   )).sort();
 }
 
-const PROFESSIONAL_ADDRESSES: Record<string, string> = {
-  peluquero: "Av. Corrientes 1234, CABA",
-  medico: "Córdoba 5678, CABA",
-};
-
-function createDefaultProfessional(barberId: string) {
-  const barber = BARBERS.find((b) => b.id === barberId);
-  if (!barber) return undefined;
-
-  const defaultServiceIdsByProfessional: Record<string, string[]> = {
-    peluquero: [
-      "corte-clasico",
-      "fade",
-      "degradado",
-      "tijera",
-      "barba",
-      "perfilado",
-      "afeitado",
-      "lavado",
-      "peinado",
-    ],
-    medico: [
-      "consulta-general",
-      "control-medico",
-      "seguimiento",
-    ],
-  };
-
-  const serviceIds = defaultServiceIdsByProfessional[barber.id] ?? SERVICES.map((service) => service.id);
-
-  return {
-    id: barber.id,
-    name: barber.name,
-    specialty: barber.specialty,
-    address: PROFESSIONAL_ADDRESSES[barber.id] ?? BUSINESS.address,
-    availableSlots: Array.from({ length: 22 }, (_, index) => {
-      const hour = 8 + Math.floor(index / 2);
-      const minute = index % 2 === 0 ? "00" : "30";
-      return `${String(hour).padStart(2, "0")}:${minute}`;
-    }).filter((slot) => slot >= "09:00" && slot <= "19:30"),
-    services: serviceIds.map((serviceId) => {
-      const service = SERVICES.find((s) => s.id === serviceId);
-      return {
-        id: service?.id ?? serviceId,
-        name: service?.name ?? serviceId,
-        duration: service?.duration ?? 30,
-        price: service?.price ?? 0,
-      };
-    }),
-    isTest: true,
-  };
-}
-
-function getDefaultProfessionals(): Professional[] {
-  return BARBERS.map((barber) => createDefaultProfessional(barber.id)).filter(Boolean) as Professional[];
-}
-
-const FIXED_PROFESSIONALS = getDefaultProfessionals();
-const FIXED_IDS = new Set(FIXED_PROFESSIONALS.map((professional) => professional.id));
-
-function isFixedProfessional(id: string) {
-  return FIXED_IDS.has(id);
-}
-
 export const professionalStore = {
   all(): Professional[] {
-    if (isCloudInitialized()) {
-      const cloudProfessionals = read();
-      if (cloudProfessionals.length > 0) return cloudProfessionals;
-      return getCurrentStoreCode() === "GENERAL" ? FIXED_PROFESSIONALS : [];
-    }
-    const saved = read();
-    if (saved.length === 0) return FIXED_PROFESSIONALS;
-
-    const savedMap = new Map(saved.map((professional) => [professional.id, professional]));
-    const merged = FIXED_PROFESSIONALS.map((professional) => savedMap.get(professional.id) ?? professional);
-    const extras = saved.filter((professional) => !FIXED_IDS.has(professional.id));
-    return [...merged, ...extras];
+    return read();
   },
-  add(professional: Omit<Professional, "id">) {
+  async add(professional: Omit<Professional, "id">) {
     const list = read();
     const existingIds = new Set(list.map((p) => p.id));
-    for (const fixedId of FIXED_IDS) {
-      existingIds.add(fixedId);
-    }
     let id = professional.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || crypto.randomUUID();
     if (existingIds.has(id)) {
       id = crypto.randomUUID();
     }
     const newProfessional: Professional = { id, storeCode: getCurrentStoreCode(), ...professional };
-    write([...list.filter((p) => p.id !== id), newProfessional]);
+    await write([...list.filter((p) => p.id !== id), newProfessional]);
     return newProfessional;
   },
-  update(id: string, patch: Partial<Omit<Professional, "id">>) {
-    write(read().map((p) => (p.id === id ? { ...p, ...patch } : p)));
+  async update(id: string, patch: Partial<Omit<Professional, "id">>) {
+    const list = read();
+    if (!list.some((professional) => professional.id === id)) throw new Error("No encontramos ese profesional en la base de datos.");
+    await write(list.map((p) => (p.id === id ? { ...p, ...patch } : p)));
   },
-  remove(id: string) {
-    if (isFixedProfessional(id)) return;
-    write(read().filter((p) => p.id !== id));
+  async remove(id: string) {
+    await write(read().filter((p) => p.id !== id));
   },
   get(id: string) {
     return this.all().find((p) => p.id === id);
@@ -223,9 +132,7 @@ export function getProfessional(id: string) {
 
 export function getProfessionalService(professionalId: string, serviceId: string) {
   const professional = getProfessional(professionalId);
-  const service = professional?.services.find((s) => s.id === serviceId);
-  if (service) return service;
-  return SERVICES.find((s) => s.id === serviceId);
+  return professional?.services.find((s) => s.id === serviceId);
 }
 
 export function getProfessionalServiceList(professionalId: string) {

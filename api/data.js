@@ -35,6 +35,43 @@ async function ensureRoleStoreColumn(db) {
   }
 }
 
+async function ensureStoreSettingsColumn(db) {
+  const columns = await db.execute("PRAGMA table_info(stores)");
+  if (!columns.rows.some((column) => column.name === "settings")) {
+    await db.execute("ALTER TABLE stores ADD COLUMN settings TEXT NOT NULL DEFAULT '{}'");
+  }
+}
+
+function parseStoreSettings(value) {
+  try {
+    const settings = JSON.parse(String(value || "{}"));
+    const source = settings && typeof settings === "object" && !Array.isArray(settings) ? settings : {};
+    return {
+      address: typeof source.address === "string" ? source.address : "",
+      whatsapp: typeof source.whatsapp === "string" ? source.whatsapp : "",
+      transferHolder: typeof source.transferHolder === "string" ? source.transferHolder : "",
+      transferBank: typeof source.transferBank === "string" ? source.transferBank : "",
+      transferCbu: typeof source.transferCbu === "string" ? source.transferCbu : "",
+      transferAlias: typeof source.transferAlias === "string" ? source.transferAlias : "",
+    };
+  } catch {
+    return { address: "", whatsapp: "", transferHolder: "", transferBank: "", transferCbu: "", transferAlias: "" };
+  }
+}
+
+function validateStoreSettings(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const fields = ["address", "whatsapp", "transferHolder", "transferBank", "transferCbu", "transferAlias"];
+  const settings = {};
+  for (const field of fields) {
+    const setting = value[field] ?? "";
+    if (typeof setting !== "string" || setting.length > 200) return null;
+    settings[field] = setting.trim();
+  }
+  if (settings.whatsapp && !/^\+?[0-9 ()-]{8,25}$/.test(settings.whatsapp)) return null;
+  return settings;
+}
+
 function normalizeIssuer() {
   const issuer = requiredEnv("KINDE_ISSUER_URL").replace(/\/+$/, "");
   return /^https?:\/\//i.test(issuer) ? issuer : `https://${issuer}`;
@@ -99,6 +136,7 @@ async function database() {
   });
   await schemaReady;
   await ensureRoleStoreColumn(db);
+  await ensureStoreSettingsColumn(db);
   await db.execute({
     sql: "INSERT INTO stores (code, name, owner_id) VALUES (?, ?, ?) ON CONFLICT(code) DO NOTHING",
     args: [DEFAULT_STORE_CODE, "Mi Turno Ya", "legacy"],
@@ -229,52 +267,26 @@ export default async function handler(request, response) {
   if (request.method === "GET") {
     try {
       let role = "guest";
-      const requestedStoreCode = normalizeStoreCode(request.headers["x-store-code"]) || DEFAULT_STORE_CODE;
+      const requestedStoreCode = normalizeStoreCode(request.headers["x-store-code"]);
       let userStoreCode = requestedStoreCode;
       if (user) {
-        const requestedRole = request.headers["x-requested-role"] === "admin" ? "admin" : "client";
         const storedRoleResult = await db.execute({ sql: "SELECT role, store_code FROM account_roles WHERE user_id = ?", args: [user.id] });
         const existingRole = storedRoleResult.rows[0]?.role;
-        const inviteCode = request.headers["x-admin-invite-code"];
-        const inviteCodeHash = typeof inviteCode === "string" ? createHash("sha256").update(inviteCode.trim()).digest("hex") : "";
-        const inviteResult = inviteCodeHash
-          ? await db.execute({ sql: "SELECT store_code FROM admin_invites WHERE code_hash = ?", args: [inviteCodeHash] })
-          : { rows: [] };
-        const invitedStoreCode = normalizeStoreCode(inviteResult.rows[0]?.store_code);
-        const hasStoreInvite = user.emailVerified && invitedStoreCode.length > 0 && invitedStoreCode === requestedStoreCode;
-        const bootstrapStore = await db.execute({ sql: "SELECT owner_id FROM stores WHERE code = ?", args: [DEFAULT_STORE_CODE] });
-        const hasBootstrapInvite = requestedStoreCode === DEFAULT_STORE_CODE
-          && String(bootstrapStore.rows[0]?.owner_id) === "legacy"
-          && user.emailVerified
-          && isValidAdminInvite(inviteCode);
-        role = user.emailVerified && existingRole === "admin"
-          ? "admin"
-          : requestedRole === "admin" && (hasStoreInvite || hasBootstrapInvite)
-            ? "admin"
-            : "client";
-        if (requestedRole === "admin" && role !== "admin") {
-          return response.status(403).json({ error: "El código no es válido o el email de la cuenta no está verificado." });
-        }
-        userStoreCode = role === "admin" && existingRole === "admin"
-          ? normalizeStoreCode(storedRoleResult.rows[0]?.store_code) || DEFAULT_STORE_CODE
-          : requestedStoreCode;
-        await db.execute({
-          sql: `INSERT INTO account_roles (user_id, email, role, store_code, updated_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
-            ON CONFLICT(user_id) DO UPDATE SET email = excluded.email, role = CASE WHEN account_roles.role = 'admin' AND account_roles.store_code = excluded.store_code THEN 'admin' ELSE excluded.role END, store_code = excluded.store_code, updated_at = CURRENT_TIMESTAMP`,
-          args: [user.id, user.email, role, userStoreCode],
-        });
-        if (role === "admin" && userStoreCode === DEFAULT_STORE_CODE) {
-          await db.execute({ sql: "UPDATE stores SET owner_id = ? WHERE code = ? AND owner_id = 'legacy'", args: [user.id, DEFAULT_STORE_CODE] });
-        }
+        role = user.emailVerified && (existingRole === "admin" || existingRole === "client") ? existingRole : "unassigned";
+        userStoreCode = role === "admin" ? normalizeStoreCode(storedRoleResult.rows[0]?.store_code) : requestedStoreCode;
       }
-      const storeExists = await db.execute({ sql: "SELECT code FROM stores WHERE code = ?", args: [userStoreCode] });
-      if (!storeExists.rows[0]) return response.status(404).json({ error: "No encontramos esa tienda. Revisá el nombre o código." });
+      if (userStoreCode) {
+        const storeExists = await db.execute({ sql: "SELECT code FROM stores WHERE code = ?", args: [userStoreCode] });
+        if (!storeExists.rows[0]) return response.status(404).json({ error: "No encontramos esa tienda. Revisá el nombre o código." });
+      }
       const [bookingRows, professionalRows] = await Promise.all([
         db.execute("SELECT id, value FROM bookings ORDER BY updated_at DESC"),
         db.execute("SELECT id, value FROM professionals ORDER BY updated_at DESC"),
       ]);
       const allBookings = bookingRows.rows.map((row) => JSON.parse(String(row.value)));
-      const storeBookings = allBookings.filter((booking) => normalizeStoreCode(booking.storeCode || DEFAULT_STORE_CODE) === userStoreCode);
+      const storeBookings = userStoreCode
+        ? allBookings.filter((booking) => normalizeStoreCode(booking.storeCode || DEFAULT_STORE_CODE) === userStoreCode)
+        : [];
       const bookings = role === "admin"
         ? storeBookings
         : storeBookings.map((booking) => user && booking.customer?.email?.trim().toLowerCase() === user.email
@@ -291,11 +303,11 @@ export default async function handler(request, response) {
             createdAt: booking.createdAt,
             customer: { fullName: "", phone: "", email: "" },
           });
-      const professionals = professionalRows.rows
+      const professionals = userStoreCode ? professionalRows.rows
         .filter((row) => String(row.id).startsWith(`${userStoreCode}:`))
-        .map((row) => ({ ...JSON.parse(String(row.value)), id: String(row.id).slice(userStoreCode.length + 1) }));
-      const storesResult = await db.execute("SELECT code, name FROM stores ORDER BY name COLLATE NOCASE");
-      return response.status(200).json({ data: { bookings, professionals }, role, storeCode: userStoreCode || null, stores: storesResult.rows.map((row) => ({ code: String(row.code), name: String(row.name) })) });
+        .map((row) => ({ ...JSON.parse(String(row.value)), id: String(row.id).slice(userStoreCode.length + 1) })) : [];
+      const storesResult = await db.execute("SELECT code, name, settings FROM stores ORDER BY name COLLATE NOCASE");
+      return response.status(200).json({ data: { bookings, professionals }, role, storeCode: userStoreCode || null, stores: storesResult.rows.map((row) => ({ code: String(row.code), name: String(row.name), settings: parseStoreSettings(row.settings) })) });
     } catch (error) {
       console.error("No se pudieron cargar los turnos y profesionales", error);
       return response.status(500).json({ error: "No se pudieron cargar los datos." });
@@ -309,6 +321,44 @@ export default async function handler(request, response) {
     return response.status(400).json({ error: "El cuerpo JSON no es válido." });
   }
   if (request.method === "POST") {
+    if (user && body?.action === "set-account-role") {
+      try {
+        if (!user.emailVerified) return response.status(403).json({ error: "Verificá tu email en Kinde antes de configurar el acceso." });
+        const requestedRole = body.role === "admin" ? "admin" : body.role === "client" ? "client" : null;
+        if (!requestedRole) return response.status(400).json({ error: "Tipo de cuenta inválido." });
+
+        let storeCode = null;
+        if (requestedRole === "admin") {
+          storeCode = normalizeStoreCode(body.storeCode);
+          const inviteCode = typeof body.inviteCode === "string" ? body.inviteCode.trim() : "";
+          if (!storeCode || !inviteCode) return response.status(400).json({ error: "Ingresá el código de tienda y la invitación de administrador." });
+          const inviteHash = createHash("sha256").update(inviteCode).digest("hex");
+          const invite = await db.execute({ sql: "SELECT store_code FROM admin_invites WHERE code_hash = ?", args: [inviteHash] });
+          const invitedStore = normalizeStoreCode(invite.rows[0]?.store_code);
+          const bootstrapStore = await db.execute({ sql: "SELECT owner_id FROM stores WHERE code = ?", args: [DEFAULT_STORE_CODE] });
+          const bootstrapAllowed = storeCode === DEFAULT_STORE_CODE
+            && String(bootstrapStore.rows[0]?.owner_id) === "legacy"
+            && isValidAdminInvite(inviteCode);
+          if (invitedStore !== storeCode && !bootstrapAllowed) {
+            return response.status(403).json({ error: "La invitación no es válida para esa tienda." });
+          }
+          const storeExists = await db.execute({ sql: "SELECT code FROM stores WHERE code = ?", args: [storeCode] });
+          if (!storeExists.rows[0]) return response.status(404).json({ error: "La tienda no existe." });
+        }
+        await db.execute({
+          sql: `INSERT INTO account_roles (user_id, email, role, store_code, updated_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(user_id) DO UPDATE SET email = excluded.email, role = excluded.role, store_code = excluded.store_code, updated_at = CURRENT_TIMESTAMP`,
+          args: [user.id, user.email, requestedRole, storeCode],
+        });
+        if (requestedRole === "admin" && storeCode === DEFAULT_STORE_CODE) {
+          await db.execute({ sql: "UPDATE stores SET owner_id = ? WHERE code = ? AND owner_id = 'legacy'", args: [user.id, DEFAULT_STORE_CODE] });
+        }
+        return response.status(200).json({ role: requestedRole, storeCode });
+      } catch (error) {
+        console.error("No se pudo guardar el rol de cuenta", error);
+        return response.status(500).json({ error: "No se pudo guardar la cuenta en la base de datos." });
+      }
+    }
     if (user && body?.action === "create-store") {
       try {
         const roleResult = await db.execute({ sql: "SELECT role, store_code FROM account_roles WHERE user_id = ?", args: [user.id] });
@@ -320,11 +370,26 @@ export default async function handler(request, response) {
         }
         await db.execute({ sql: "INSERT INTO stores (code, name, owner_id) VALUES (?, ?, ?)", args: [code, name, user.id] });
         await db.execute({ sql: "UPDATE account_roles SET store_code = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?", args: [code, user.id] });
-        return response.status(201).json({ ok: true, store: { code, name } });
+        return response.status(201).json({ ok: true, store: { code, name, settings: {} } });
       } catch (error) {
         if (String(error?.message || "").toLowerCase().includes("unique")) return response.status(409).json({ error: "Ese código ya está utilizado. Elegí otro." });
         console.error("No se pudo crear la tienda", error);
         return response.status(500).json({ error: "No se pudo crear la tienda." });
+      }
+    }
+    if (user && body?.action === "update-store-settings") {
+      try {
+        const roleResult = await db.execute({ sql: "SELECT role, store_code FROM account_roles WHERE user_id = ?", args: [user.id] });
+        const role = roleResult.rows[0]?.role;
+        const storeCode = normalizeStoreCode(roleResult.rows[0]?.store_code);
+        const settings = validateStoreSettings(body.settings);
+        if (role !== "admin" || !user.emailVerified || !storeCode) return response.status(403).json({ error: "Solo el administrador de una tienda puede modificar sus datos." });
+        if (!settings) return response.status(400).json({ error: "Revisá los datos de contacto y transferencia." });
+        await db.execute({ sql: "UPDATE stores SET settings = ? WHERE code = ?", args: [JSON.stringify(settings), storeCode] });
+        return response.status(200).json({ code: storeCode, settings });
+      } catch (error) {
+        console.error("No se pudieron guardar los datos de la tienda", error);
+        return response.status(500).json({ error: "No se pudieron guardar los datos de la tienda." });
       }
     }
     if (user && body?.action === "create-store-invite") {
@@ -452,10 +517,11 @@ export default async function handler(request, response) {
   try {
     if (user) {
       const accountRole = await db.execute({ sql: "SELECT role, store_code FROM account_roles WHERE user_id = ?", args: [user.id] });
-      if (accountRole.rows[0]?.role === "admin" && user.emailVerified) {
-        role = "admin";
-        storeCode = normalizeStoreCode(accountRole.rows[0]?.store_code) || DEFAULT_STORE_CODE;
+      if (!accountRole.rows[0] || !["admin", "client"].includes(String(accountRole.rows[0].role))) {
+        return response.status(403).json({ error: "Configurá tu tipo de cuenta antes de guardar datos." });
       }
+      role = accountRole.rows[0].role;
+      if (role === "admin" && user.emailVerified) storeCode = normalizeStoreCode(accountRole.rows[0]?.store_code) || DEFAULT_STORE_CODE;
     }
   } catch (error) {
     console.error("No se pudo verificar el rol de la cuenta", error);

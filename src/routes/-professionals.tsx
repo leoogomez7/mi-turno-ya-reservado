@@ -9,7 +9,7 @@ import { toast } from "sonner";
 import { professionalStore, type Professional, type ProfessionalService } from "@/lib/professional-store";
 import { AuthRequired } from "@/components/auth-required";
 import { useAppAuth } from "@/lib/auth";
-import { createStore, createStoreAdminInvite, getCurrentStoreCode } from "@/lib/cloud-sync";
+import { createStore, createStoreAdminInvite, getAvailableStores, getCurrentStoreCode, updateStoreSettings, type StoreSettings } from "@/lib/cloud-sync";
 import { LoadingScreen } from "@/components/loading-screen";
 
 const defaultFormState: Partial<Professional> = {
@@ -19,6 +19,15 @@ const defaultFormState: Partial<Professional> = {
   availableSlots: [],
   services: [],
   scheduleDates: [],
+};
+
+const emptyStoreSettings: StoreSettings = {
+  address: "",
+  whatsapp: "",
+  transferHolder: "",
+  transferBank: "",
+  transferCbu: "",
+  transferAlias: "",
 };
 
 export function ProfessionalsManager() {
@@ -32,6 +41,8 @@ export function ProfessionalsManager() {
   const [storeCode, setStoreCode] = useState("");
   const [savingStore, setSavingStore] = useState(false);
   const [currentStoreCode, setCurrentStoreCode] = useState(getCurrentStoreCode());
+  const [storeSettings, setStoreSettings] = useState<StoreSettings>(emptyStoreSettings);
+  const [savingSettings, setSavingSettings] = useState(false);
   const [inviteCode, setInviteCode] = useState("");
   const [creatingInvite, setCreatingInvite] = useState(false);
 
@@ -47,7 +58,11 @@ export function ProfessionalsManager() {
   }, []);
 
   useEffect(() => {
-    const updateStore = () => setCurrentStoreCode(getCurrentStoreCode());
+    const updateStore = () => {
+      const code = getCurrentStoreCode();
+      setCurrentStoreCode(code);
+      setStoreSettings(getAvailableStores().find((store) => store.code === code)?.settings ?? emptyStoreSettings);
+    };
     window.addEventListener("mi-turno-ya:store-changed", updateStore);
     window.addEventListener("mi-turno-ya:cloud-ready", updateStore);
     return () => {
@@ -55,6 +70,19 @@ export function ProfessionalsManager() {
       window.removeEventListener("mi-turno-ya:cloud-ready", updateStore);
     };
   }, []);
+
+  async function saveSettings() {
+    setSavingSettings(true);
+    try {
+      const saved = await updateStoreSettings(storeSettings);
+      setStoreSettings(saved);
+      toast.success("Datos de la tienda guardados en la base de datos.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudieron guardar los datos de la tienda.");
+    } finally {
+      setSavingSettings(false);
+    }
+  }
 
   const selectedProfessional = useMemo(
     () => professionals.find((p) => p.id === editingId) ?? null,
@@ -94,7 +122,7 @@ export function ProfessionalsManager() {
     setDetailDialogOpen(true);
   }
 
-  function performSaveProfessional() {
+  async function performSaveProfessional() {
     if (!form.name || !form.specialty) {
       toast.error("Completá nombre y rubro.");
       return;
@@ -114,10 +142,10 @@ export function ProfessionalsManager() {
       scheduleDates: form.scheduleDates ?? [],
     };
     if (editingId) {
-      professionalStore.update(editingId, nextProfessional);
+      await professionalStore.update(editingId, nextProfessional);
       toast.success("Profesional actualizado.");
     } else {
-      professionalStore.add(nextProfessional);
+      await professionalStore.add(nextProfessional);
       toast.success("Profesional agregado.");
     }
     setProfessionals(professionalStore.all());
@@ -127,7 +155,9 @@ export function ProfessionalsManager() {
   }
 
   function saveProfessional() {
-    performSaveProfessional();
+    void performSaveProfessional().catch((error: unknown) => {
+      toast.error(error instanceof Error ? error.message : "No se pudo guardar el profesional en la base de datos.");
+    });
   }
 
   async function saveStore() {
@@ -159,16 +189,20 @@ export function ProfessionalsManager() {
     }
   }
 
-  function deleteProfessional(id: string) {
-    professionalStore.remove(id);
-    setProfessionals(professionalStore.all());
-    setEditingId(null);
-    setShowForm(false);
-    toast.success("Profesional eliminado.");
+  async function deleteProfessional(id: string) {
+    try {
+      await professionalStore.remove(id);
+      setProfessionals(professionalStore.all());
+      setEditingId(null);
+      setShowForm(false);
+      toast.success("Profesional eliminado.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo eliminar el profesional de la base de datos.");
+    }
   }
 
   function requestDeleteProfessional(id: string) {
-    deleteProfessional(id);
+    void deleteProfessional(id);
   }
 
   function updateService(index: number, service: Partial<ProfessionalService>) {
@@ -270,6 +304,37 @@ export function ProfessionalsManager() {
                 <p className="mt-2 text-xs text-muted-foreground">El código permite asociar una cuenta admin con esta tienda. Compartilo de manera privada.</p>
               </div>
             )}
+          </section>
+
+          <section className="rounded-3xl border border-border bg-card p-6">
+            <div className="mb-5">
+              <p className="text-xs uppercase tracking-widest text-gold">Datos guardados en Turso</p>
+              <h2 className="mt-1 font-display text-2xl font-semibold">Contacto y transferencia</h2>
+              <p className="mt-2 text-sm text-muted-foreground">Estos datos pertenecen a la tienda seleccionada y se cargan desde la base de datos.</p>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Dirección">
+                <Input value={storeSettings.address} onChange={(event) => setStoreSettings({ ...storeSettings, address: event.target.value })} maxLength={200} placeholder="Dirección del local" />
+              </Field>
+              <Field label="WhatsApp con código de país">
+                <Input value={storeSettings.whatsapp} onChange={(event) => setStoreSettings({ ...storeSettings, whatsapp: event.target.value })} maxLength={25} placeholder="5491112345678" />
+              </Field>
+              <Field label="Titular de la cuenta">
+                <Input value={storeSettings.transferHolder} onChange={(event) => setStoreSettings({ ...storeSettings, transferHolder: event.target.value })} maxLength={200} />
+              </Field>
+              <Field label="Banco">
+                <Input value={storeSettings.transferBank} onChange={(event) => setStoreSettings({ ...storeSettings, transferBank: event.target.value })} maxLength={200} />
+              </Field>
+              <Field label="CBU">
+                <Input value={storeSettings.transferCbu} onChange={(event) => setStoreSettings({ ...storeSettings, transferCbu: event.target.value })} maxLength={200} />
+              </Field>
+              <Field label="Alias">
+                <Input value={storeSettings.transferAlias} onChange={(event) => setStoreSettings({ ...storeSettings, transferAlias: event.target.value })} maxLength={200} />
+              </Field>
+            </div>
+            <Button type="button" disabled={savingSettings || !currentStoreCode} onClick={() => void saveSettings()} className="mt-5 bg-gold text-primary-foreground hover:bg-gold-soft">
+              {savingSettings ? "Guardando…" : "Guardar datos de la tienda"}
+            </Button>
           </section>
 
           {showForm && (

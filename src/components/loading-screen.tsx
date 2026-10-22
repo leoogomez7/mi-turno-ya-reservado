@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import logo from "../../logo.png";
 
 type LoadingScreenProps = {
   message?: string;
@@ -19,7 +20,7 @@ export function LoadingScreen({
           <span className="brand-loader__orbit brand-loader__orbit--outer" />
           <span className="brand-loader__orbit brand-loader__orbit--inner" />
           <span className="brand-loader__logo-wrap">
-            <img className="brand-loader__logo" src="/logo.png" alt="" />
+            <img className="brand-loader__logo" src={logo} alt="" />
           </span>
         </div>
 

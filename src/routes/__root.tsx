@@ -14,8 +14,8 @@ import logo from "../../logo.png";
 import { reportAppError } from "../lib/error-reporting";
 import { Toaster } from "@/components/ui/sonner";
 import { LoadingScreen } from "@/components/loading-screen";
-import { toast } from "sonner";
-import { AuthProvider, useAppAuth, type AccountRole } from "@/lib/auth";
+import { AccountSetup } from "@/components/account-setup";
+import { AuthProvider, useAppAuth } from "@/lib/auth";
 import { bootstrapCloudData, clearCloudSession } from "@/lib/cloud-sync";
 
 function NotFoundComponent() {
@@ -96,9 +96,9 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       {
         rel: "icon",
         type: "image/png",
-        href: logo,
+        href: `${logo}?v=4`,
       },
-      { rel: "apple-touch-icon", type: "image/png", href: logo },
+      { rel: "apple-touch-icon", type: "image/png", href: `${logo}?v=4` },
       {
         rel: "stylesheet",
         href: appCss,
@@ -143,6 +143,7 @@ function RootComponent() {
 function CloudDataBootstrap({ children }: { children: ReactNode }) {
   const { configured, isAuthenticated, isLoading, user, role, getIdToken, setVerifiedRole } = useAppAuth();
   const [readyFor, setReadyFor] = useState<string | null>(null);
+  const [needsAccountSetup, setNeedsAccountSetup] = useState(false);
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
 
@@ -151,18 +152,18 @@ function CloudDataBootstrap({ children }: { children: ReactNode }) {
     if (!configured) {
       clearCloudSession();
       setVerifiedRole(null);
-      void bootstrapCloudData("guest", async () => undefined).catch((reason: unknown) => {
-        console.warn("No se pudieron cargar los profesionales públicos desde Turso", reason);
-      }).finally(() => setReadyFor("guest"));
+      void bootstrapCloudData("guest", async () => undefined)
+        .then(() => setReadyFor("guest"))
+        .catch((reason: unknown) => setError(reason instanceof Error ? reason.message : "No se pudieron cargar los datos desde la base de datos."));
       return;
     }
     if (!isAuthenticated) {
       clearCloudSession();
       setVerifiedRole(null);
       setError("");
-      void bootstrapCloudData("guest", async () => undefined).catch((reason: unknown) => {
-        console.warn("No se pudieron cargar los profesionales públicos desde Turso", reason);
-      }).finally(() => setReadyFor("guest"));
+      void bootstrapCloudData("guest", async () => undefined)
+        .then(() => setReadyFor("guest"))
+        .catch((reason: unknown) => setError(reason instanceof Error ? reason.message : "No se pudieron cargar los datos desde la base de datos."));
       return;
     }
 
@@ -174,13 +175,10 @@ function CloudDataBootstrap({ children }: { children: ReactNode }) {
 
     let cancelled = false;
     setError("");
-    const selectedRole = role ?? (sessionStorage.getItem("mi-turno-ya-requested-role") === "admin" ? "admin" : "client") as AccountRole;
-    void bootstrapCloudData(email, getIdToken, selectedRole)
+    void bootstrapCloudData(email, getIdToken)
       .then((verifiedRole) => {
         if (cancelled) return;
-        if (selectedRole === "admin" && verifiedRole !== "admin") {
-          toast.error("No se pudo habilitar la cuenta administradora. Verificá el código de invitación y que el email de Kinde esté verificado.");
-        }
+        setNeedsAccountSetup(verifiedRole === "unassigned");
         setVerifiedRole(verifiedRole === "admin" || verifiedRole === "client" ? verifiedRole : null);
         setReadyFor(email);
       })
@@ -189,10 +187,17 @@ function CloudDataBootstrap({ children }: { children: ReactNode }) {
         if (!cancelled) setError(reason instanceof Error ? reason.message : "No se pudieron cargar tus datos.");
       });
     return () => { cancelled = true; };
-  }, [configured, getIdToken, isAuthenticated, isLoading, role, setVerifiedRole, user?.email, attempt]);
+  }, [configured, getIdToken, isAuthenticated, isLoading, setVerifiedRole, user?.email, attempt]);
 
   const owner = isAuthenticated ? user?.email?.trim().toLowerCase() ?? "" : "guest";
   const ready = !isLoading && readyFor === owner;
+  if (ready && isAuthenticated && needsAccountSetup) {
+    return <AccountSetup onComplete={(nextRole) => {
+      setVerifiedRole(nextRole);
+      setNeedsAccountSetup(false);
+      setAttempt((value) => value + 1);
+    }} />;
+  }
   if (ready) return <>{children}</>;
 
   return (

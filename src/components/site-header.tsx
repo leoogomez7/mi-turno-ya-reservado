@@ -5,28 +5,25 @@ import logo from "../../logo.png";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AUTH_CONFIGURED } from "@/lib/env";
-import { useAppAuth, type AccountRole } from "@/lib/auth";
+import { useAppAuth } from "@/lib/auth";
 
 export function SiteHeader() {
   const [open, setOpen] = useState(false);
   const [authDialogOpen, setAuthDialogOpen] = useState(false);
   const [authMode, setAuthMode] = useState<"login" | "register">("login");
-  const [selectedRole, setSelectedRole] = useState<AccountRole>("client");
-  const [adminCode, setAdminCode] = useState("");
-  const [adminStoreCode, setAdminStoreCode] = useState("");
   const { isAuthenticated, user, role, login, register, logout } = useAppAuth();
 
   async function startAuth() {
-    if (authMode === "register") await register(selectedRole, undefined, adminCode, adminStoreCode);
-    else await login(selectedRole, undefined, adminCode, adminStoreCode);
+    if (authMode === "register") await register("client");
+    else await login();
   }
 
   return (
     <header className="sticky top-0 z-40 border-b border-border/60 bg-background/80 backdrop-blur-xl">
       <div className="relative flex w-full flex-wrap items-center justify-between gap-2 px-3 py-2.5 md:px-4 lg:px-5">
         <Link to="/reserva" className="flex items-center gap-2">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full border border-gold/30 bg-black">
-            <img src={logo} alt="Mi Turno Ya Reservado" className="h-full w-full object-contain object-center" />
+          <span className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full border border-gold/50 bg-black shadow-[0_0_18px_rgba(234,179,8,0.18)]">
+            <img src={logo} alt="Mi Turno Ya Reservado" className="h-full w-full object-cover object-center" />
           </span>
           <span className="font-display text-lg font-semibold tracking-tight">Mi Turno Ya Reservado</span>
         </Link>
@@ -82,50 +79,16 @@ export function SiteHeader() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{authMode === "register" ? "Crear cuenta" : "Iniciar sesión"}</DialogTitle>
-            <DialogDescription>Elegí el tipo de cuenta. Para activar una cuenta administradora se necesita un código de invitación.</DialogDescription>
+            <DialogDescription>Después de iniciar sesión, elegí el tipo de cuenta. La elección y los permisos se guardan en la base de datos.</DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-3">
-            <label className="block text-sm text-muted-foreground">
-              Tipo de cuenta
-              <select className="mt-2 block w-full rounded-lg border border-border bg-background px-3 py-2 text-foreground" value={selectedRole} onChange={(event) => setSelectedRole(event.target.value as AccountRole)}>
-                <option value="client">Cliente</option>
-                <option value="admin">Administrador / Profesional</option>
-              </select>
-            </label>
-            {selectedRole === "admin" && (
-              <div className="space-y-3">
-                <label className="block text-sm text-muted-foreground">
-                  Código de la tienda
-                  <input
-                    value={adminStoreCode}
-                    onChange={(event) => setAdminStoreCode(event.target.value.toUpperCase().replace(/[^A-Z0-9_-]/g, ""))}
-                    placeholder="Código que identifica tu tienda"
-                    maxLength={20}
-                    className="mt-2 block w-full rounded-lg border border-border bg-background px-3 py-2 text-foreground"
-                  />
-                  <span className="mt-2 block text-xs">Este código separa la agenda, profesionales y reservas de tu tienda.</span>
-                </label>
-                <label className="block text-sm text-muted-foreground">
-                  Código de invitación de administrador
-                  <input
-                    type="password"
-                    autoComplete="one-time-code"
-                    value={adminCode}
-                    onChange={(event) => setAdminCode(event.target.value)}
-                    placeholder="Código privado del administrador de la tienda"
-                    className="mt-2 block w-full rounded-lg border border-border bg-background px-3 py-2 text-foreground"
-                  />
-                  <span className="mt-2 block text-xs">Solicitalo al administrador propietario de esa tienda.</span>
-                </label>
-              </div>
-            )}
+          <div className="py-3">
             {!AUTH_CONFIGURED && <p className="text-sm text-destructive">Kinde no está configurado. Consultá el archivo .env.example.</p>}
           </div>
           <DialogFooter className="flex-col sm:flex-row">
             <Button variant="outline" onClick={() => setAuthMode(authMode === "register" ? "login" : "register")}>
               {authMode === "register" ? "Ya tengo cuenta" : "Crear cuenta"}
             </Button>
-            <Button disabled={!AUTH_CONFIGURED || (selectedRole === "admin" && (!adminCode.trim() || adminStoreCode.trim().length < 3))} className="bg-gold text-primary-foreground hover:bg-gold-soft" onClick={() => void startAuth()}>
+            <Button disabled={!AUTH_CONFIGURED} className="bg-gold text-primary-foreground hover:bg-gold-soft" onClick={() => void startAuth()}>
               {authMode === "register" ? "Continuar con Kinde" : "Iniciar con Kinde"}
             </Button>
           </DialogFooter>
