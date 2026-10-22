@@ -14,19 +14,20 @@ No subir `.env.local` ni compartir valores privados. Los campos con prefijo `VIT
 
 ## Variables
 
-| Variable | Uso | Dónde se configura |
-| --- | --- | --- |
-| `DOMAIN_USER` | Dominio público del tenant Kinde para el SDK web | `.env.local` y Vercel |
-| `AUTH_USER` | Client ID público de la aplicación Kinde | `.env.local` y Vercel |
-| `ORG_CODE` | Organización Kinde opcional | `.env.local` y Vercel |
-| `AUTH_CONNECTION_ID` | Conexión de email opcional de Kinde | `.env.local` y Vercel |
-| `KINDE_ISSUER_URL` | Emisor esperado al verificar tokens en el servidor; debe corresponder al dominio Kinde | Solo servidor / Vercel |
-| `KINDE_CLIENT_ID` | Audiencia esperada al verificar tokens; debe coincidir con el Client ID anterior | Solo servidor / Vercel |
-| `TURSO_DATABASE_URL` | URL de la base Turso de turnos y profesionales | Solo servidor / Vercel |
-| `TURSO_AUTH_TOKEN` | Credencial privada de Turso | Solo servidor / Vercel |
-| Código de tienda | Código público único generado al registrar una tienda administradora; Turso garantiza su unicidad | Se guarda en Turso y se comparte con clientes |
-| `MERCADOPAGO_ACCESS_TOKEN` | Token privado para crear preferencias de pago | Solo servidor / Vercel |
-| `PUBLIC_APP_URL` | Dirección base publicada de la aplicación, sin rutas como `/reserva`; Mercado Pago vuelve allí después del pago | Vercel; opcional local |
+| Variable                     | Uso                                                                                                                   | Dónde se configura                                |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| `DOMAIN_USER`              | Dominio público del tenant Kinde para el SDK web                                                                     | `.env.local` y Vercel                            |
+| `AUTH_USER`                | Client ID público de la aplicación Kinde                                                                            | `.env.local` y Vercel                            |
+| `ORG_CODE`                 | Organización Kinde opcional                                                                                          | `.env.local` y Vercel                            |
+| `AUTH_CONNECTION_ID`       | Conexión de email opcional de Kinde                                                                                  | `.env.local` y Vercel                            |
+| `KINDE_ISSUER_URL`         | Emisor esperado al verificar tokens en el servidor; debe corresponder al dominio Kinde                                | Solo servidor / Vercel                             |
+| `KINDE_CLIENT_ID`          | Audiencia esperada al verificar tokens; debe coincidir con el Client ID anterior                                      | Solo servidor / Vercel                             |
+| `TURSO_DATABASE_URL`       | URL de la base Turso de turnos y profesionales                                                                        | Solo servidor / Vercel                             |
+| `TURSO_AUTH_TOKEN`         | Credencial privada de Turso                                                                                           | Solo servidor / Vercel                             |
+| Código de tienda            | Código público único generado al registrar una tienda administradora; Turso garantiza su unicidad                  | Se guarda en Turso y se comparte con clientes      |
+| `MERCADOPAGO_ACCESS_TOKEN` | Token privado para crear preferencias de pago                                                                         | Solo servidor / Vercel                             |
+| `CODIGO_PROMO`             | Código promocional elegido por el administrador que otorga 100% de descuento en el plan seleccionado                 | Solo servidor / Vercel; definir el valor en Vercel |
+| `PUBLIC_APP_URL`           | Dirección base publicada de la aplicación, sin rutas como `/reserva`; Mercado Pago vuelve allí después del pago | Vercel; opcional local                             |
 
 ## Roles y seguridad
 
@@ -37,3 +38,7 @@ Cada administrador registrado crea su tienda desde la sección Profesionales con
 No existe ni se necesita código de invitación de administrador. El usuario verifica su cuenta en Kinde, selecciona Administrador / Profesional y el sistema crea o asigna su tienda. Comparte con clientes únicamente el código público de tienda que aparece en el panel; no da permisos de administrador.
 
 Las reservas de visitantes se envían al API y se guardan en Turso; no existe persistencia local ni modo offline. Los clientes que inician sesión consultan los turnos asociados a su email. La agenda, los profesionales y los datos de contacto y transferencia de cada tienda se guardan en Turso; solo un administrador puede modificar profesionales, configuración de tienda o todos los turnos.
+
+## Planes de suscripción
+
+Al crear/activar su cuenta de administrador, la tienda recibe automáticamente una prueba gratuita de 4 días, que solo se otorga una vez. Después puede contratar manualmente: 15 días por $5.999, 1 mes por $9.999, 2 por $14.999, 3 por $19.999, 4 por $25.999 y 6 por $36.999 ARS. No hay renovación ni cobros automáticos. Si compra antes de expirar, el nuevo período se suma a la fecha de vencimiento vigente (incluida la prueba gratis); si ya venció, empieza al aprobar el nuevo pago. El panel avisa cuando faltan tres días y, al vencer, informa que la tienda ya no aparece en búsquedas ni recibe reservas. La activación del pago se confirma consultando Mercado Pago y también mediante su webhook; el retorno del navegador por sí solo no activa el plan. `SUBSCRIPTION_PROMO_CODE` se configura como secreto de servidor y otorga 100% de descuento al plan elegido.

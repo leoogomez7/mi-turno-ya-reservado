@@ -11,7 +11,14 @@ export type StoreSettings = {
   transferCbu: string;
   transferAlias: string;
 };
-export type Store = { code: string; name: string; settings: StoreSettings };
+export type Store = {
+  code: string;
+  name: string;
+  settings: StoreSettings;
+  subscriptionExpiresAt?: string | null;
+  subscriptionActive?: boolean;
+  subscriptionPlanType?: "trial" | "paid" | "promo" | string;
+};
 let tokenGetter: (() => Promise<string | undefined>) | undefined;
 let activeAccount: string | undefined;
 let snapshot: CloudSnapshot = { bookings: [], professionals: [] };
@@ -180,4 +187,19 @@ export async function updateStoreSettings(settings: StoreSettings) {
   availableStores = availableStores.map((store) => store.code === response.code ? { ...store, settings: response.settings } : store);
   window.dispatchEvent(new Event("mi-turno-ya:store-changed"));
   return response.settings;
+}
+
+export async function createSubscriptionCheckout(planId: string) {
+  if (!tokenGetter) throw new Error("Iniciá sesión como administrador para contratar un plan.");
+  return request<{ checkoutUrl: string; purchaseId: string }>("POST", { action: "create-subscription-checkout", planId });
+}
+
+export async function redeemSubscriptionPromo(code: string, planId: string) {
+  if (!tokenGetter) throw new Error("Iniciá sesión como administrador para canjear una promoción.");
+  return request<{ expiresAt: string; planLabel: string }>("POST", { action: "redeem-subscription-promo", code, planId });
+}
+
+export async function verifySubscriptionPayment(purchaseId: string) {
+  if (!tokenGetter) throw new Error("Iniciá sesión como administrador para verificar el pago.");
+  return request<{ approved: boolean; expiresAt?: string | null }>("POST", { action: "verify-subscription-payment", purchaseId });
 }

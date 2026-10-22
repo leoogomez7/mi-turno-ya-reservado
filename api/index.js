@@ -12,6 +12,23 @@ export default async function handler(req, res) {
     return dataHandler(req, res);
   }
 
+  if (url.pathname === "/api/mercadopago/webhook") {
+    if (req.method !== "POST" && req.method !== "GET") {
+      res.statusCode = 405;
+      res.setHeader("Allow", "GET, POST");
+      return res.end("Method Not Allowed");
+    }
+    const paymentId = url.searchParams.get("data.id") || url.searchParams.get("id") || req.body?.data?.id || req.body?.id;
+    if (!paymentId) {
+      res.statusCode = 400;
+      res.setHeader("Content-Type", "application/json");
+      return res.end(JSON.stringify({ error: "Falta el identificador del pago." }));
+    }
+    req.method = "POST";
+    req.body = { action: "mercadopago-subscription-webhook", paymentId: String(paymentId) };
+    return dataHandler(req, res);
+  }
+
   if (url.pathname === "/api/mercadopago/preference") {
     if (req.method !== "POST") {
       res.statusCode = 405;

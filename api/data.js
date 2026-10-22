@@ -4,6 +4,15 @@ import { randomBytes } from "node:crypto";
 
 const COLLECTIONS = ["bookings", "professionals"];
 const DEFAULT_STORE_CODE = "GENERAL";
+const FREE_TRIAL_DAYS = 4;
+const SUBSCRIPTION_PLANS = new Map([
+  ["15d", { days: 15, months: 0, amount: 5999, label: "15 días" }],
+  ["1m", { days: 0, months: 1, amount: 9999, label: "1 mes" }],
+  ["2m", { days: 0, months: 2, amount: 14999, label: "2 meses" }],
+  ["3m", { days: 0, months: 3, amount: 19999, label: "3 meses" }],
+  ["4m", { days: 0, months: 4, amount: 25999, label: "4 meses" }],
+  ["6m", { days: 0, months: 6, amount: 36999, label: "6 meses" }],
+]);
 let schemaReady;
 let legacyInvitesRemoved = false;
 
@@ -32,6 +41,26 @@ async function ensureStoreSettingsColumn(db) {
   const columns = await db.execute("PRAGMA table_info(stores)");
   if (!columns.rows.some((column) => column.name === "settings")) {
     await db.execute("ALTER TABLE stores ADD COLUMN settings TEXT NOT NULL DEFAULT '{}'");
+  }
+}
+
+async function ensureStoreSubscriptionColumn(db) {
+  const columns = await db.execute("PRAGMA table_info(stores)");
+  if (!columns.rows.some((column) => column.name === "subscription_expires_at")) {
+    await db.execute("ALTER TABLE stores ADD COLUMN subscription_expires_at TEXT");
+  }
+  if (!columns.rows.some((column) => column.name === "subscription_trial_started_at")) {
+    await db.execute("ALTER TABLE stores ADD COLUMN subscription_trial_started_at TEXT");
+  }
+  if (!columns.rows.some((column) => column.name === "subscription_plan_type")) {
+    await db.execute("ALTER TABLE stores ADD COLUMN subscription_plan_type TEXT");
+  }
+}
+
+async function ensureSubscriptionOrderDurationColumn(db) {
+  const columns = await db.execute("PRAGMA table_info(subscription_orders)");
+  if (!columns.rows.some((column) => column.name === "duration_days")) {
+    await db.execute("ALTER TABLE subscription_orders ADD COLUMN duration_days INTEGER");
   }
 }
 
@@ -115,7 +144,22 @@ async function database() {
       owner_id TEXT NOT NULL,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     )`,
+    `CREATE TABLE IF NOT EXISTS subscription_orders (
+      id TEXT PRIMARY KEY,
+      store_code TEXT NOT NULL,
+      owner_id TEXT NOT NULL,
+      months INTEGER NOT NULL,
+      amount INTEGER NOT NULL,
+      duration_days INTEGER,
+      status TEXT NOT NULL CHECK(status IN ('pending', 'paid', 'failed')),
+      method TEXT NOT NULL CHECK(method IN ('mercadopago', 'promo')),
+      mp_payment_id TEXT,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      paid_at TEXT
+    )`,
     "CREATE INDEX IF NOT EXISTS bookings_updated ON bookings(updated_at)",
+    "CREATE INDEX IF NOT EXISTS subscription_orders_store ON subscription_orders(store_code, created_at)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS subscription_orders_payment ON subscription_orders(mp_payment_id) WHERE mp_payment_id IS NOT NULL",
     "CREATE INDEX IF NOT EXISTS professionals_updated ON professionals(updated_at)",
   ]).then(() => undefined).catch((error) => {
     schemaReady = undefined;
@@ -124,6 +168,8 @@ async function database() {
   await schemaReady;
   await ensureRoleStoreColumn(db);
   await ensureStoreSettingsColumn(db);
+  await ensureStoreSubscriptionColumn(db);
+  await ensureSubscriptionOrderDurationColumn(db);
   if (!legacyInvitesRemoved) {
     await db.execute("DROP TABLE IF EXISTS admin_invites");
     legacyInvitesRemoved = true;
@@ -160,6 +206,103 @@ function parseBody(body) {
   return body;
 }
 
+function addSubscriptionMonths(dateValue, months) {
+  const date = new Date(dateValue);
+  const day = date.getUTCDate();
+  date.setUTCDate(1);
+  date.setUTCMonth(date.getUTCMonth() + months);
+  const lastDay = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0)).getUTCDate();
+  date.setUTCDate(Math.min(day, lastDay));
+  return date.toISOString();
+}
+
+function addSubscriptionDays(dateValue, days) {
+  const date = new Date(dateValue);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString();
+}
+
+async function activateFreeTrial(db, storeCode) {
+  const startedAt = new Date().toISOString();
+  const expiresAt = addSubscriptionDays(startedAt, FREE_TRIAL_DAYS);
+  await db.execute({
+    sql: `UPDATE stores
+      SET subscription_expires_at = ?, subscription_trial_started_at = ?, subscription_plan_type = 'trial'
+      WHERE code = ? AND subscription_expires_at IS NULL AND subscription_trial_started_at IS NULL`,
+    args: [expiresAt, startedAt, storeCode],
+  });
+}
+
+function isSubscriptionActive(expiresAt) {
+  return typeof expiresAt === "string" && Number.isFinite(Date.parse(expiresAt)) && Date.parse(expiresAt) > Date.now();
+}
+
+async function verifyMercadoPagoPayment(db, paymentId, expectedOwnerId) {
+  if (!/^\d{1,30}$/.test(String(paymentId))) throw new Error("Identificador de pago inválido.");
+  const accessToken = requiredEnv("MERCADOPAGO_ACCESS_TOKEN");
+  const response = await fetch(`https://api.mercadopago.com/v1/payments/${encodeURIComponent(paymentId)}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!response.ok) throw new Error("No se pudo verificar el pago en Mercado Pago.");
+  const payment = await response.json();
+  if (payment.status !== "approved") return { approved: false };
+  if (payment.currency_id !== "ARS") throw new Error("La moneda del pago no coincide con ARS.");
+  const purchaseId = typeof payment.external_reference === "string" ? payment.external_reference : "";
+  if (!purchaseId) throw new Error("El pago no está asociado a una compra de suscripción.");
+
+  const transaction = await db.transaction("write");
+  try {
+    const result = await transaction.execute({
+      sql: "SELECT id, store_code, owner_id, months, duration_days, amount, status FROM subscription_orders WHERE id = ? AND method = 'mercadopago'",
+      args: [purchaseId],
+    });
+    const order = result.rows[0];
+    if (!order) throw new Error("No encontramos la compra de suscripción asociada al pago.");
+    if (expectedOwnerId && String(order.owner_id) !== expectedOwnerId) throw new Error("El pago no corresponde a tu cuenta.");
+    if (Number(payment.transaction_amount) !== Number(order.amount)) throw new Error("El importe pagado no coincide con el plan.");
+    if (order.status === "paid") {
+      const store = await transaction.execute({ sql: "SELECT subscription_expires_at FROM stores WHERE code = ?", args: [String(order.store_code)] });
+      await transaction.commit();
+      return { approved: true, expiresAt: store.rows[0]?.subscription_expires_at ?? null };
+    }
+    if (order.status !== "pending") throw new Error("La compra de suscripción no está pendiente.");
+
+    const storeResult = await transaction.execute({ sql: "SELECT subscription_expires_at FROM stores WHERE code = ?", args: [String(order.store_code)] });
+    if (!storeResult.rows[0]) throw new Error("No encontramos la tienda de esta suscripción.");
+    const currentExpiry = String(storeResult.rows[0].subscription_expires_at ?? "");
+    const startDate = currentExpiry && Date.parse(currentExpiry) > Date.now() ? currentExpiry : new Date().toISOString();
+    const expiresAt = Number(order.duration_days) > 0
+      ? addSubscriptionDays(startDate, Number(order.duration_days))
+      : addSubscriptionMonths(startDate, Number(order.months));
+    await transaction.execute({
+      sql: "UPDATE stores SET subscription_expires_at = ?, subscription_plan_type = 'paid' WHERE code = ?",
+      args: [expiresAt, String(order.store_code)],
+    });
+    await transaction.execute({
+      sql: "UPDATE subscription_orders SET status = 'paid', mp_payment_id = ?, paid_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'pending'",
+      args: [String(payment.id), purchaseId],
+    });
+    await transaction.commit();
+    return { approved: true, expiresAt };
+  } catch (error) {
+    await transaction.rollback().catch(() => undefined);
+    throw error;
+  }
+}
+
+async function verifySubscriptionPurchase(db, purchaseId, expectedOwnerId) {
+  if (typeof purchaseId !== "string" || !/^[a-f0-9]{36}$/.test(purchaseId)) throw new Error("Identificador de compra inválido.");
+  const accessToken = requiredEnv("MERCADOPAGO_ACCESS_TOKEN");
+  const response = await fetch(`https://api.mercadopago.com/v1/payments/search?external_reference=${encodeURIComponent(purchaseId)}&sort=date_created&criteria=desc`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!response.ok) throw new Error("No se pudo consultar el estado del pago en Mercado Pago.");
+  const result = await response.json();
+  const approvedPayment = result.results?.find((payment) => payment.status === "approved");
+  if (!approvedPayment) return { approved: false };
+  return verifyMercadoPagoPayment(db, String(approvedPayment.id), expectedOwnerId);
+}
+
 function recordId(record) {
   return record && typeof record === "object" && !Array.isArray(record)
     && typeof record.id === "string" && record.id.length > 0 && record.id.length <= 200
@@ -167,6 +310,10 @@ function recordId(record) {
 }
 
 async function validateBookingAvailability(db, booking, storeCode, bookingId = "") {
+  const storeResult = await db.execute({ sql: "SELECT subscription_expires_at FROM stores WHERE code = ?", args: [storeCode] });
+  if (!storeResult.rows[0] || !isSubscriptionActive(storeResult.rows[0].subscription_expires_at)) {
+    return "La tienda no tiene un plan activo para aceptar reservas.";
+  }
   const validDate = typeof booking.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(booking.date);
   const parsedDate = validDate ? new Date(`${booking.date}T12:00:00Z`) : null;
   const todayInArgentina = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Argentina/Buenos_Aires" }).format(new Date());
@@ -267,8 +414,12 @@ export default async function handler(request, response) {
         userStoreCode = role === "admin" ? normalizeStoreCode(storedRoleResult.rows[0]?.store_code) : requestedStoreCode;
       }
       if (userStoreCode) {
-        const storeExists = await db.execute({ sql: "SELECT code FROM stores WHERE code = ?", args: [userStoreCode] });
+        const storeExists = await db.execute({ sql: "SELECT code, subscription_expires_at FROM stores WHERE code = ?", args: [userStoreCode] });
         if (!storeExists.rows[0]) return response.status(404).json({ error: "No encontramos esa tienda. Revisá el nombre o código." });
+        if (role === "admin") await activateFreeTrial(db, userStoreCode);
+        if (role !== "admin" && !isSubscriptionActive(storeExists.rows[0].subscription_expires_at)) {
+          return response.status(404).json({ error: "Esta tienda no está disponible para reservas en este momento." });
+        }
       }
       const [bookingRows, professionalRows] = await Promise.all([
         db.execute("SELECT id, value FROM bookings ORDER BY updated_at DESC"),
@@ -297,8 +448,18 @@ export default async function handler(request, response) {
       const professionals = userStoreCode ? professionalRows.rows
         .filter((row) => String(row.id).startsWith(`${userStoreCode}:`))
         .map((row) => ({ ...JSON.parse(String(row.value)), id: String(row.id).slice(userStoreCode.length + 1) })) : [];
-      const storesResult = await db.execute("SELECT code, name, settings FROM stores ORDER BY name COLLATE NOCASE");
-      return response.status(200).json({ data: { bookings, professionals }, role, storeCode: userStoreCode || null, stores: storesResult.rows.map((row) => ({ code: String(row.code), name: String(row.name), settings: parseStoreSettings(row.settings) })) });
+      const storesResult = await db.execute("SELECT code, name, settings, subscription_expires_at, subscription_plan_type FROM stores ORDER BY name COLLATE NOCASE");
+      const stores = storesResult.rows
+        .filter((row) => isSubscriptionActive(row.subscription_expires_at) || (role === "admin" && String(row.code) === userStoreCode))
+        .map((row) => ({
+          code: String(row.code),
+          name: String(row.name),
+          settings: parseStoreSettings(row.settings),
+          subscriptionExpiresAt: row.subscription_expires_at ? String(row.subscription_expires_at) : null,
+          subscriptionActive: isSubscriptionActive(row.subscription_expires_at),
+          subscriptionPlanType: String(row.subscription_plan_type ?? ""),
+        }));
+      return response.status(200).json({ data: { bookings, professionals }, role, storeCode: userStoreCode || null, stores });
     } catch (error) {
       console.error("No se pudieron cargar los turnos y profesionales", error);
       return response.status(500).json({ error: "No se pudieron cargar los datos." });
@@ -312,6 +473,116 @@ export default async function handler(request, response) {
     return response.status(400).json({ error: "El cuerpo JSON no es válido." });
   }
   if (request.method === "POST") {
+    if (!user && body?.action === "mercadopago-subscription-webhook") {
+      try {
+        const result = await verifyMercadoPagoPayment(db, String(body.paymentId ?? ""));
+        return response.status(200).json({ received: true, approved: result.approved });
+      } catch (error) {
+        console.error("No se pudo procesar la notificación de suscripción de Mercado Pago", error);
+        return response.status(200).json({ received: true });
+      }
+    }
+    if (user && body?.action === "create-subscription-checkout") {
+      let orderId;
+      try {
+        if (!user.emailVerified) return response.status(403).json({ error: "Verificá tu email antes de contratar un plan." });
+        const plan = SUBSCRIPTION_PLANS.get(String(body.planId));
+        if (!plan) return response.status(400).json({ error: "Elegí uno de los planes disponibles." });
+        const roleResult = await db.execute({ sql: "SELECT role, store_code FROM account_roles WHERE user_id = ?", args: [user.id] });
+        const storeCode = normalizeStoreCode(roleResult.rows[0]?.store_code);
+        if (roleResult.rows[0]?.role !== "admin" || !storeCode) return response.status(403).json({ error: "Solo el administrador de una tienda puede contratar el plan." });
+        const storeResult = await db.execute({ sql: "SELECT code FROM stores WHERE code = ?", args: [storeCode] });
+        if (!storeResult.rows[0]) return response.status(404).json({ error: "No encontramos tu tienda." });
+        const accessToken = requiredEnv("MERCADOPAGO_ACCESS_TOKEN");
+        const host = request.headers.host || "localhost";
+        const protocol = request.headers["x-forwarded-proto"] || "https";
+        const appUrl = (process.env.PUBLIC_APP_URL || `${protocol}://${host}`).replace(/\/$/, "");
+        orderId = randomBytes(18).toString("hex");
+        await db.execute({
+          sql: "INSERT INTO subscription_orders (id, store_code, owner_id, months, duration_days, amount, status, method) VALUES (?, ?, ?, ?, ?, ?, 'pending', 'mercadopago')",
+          args: [orderId, storeCode, user.id, plan.months, plan.days, plan.amount],
+        });
+        const preferenceResponse = await fetch("https://api.mercadopago.com/checkout/preferences", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            items: [{ id: `subscription-${String(body.planId)}`, title: `Plan de turnos por ${plan.label}`, quantity: 1, currency_id: "ARS", unit_price: plan.amount }],
+            payer: { email: user.email },
+            external_reference: orderId,
+            notification_url: `${appUrl}/api/mercadopago/webhook`,
+            back_urls: {
+              success: `${appUrl}/admin?subscription_payment=success&purchase_id=${orderId}`,
+              failure: `${appUrl}/admin?subscription_payment=failure&purchase_id=${orderId}`,
+              pending: `${appUrl}/admin?subscription_payment=pending&purchase_id=${orderId}`,
+            },
+            auto_return: "approved",
+          }),
+        });
+        const preference = await preferenceResponse.json();
+        if (!preferenceResponse.ok || !preference.init_point) {
+          await db.execute({ sql: "UPDATE subscription_orders SET status = 'failed' WHERE id = ? AND status = 'pending'", args: [orderId] });
+          console.error("Mercado Pago subscription preference failed", preferenceResponse.status);
+          return response.status(502).json({ error: "Mercado Pago no pudo preparar el pago. Revisá la configuración del token." });
+        }
+        return response.status(200).json({ checkoutUrl: preference.init_point, purchaseId: orderId });
+      } catch (error) {
+        if (orderId) await db.execute({ sql: "UPDATE subscription_orders SET status = 'failed' WHERE id = ? AND status = 'pending'", args: [orderId] }).catch(() => undefined);
+        console.error("No se pudo iniciar el pago del plan", error);
+        return response.status(500).json({ error: error instanceof Error ? error.message : "No se pudo iniciar el pago del plan." });
+      }
+    }
+    if (user && body?.action === "redeem-subscription-promo") {
+      try {
+        if (!user.emailVerified) return response.status(403).json({ error: "Verificá tu email antes de activar el plan." });
+        const configuredCode = process.env.CODIGO_PROMO?.trim();
+        if (!configuredCode) return response.status(503).json({ error: "El código promocional no está configurado." });
+        const submittedCode = typeof body.code === "string" ? body.code.trim() : "";
+        if (!submittedCode || submittedCode.toUpperCase() !== configuredCode.toUpperCase()) {
+          return response.status(400).json({ error: "El código promocional no es válido." });
+        }
+        const plan = SUBSCRIPTION_PLANS.get(String(body.planId));
+        if (!plan) return response.status(400).json({ error: "Elegí uno de los planes disponibles." });
+        const roleResult = await db.execute({ sql: "SELECT role, store_code FROM account_roles WHERE user_id = ?", args: [user.id] });
+        const storeCode = normalizeStoreCode(roleResult.rows[0]?.store_code);
+        if (roleResult.rows[0]?.role !== "admin" || !storeCode) return response.status(403).json({ error: "Solo el administrador de una tienda puede canjear el código." });
+        const transaction = await db.transaction("write");
+        try {
+          const store = await transaction.execute({ sql: "SELECT subscription_expires_at FROM stores WHERE code = ?", args: [storeCode] });
+          if (!store.rows[0]) throw new Error("No encontramos tu tienda.");
+          const currentExpiry = String(store.rows[0].subscription_expires_at ?? "");
+          const startDate = currentExpiry && Date.parse(currentExpiry) > Date.now() ? currentExpiry : new Date().toISOString();
+          const expiresAt = plan.days > 0
+            ? addSubscriptionDays(startDate, plan.days)
+            : addSubscriptionMonths(startDate, plan.months);
+          const orderId = randomBytes(18).toString("hex");
+          await transaction.execute({
+            sql: "INSERT INTO subscription_orders (id, store_code, owner_id, months, duration_days, amount, status, method, paid_at) VALUES (?, ?, ?, ?, ?, 0, 'paid', 'promo', CURRENT_TIMESTAMP)",
+            args: [orderId, storeCode, user.id, plan.months, plan.days],
+          });
+          await transaction.execute({ sql: "UPDATE stores SET subscription_expires_at = ?, subscription_plan_type = 'promo' WHERE code = ?", args: [expiresAt, storeCode] });
+          await transaction.commit();
+          return response.status(200).json({ expiresAt, planLabel: plan.label });
+        } catch (error) {
+          await transaction.rollback().catch(() => undefined);
+          throw error;
+        }
+      } catch (error) {
+        console.error("No se pudo canjear el código promocional", error);
+        return response.status(500).json({ error: error instanceof Error ? error.message : "No se pudo activar el plan promocional." });
+      }
+    }
+    if (user && body?.action === "verify-subscription-payment") {
+      try {
+        if (!user.emailVerified) return response.status(403).json({ error: "Verificá tu email antes de comprobar el pago." });
+        const result = body.purchaseId
+          ? await verifySubscriptionPurchase(db, String(body.purchaseId), user.id)
+          : await verifyMercadoPagoPayment(db, String(body.paymentId ?? ""), user.id);
+        return response.status(200).json(result);
+      } catch (error) {
+        console.error("No se pudo verificar el pago del plan", error);
+        return response.status(400).json({ error: error instanceof Error ? error.message : "No se pudo verificar el pago." });
+      }
+    }
     if (user && body?.action === "set-account-role") {
       try {
         if (!user.emailVerified) return response.status(403).json({ error: "Verificá tu email en Kinde antes de configurar el acceso." });
@@ -435,8 +706,9 @@ export default async function handler(request, response) {
     let transaction;
     try {
       const storeCode = normalizeStoreCode(request.headers["x-store-code"]) || DEFAULT_STORE_CODE;
-      const storeResult = await db.execute({ sql: "SELECT code FROM stores WHERE code = ?", args: [storeCode] });
+      const storeResult = await db.execute({ sql: "SELECT code, subscription_expires_at FROM stores WHERE code = ?", args: [storeCode] });
       if (!storeResult.rows[0]) return response.status(404).json({ error: "No encontramos la tienda seleccionada." });
+      if (!isSubscriptionActive(storeResult.rows[0].subscription_expires_at)) return response.status(403).json({ error: "Esta tienda no tiene un plan activo para aceptar reservas." });
       booking.storeCode = storeCode;
       const professionalResult = await db.execute({ sql: "SELECT value FROM professionals WHERE id = ?", args: [storedRecordId(storeCode, booking.barberId)] });
       if (!professionalResult.rows[0]) return response.status(400).json({ error: "El profesional elegido ya no está disponible." });

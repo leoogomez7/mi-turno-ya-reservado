@@ -1,8 +1,8 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useLocation } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { format, isToday, isThisWeek, isThisMonth, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
-import { BarChart3, Calendar, Check, Clock, Scissors, Trash2, TrendingUp, Users, X } from "lucide-react";
+import { BarChart3, Calendar, Check, Clock, CreditCard, Scissors, Trash2, TrendingUp, Users, X } from "lucide-react";
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip, TooltipProps } from "recharts";
 
 import { SiteHeader } from "@/components/site-header";
@@ -15,7 +15,7 @@ import { professionalStore, getProfessional, getProfessionalService, getAvailabl
 import { toast } from "sonner";
 import { AuthRequired } from "@/components/auth-required";
 import { useAppAuth } from "@/lib/auth";
-import { getCurrentStoreCode } from "@/lib/cloud-sync";
+import { bootstrapCloudData, createSubscriptionCheckout, getAvailableStores, getCurrentStoreCode, redeemSubscriptionPromo, verifySubscriptionPayment, type Store } from "@/lib/cloud-sync";
 import { LoadingScreen } from "@/components/loading-screen";
 
 export const Route = createFileRoute("/admin")({
@@ -23,9 +23,26 @@ export const Route = createFileRoute("/admin")({
   component: AdminPage,
 });
 
+const SUBSCRIPTION_PLANS = [
+  { id: "15d", label: "15 días", amount: 5999 },
+  { id: "1m", label: "1 mes", amount: 9999 },
+  { id: "2m", label: "2 meses", amount: 14999 },
+  { id: "3m", label: "3 meses", amount: 19999 },
+  { id: "4m", label: "4 meses", amount: 25999 },
+  { id: "6m", label: "6 meses", amount: 36999 },
+] as const;
+
 function AdminPage() {
-  const { isAuthenticated, isLoading, role } = useAppAuth();
+  const { isAuthenticated, isLoading, role, getIdToken, user } = useAppAuth();
+  const location = useLocation();
   const [bookings, setBookings] = useState<Booking[]>([]);
+  const [storeInfo, setStoreInfo] = useState<Store | undefined>(() => getAvailableStores().find((store) => store.code === getCurrentStoreCode()));
+  const [selectedPlanId, setSelectedPlanId] = useState<string>("15d");
+  const [promoCode, setPromoCode] = useState("");
+  const [currentTime, setCurrentTime] = useState(Date.now());
+  const [subscriptionBusy, setSubscriptionBusy] = useState(false);
+  const [paymentNotice, setPaymentNotice] = useState("");
+  const [pendingPurchaseId, setPendingPurchaseId] = useState("");
   const [bookingEditDialogOpen, setBookingEditDialogOpen] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
   const [editMode, setEditMode] = useState<"attendance" | "confirmation" | "turno" | null>(null);
@@ -42,6 +59,56 @@ function AdminPage() {
   }, []);
 
   useEffect(() => {
+    const update = () => setStoreInfo(getAvailableStores().find((store) => store.code === getCurrentStoreCode()));
+    update();
+    window.addEventListener("mi-turno-ya:cloud-ready", update);
+    window.addEventListener("mi-turno-ya:store-changed", update);
+    return () => {
+      window.removeEventListener("mi-turno-ya:cloud-ready", update);
+      window.removeEventListener("mi-turno-ya:store-changed", update);
+    };
+  }, []);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => setCurrentTime(Date.now()), 60_000);
+    return () => window.clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.searchStr);
+    const status = params.get("subscription_payment");
+    const purchaseId = params.get("purchase_id");
+    if (!status || !purchaseId) return;
+    let cancelled = false;
+    setPendingPurchaseId(purchaseId);
+    setSubscriptionBusy(true);
+    if (status !== "success") {
+      setPaymentNotice(status === "pending" ? "El pago está pendiente. La tienda se activará cuando Mercado Pago lo apruebe." : "El pago no se completó. La tienda sigue sin activar.");
+      setSubscriptionBusy(false);
+      return;
+    }
+    void verifySubscriptionPayment(purchaseId)
+      .then(async (result) => {
+        if (cancelled) return;
+        if (!result.approved) {
+          setPaymentNotice("Mercado Pago todavía no confirmó el pago. Podés comprobarlo nuevamente en unos instantes.");
+          return;
+        }
+        await bootstrapCloudData(user?.email ?? "", getIdToken);
+        if (cancelled) return;
+        setPendingPurchaseId("");
+        setStoreInfo(getAvailableStores().find((store) => store.code === getCurrentStoreCode()));
+        setPaymentNotice("Pago aprobado. Tu plan está activo.");
+        toast.success("Pago aprobado; el sistema de turnos quedó activo.");
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) setPaymentNotice(error instanceof Error ? error.message : "No se pudo verificar el pago.");
+      })
+      .finally(() => { if (!cancelled) setSubscriptionBusy(false); });
+    return () => { cancelled = true; };
+  }, [getIdToken, location.searchStr, user?.email]);
+
+  useEffect(() => {
     if (!selectedBooking) return;
     setEditedDate(selectedBooking.date);
     setEditedTime(selectedBooking.time);
@@ -50,6 +117,11 @@ function AdminPage() {
   }, [selectedBooking]);
 
   const stats = useMemo(() => computeStats(bookings), [bookings]);
+  const selectedPlan = SUBSCRIPTION_PLANS.find((plan) => plan.id === selectedPlanId) ?? SUBSCRIPTION_PLANS[0];
+  const subscriptionIsActive = Boolean(storeInfo?.subscriptionExpiresAt && Date.parse(storeInfo.subscriptionExpiresAt) > currentTime);
+  const subscriptionDaysRemaining = storeInfo?.subscriptionExpiresAt
+    ? Math.ceil((Date.parse(storeInfo.subscriptionExpiresAt) - currentTime) / 86_400_000)
+    : null;
   const professionals = professionalStore.all();
   const editedProfessional = professionals.find((p) => p.id === editedProfessionalId) ?? professionals[0];
   const availableSlotsForDate = useMemo(() => {
@@ -134,6 +206,56 @@ function AdminPage() {
     }
   }
 
+  async function startSubscriptionCheckout() {
+    setSubscriptionBusy(true);
+    setPaymentNotice("");
+    try {
+      const checkout = await createSubscriptionCheckout(selectedPlanId);
+      window.location.assign(checkout.checkoutUrl);
+    } catch (error) {
+      setPaymentNotice(error instanceof Error ? error.message : "No se pudo iniciar el pago del plan.");
+      setSubscriptionBusy(false);
+    }
+  }
+
+  async function applyPromoCode() {
+    setSubscriptionBusy(true);
+    setPaymentNotice("");
+    try {
+      const result = await redeemSubscriptionPromo(promoCode, selectedPlanId);
+      await bootstrapCloudData(user?.email ?? "", getIdToken);
+      setStoreInfo(getAvailableStores().find((store) => store.code === getCurrentStoreCode()));
+      setPromoCode("");
+      setPaymentNotice(`Cupón aplicado: ${result.planLabel} gratis, hasta ${format(new Date(result.expiresAt), "d 'de' MMMM yyyy", { locale: es })}.`);
+      toast.success("Cupón aplicado y plan activado.");
+    } catch (error) {
+      setPaymentNotice(error instanceof Error ? error.message : "No se pudo aplicar el cupón.");
+    } finally {
+      setSubscriptionBusy(false);
+    }
+  }
+
+  async function retrySubscriptionVerification() {
+    if (!pendingPurchaseId) return;
+    setSubscriptionBusy(true);
+    try {
+      const result = await verifySubscriptionPayment(pendingPurchaseId);
+      if (!result.approved) {
+        setPaymentNotice("Mercado Pago todavía no confirmó el pago. Esperá un momento e intentá verificar otra vez.");
+        return;
+      }
+      await bootstrapCloudData(user?.email ?? "", getIdToken);
+      setStoreInfo(getAvailableStores().find((store) => store.code === getCurrentStoreCode()));
+      setPendingPurchaseId("");
+      setPaymentNotice("Pago aprobado. Tu plan está activo.");
+      toast.success("Pago aprobado; el sistema de turnos quedó activo.");
+    } catch (error) {
+      setPaymentNotice(error instanceof Error ? error.message : "No se pudo verificar el pago.");
+    } finally {
+      setSubscriptionBusy(false);
+    }
+  }
+
   async function confirmPayment(id: string) {
     try {
       await bookingStore.update(id, { status: "confirmed" });
@@ -154,6 +276,58 @@ function AdminPage() {
             <p className="mt-2 text-sm text-muted-foreground">Tienda: <span className="font-semibold text-gold">{getCurrentStoreCode()}</span></p>
           </div>
         </div>
+
+        <section className="mb-8 rounded-3xl border border-gold/30 bg-card p-6">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <p className="text-xs uppercase tracking-widest text-gold">Suscripción del sistema de turnos</p>
+              <h2 className="mt-1 font-display text-2xl font-semibold">{subscriptionIsActive ? "Plan activo" : "Plan inactivo"}</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {subscriptionIsActive && storeInfo?.subscriptionExpiresAt
+                  ? `Activo hasta ${format(new Date(storeInfo.subscriptionExpiresAt), "d 'de' MMMM yyyy", { locale: es })}.` 
+                  : "La tienda no aparece en las búsquedas y no acepta reservas hasta activar un plan."}
+              </p>
+              {storeInfo?.subscriptionPlanType === "trial" && subscriptionIsActive && (
+                <p className="mt-2 text-sm font-medium text-gold">Estás usando tu prueba gratuita de 4 días. Elegí un paquete antes de que venza para continuar.</p>
+              )}
+              {storeInfo?.subscriptionExpiresAt && subscriptionDaysRemaining !== null && subscriptionDaysRemaining > 0 && subscriptionDaysRemaining <= 3 && (
+                <p role="alert" className="mt-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-200">
+                  Tu plan vence {subscriptionDaysRemaining === 1 ? "dentro de 1 día" : `dentro de ${subscriptionDaysRemaining} días`}. Recordá elegir y pagar un plan manualmente para mantener activa la tienda.
+                </p>
+              )}
+              {storeInfo?.subscriptionExpiresAt && subscriptionDaysRemaining !== null && subscriptionDaysRemaining <= 0 && (
+                <p role="alert" className="mt-3 rounded-lg border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
+                  Tu plan venció el {format(new Date(storeInfo.subscriptionExpiresAt), "d 'de' MMMM yyyy", { locale: es })}. La tienda dejó de aparecer en las búsquedas y no puede recibir reservas hasta que pagues un nuevo plan.
+                </p>
+              )}
+              <p className="mt-2 text-xs text-muted-foreground">El plan es prepago y no se renueva ni cobra automáticamente. El sistema te avisa aquí cuando falten 3 días para el vencimiento.</p>
+            </div>
+            <CreditCard className="h-7 w-7 text-gold" />
+          </div>
+          <div className="mt-5 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {SUBSCRIPTION_PLANS.map((plan) => (
+              <button key={plan.id} type="button" onClick={() => setSelectedPlanId(plan.id)} className={`rounded-xl border p-3 text-left transition ${selectedPlanId === plan.id ? "border-gold bg-gold/10" : "border-border bg-background hover:border-gold/50"}`}>
+                <span className="block font-semibold">{plan.label}</span>
+                <span className="text-sm text-muted-foreground">${plan.amount.toLocaleString("es-AR")}</span>
+              </button>
+            ))}
+          </div>
+          <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+            <Button disabled={subscriptionBusy} onClick={() => void startSubscriptionCheckout()} className="bg-gold text-primary-foreground hover:bg-gold-soft">
+              {subscriptionBusy ? "Procesando…" : `Pagar $${selectedPlan.amount.toLocaleString("es-AR")} con Mercado Pago`}
+            </Button>
+            <input className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm" value={promoCode} onChange={(event) => setPromoCode(event.target.value.toUpperCase())} placeholder="Código promocional" aria-label="Código promocional" />
+            <Button type="button" variant="outline" disabled={subscriptionBusy || !promoCode.trim()} onClick={() => void applyPromoCode()}>
+              Aplicar cupón (100% OFF)
+            </Button>
+          </div>
+          {paymentNotice && (
+            <div role="status" className="mt-3 rounded-lg border border-border bg-background p-3 text-sm">
+              <p>{paymentNotice}</p>
+              {pendingPurchaseId && <Button type="button" variant="outline" size="sm" className="mt-2" disabled={subscriptionBusy} onClick={() => void retrySubscriptionVerification()}>Verificar pago</Button>}
+            </div>
+          )}
+        </section>
 
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Stat icon={TrendingUp} label="Profesional con más atención" value={`${stats.topBarber.name} · ${stats.topBarber.count}`} />
