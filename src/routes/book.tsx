@@ -121,8 +121,17 @@ export function BookPage() {
 
   useEffect(() => {
     const pathStep = stepForPath(location.pathname);
-    if (pathStep !== undefined) setStep(Number(pathStep));
-  }, [location.pathname]);
+    if (pathStep === undefined) return;
+    if (Number(pathStep) > 0 && !selectedStoreCode) {
+      const message = "Elegí una tienda para poder continuar con la reserva.";
+      setStep(0);
+      setStepError(message);
+      setStorePickerOpen(true);
+      navigate({ to: "/reserva" });
+      return;
+    }
+    setStep(Number(pathStep));
+  }, [location.pathname, navigate, selectedStoreCode]);
 
   function goToStep(nextStep: number) {
     const safeStep = Math.max(0, Math.min(STEPS.length - 1, nextStep));
@@ -263,6 +272,14 @@ Notas: ${customer.notes || "Ninguna"}`;
   }
 
   function handleContinue() {
+    if (!selectedStoreCode) {
+      const message = "Elegí una tienda para poder continuar con la reserva.";
+      setStepError(message);
+      setStorePickerOpen(true);
+      toast.error(message);
+      return;
+    }
+
     if (!canNext) {
       let message = "Completá los datos antes de continuar.";
 
@@ -296,14 +313,31 @@ Notas: ${customer.notes || "Ninguna"}`;
     <div className="min-h-screen bg-gradient-dark">
       <SiteHeader />
       <main className="mx-auto flex min-h-[calc(100svh-56px)] w-full max-w-4xl flex-col justify-center px-4 py-4 sm:px-6 md:py-5">
-        <section className="mb-4 rounded-2xl border border-gold/30 bg-card/70 p-4 sm:p-5">
+        <section
+          className={cn(
+            "mb-4 rounded-2xl border border-gold/30 bg-card/70 p-4 sm:p-5",
+            !selectedStoreCode && "cursor-pointer transition-colors hover:bg-gold/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold",
+          )}
+          role={!selectedStoreCode ? "button" : undefined}
+          tabIndex={!selectedStoreCode ? 0 : undefined}
+          aria-label={!selectedStoreCode ? "Buscar tienda para reservar" : undefined}
+          onClick={() => {
+            if (!selectedStoreCode) setStorePickerOpen(true);
+          }}
+          onKeyDown={(event) => {
+            if (!selectedStoreCode && (event.key === "Enter" || event.key === " ")) {
+              event.preventDefault();
+              setStorePickerOpen(true);
+            }
+          }}
+        >
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
               <p className="text-xs uppercase tracking-widest text-gold">{selectedStoreCode ? "Tienda seleccionada" : "Antes de reservar"}</p>
               <h2 className="mt-1 font-display text-xl font-semibold">
                 {selectedStoreCode
                   ? stores.find((store) => store.code === selectedStoreCode)?.name ?? selectedStoreCode
-                  : "Seleccioná una tienda"}
+                  : "Seleccioná una tienda · Tocá aquí para buscar"}
               </h2>
             </div>
             <div className="flex items-center gap-3">
