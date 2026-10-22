@@ -10,6 +10,7 @@ import { professionalStore, type Professional, type ProfessionalService } from "
 import { AuthRequired } from "@/components/auth-required";
 import { useAppAuth } from "@/lib/auth";
 import { createStore, createStoreAdminInvite, getCurrentStoreCode } from "@/lib/cloud-sync";
+import { LoadingScreen } from "@/components/loading-screen";
 
 const defaultFormState: Partial<Professional> = {
   name: "",
@@ -214,7 +215,7 @@ export function ProfessionalsManager() {
     setForm({ ...form, services });
   }
 
-  if (isLoading) return <div className="min-h-screen bg-gradient-dark" />;
+  if (isLoading) return <LoadingScreen message="Preparando tus profesionales" />;
   if (!isAuthenticated || role !== "admin") return <><SiteHeader /><AuthRequired role="admin" title="Profesionales" /></>;
 
   return (

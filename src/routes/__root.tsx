@@ -10,8 +10,10 @@ import {
 import { useEffect, useState, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
+import logo from "../../logo.png";
 import { reportAppError } from "../lib/error-reporting";
 import { Toaster } from "@/components/ui/sonner";
+import { LoadingScreen } from "@/components/loading-screen";
 import { toast } from "sonner";
 import { AuthProvider, useAppAuth, type AccountRole } from "@/lib/auth";
 import { bootstrapCloudData, clearCloudSession } from "@/lib/cloud-sync";
@@ -81,12 +83,12 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Mi Turno Ya" },
+      { title: "Mi Turno Ya Reservado" },
       { name: "description", content: "Sistema de reservas para rubros profesionales. Elegí rubro, servicio y horario en segundos." },
-      { property: "og:title", content: "Mi Turno Ya" },
+      { property: "og:title", content: "Mi Turno Ya Reservado" },
       { property: "og:description", content: "Sistema de reservas para rubros profesionales. Elegí rubro, servicio y horario en segundos." },
       { property: "og:type", content: "website" },
-      { name: "twitter:title", content: "Mi Turno Ya" },
+      { name: "twitter:title", content: "Mi Turno Ya Reservado" },
       { name: "twitter:description", content: "Sistema de reservas para rubros profesionales. Elegí rubro, servicio y horario en segundos." },
       { name: "twitter:card", content: "summary_large_image" },
     ],
@@ -94,8 +96,9 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       {
         rel: "icon",
         type: "image/png",
-        href: "/logo.png",
+        href: logo,
       },
+      { rel: "apple-touch-icon", type: "image/png", href: logo },
       {
         rel: "stylesheet",
         href: appCss,
@@ -193,12 +196,10 @@ function CloudDataBootstrap({ children }: { children: ReactNode }) {
   if (ready) return <>{children}</>;
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-dark px-4">
-      <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 text-center">
-        <p className="text-lg font-semibold">{error ? "No se pudieron cargar tus datos" : "Conectando con tu cuenta"}</p>
-        <p className="mt-2 text-sm text-muted-foreground">{error || "Sincronizando turnos y profesionales."}</p>
-        {error && <button type="button" className="mt-4 rounded-lg bg-gold px-4 py-2 text-sm font-medium text-black" onClick={() => setAttempt((value) => value + 1)}>Reintentar</button>}
-      </div>
-    </div>
+    <LoadingScreen
+      message={error ? undefined : "Sincronizando turnos y profesionales"}
+      error={error || undefined}
+      onRetry={error ? () => setAttempt((value) => value + 1) : undefined}
+    />
   );
 }

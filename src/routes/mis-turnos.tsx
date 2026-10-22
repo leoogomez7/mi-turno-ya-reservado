@@ -10,6 +10,7 @@ import { useAppAuth } from "@/lib/auth";
 import { bookingStore, type Booking } from "@/lib/booking-store";
 import { getProfessional, getProfessionalService } from "@/lib/professional-store";
 import { toast } from "sonner";
+import { LoadingScreen } from "@/components/loading-screen";
 
 export const Route = createFileRoute("/mis-turnos")({
   head: () => ({ meta: [{ title: "Mis turnos" }] }),
@@ -30,7 +31,7 @@ function MyBookingsPage() {
     return () => window.removeEventListener("bookings:changed", reload);
   }, [user?.email]);
 
-  if (isLoading) return <div className="min-h-screen bg-gradient-dark" />;
+  if (isLoading) return <LoadingScreen message="Buscando tus turnos" />;
   if (!isAuthenticated || role !== "client") return <><SiteHeader /><AuthRequired role="client" title="Mis turnos" /></>;
 
   return (

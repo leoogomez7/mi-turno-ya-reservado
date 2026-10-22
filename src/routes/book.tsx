@@ -49,8 +49,8 @@ function stepForPath(pathname: string) {
 }
 
 export function BookPage() {
-  const { isAuthenticated, role, user } = useAppAuth();
   const auth = useAppAuth();
+  const { isAuthenticated, role, user } = auth;
   const location = useLocation();
   const initialStep = stepForPath(location.pathname) ?? 0;
   const [step, setStep] = useState<number>(Number(initialStep));
@@ -60,20 +60,23 @@ export function BookPage() {
   const [paymentLoading, setPaymentLoading] = useState(false);
   const [paymentUrl, setPaymentUrl] = useState<string | null>(null);
   const [paymentError, setPaymentError] = useState<string | null>(null);
+  const [stores, setStores] = useState<Store[]>(getAvailableStores());
+  const [selectedStoreCode, setSelectedStoreCode] = useState(getCurrentStoreCode());
+  const [storePickerOpen, setStorePickerOpen] = useState(true);
+  const [storeSearch, setStoreSearch] = useState("");
+  const [storeSearchSubmitted, setStoreSearchSubmitted] = useState(false);
+  const [storeNotFound, setStoreNotFound] = useState(false);
+  const [storeLoading, setStoreLoading] = useState(false);
   const navigate = useNavigate();
   const paymentReturn = new URLSearchParams(location.searchStr).get("payment");
 
   const [customer, setCustomer] = useState<Customer>({
     fullName: "", phone: "", email: "", birthday: "", paymentMethod: "efectivo", notes: "", hairType: undefined,
   });
-  const [barberId, setBarberId] = useState<string>("");
+  const [barberId, setBarberId] = useState("");
   const [serviceIds, setServiceIds] = useState<string[]>([]);
   const [date, setDate] = useState<Date | null>(null);
-  const [time, setTime] = useState<string>("");
-  const [stores, setStores] = useState<Store[]>(getAvailableStores());
-  const [selectedStoreCode, setSelectedStoreCode] = useState(getCurrentStoreCode());
-  const [storeSearch, setStoreSearch] = useState("");
-  const [storeLoading, setStoreLoading] = useState(false);
+  const [time, setTime] = useState("");
 
   useEffect(() => {
     if (role === "client" && user?.email) {
@@ -131,11 +134,16 @@ export function BookPage() {
   const matchingStores = stores.filter((store) => `${store.name} ${store.code}`.toLowerCase().includes(storeSearch.trim().toLowerCase()));
 
   async function chooseStore(store: Store) {
-    if (store.code === selectedStoreCode) return;
     setStoreLoading(true);
     try {
-      await selectStore(store.code, user?.email ?? "guest", auth.getIdToken, role ?? undefined);
+      if (store.code !== selectedStoreCode) {
+        await selectStore(store.code, user?.email ?? "guest", auth.getIdToken, role ?? undefined);
+      }
       setSelectedStoreCode(store.code);
+      setStorePickerOpen(false);
+      setStoreNotFound(false);
+      setStoreSearchSubmitted(false);
+      setStoreSearch("");
       setBarberId("");
       setServiceIds([]);
       setDate(null);
@@ -326,21 +334,63 @@ Notas: ${customer.notes || "Ninguna"}`;
         <section className="mb-4 rounded-2xl border border-gold/30 bg-card/70 p-4 sm:p-5">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
-              <p className="text-xs uppercase tracking-widest text-gold">Reservar en</p>
-              <h2 className="mt-1 font-display text-xl font-semibold">Elegí una tienda</h2>
+              <p className="text-xs uppercase tracking-widest text-gold">Tienda seleccionada</p>
+              <h2 className="mt-1 font-display text-xl font-semibold">
+                {stores.find((store) => store.code === selectedStoreCode)?.name ?? (selectedStoreCode === "GENERAL" ? "Mi Turno Ya" : selectedStoreCode)}
+              </h2>
             </div>
-            <p className="text-xs text-muted-foreground">Código: {selectedStoreCode}</p>
-          </div>
-          <Input className="mt-3" value={storeSearch} onChange={(event) => setStoreSearch(event.target.value)} placeholder="Buscar por nombre o ingresar código de tienda" />
-          <div className="mt-3 flex flex-wrap gap-2">
-            {matchingStores.map((store) => (
-              <Button key={store.code} type="button" size="sm" disabled={storeLoading} variant={store.code === selectedStoreCode ? "default" : "outline"} className={store.code === selectedStoreCode ? "bg-gold text-primary-foreground hover:bg-gold-soft" : ""} onClick={() => void chooseStore(store)}>
-                {store.name} · {store.code}
-              </Button>
-            ))}
-            {matchingStores.length === 0 && <p className="text-sm text-muted-foreground">No encontramos tiendas con ese nombre o código.</p>}
+            <div className="flex items-center gap-3">
+              <p className="text-xs text-muted-foreground">Código: {selectedStoreCode}</p>
+              <Button type="button" size="sm" variant="outline" onClick={() => setStorePickerOpen(true)}>Cambiar tienda</Button>
+            </div>
           </div>
         </section>
+        <Dialog open={storePickerOpen} onOpenChange={setStorePickerOpen}>
+          <DialogContent className="max-h-[85vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="font-display text-2xl">Elegí una tienda</DialogTitle>
+              <DialogDescription>Buscá por nombre o código. Al seleccionarla, se abre el formulario de reserva.</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3">
+              <Input
+                autoFocus
+                value={storeSearch}
+                onChange={(event) => {
+                  setStoreSearch(event.target.value);
+                  setStoreNotFound(false);
+                  setStoreSearchSubmitted(false);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    setStoreSearchSubmitted(true);
+                    setStoreNotFound(matchingStores.length === 0);
+                    if (matchingStores.length === 1) void chooseStore(matchingStores[0]);
+                  }
+                }}
+                placeholder="Nombre o código de tienda"
+              />
+              <Button type="button" disabled={storeLoading || !storeSearch.trim()} className="w-full bg-gold text-primary-foreground hover:bg-gold-soft" onClick={() => {
+                setStoreSearchSubmitted(true);
+                setStoreNotFound(matchingStores.length === 0);
+                if (matchingStores.length === 1) void chooseStore(matchingStores[0]);
+              }}>
+                {storeLoading ? "Cargando tienda…" : "Buscar tienda"}
+              </Button>
+              {storeSearchSubmitted && matchingStores.length > 0 && (
+                <div className="max-h-64 space-y-2 overflow-y-auto">
+                  {matchingStores.map((store) => (
+                    <button key={store.code} type="button" disabled={storeLoading} onClick={() => void chooseStore(store)} className="flex w-full items-center justify-between rounded-xl border border-border bg-card px-4 py-3 text-left transition hover:border-gold/60 hover:bg-gold/5">
+                      <span className="font-medium">{store.name}</span>
+                      <span className="text-sm text-muted-foreground">{store.code}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              {storeSearchSubmitted && storeNotFound && <p role="status" className="rounded-lg border border-border p-3 text-sm text-muted-foreground">No encontramos tiendas con ese nombre o código.</p>}
+            </div>
+          </DialogContent>
+        </Dialog>
         {paymentReturn && (
           <div role="status" className="mb-4 rounded-xl border border-gold/30 bg-gold/10 px-4 py-3 text-sm text-foreground">
             {paymentReturn === "success"

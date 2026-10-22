@@ -17,6 +17,7 @@ import { toast } from "sonner";
 import { AuthRequired } from "@/components/auth-required";
 import { useAppAuth } from "@/lib/auth";
 import { getCurrentStoreCode } from "@/lib/cloud-sync";
+import { LoadingScreen } from "@/components/loading-screen";
 
 export const Route = createFileRoute("/admin")({
   head: () => ({ meta: [{ title: "Panel" }] }),
@@ -57,7 +58,7 @@ function AdminPage() {
     return getAvailableSlotsForDate(editedProfessional, new Date(editedDate));
   }, [editedProfessional, editedDate]);
 
-  if (isLoading) return <div className="min-h-screen bg-gradient-dark" />;
+  if (isLoading) return <LoadingScreen message="Preparando tu agenda" />;
   if (!isAuthenticated || role !== "admin") return <><SiteHeader /><AuthRequired role="admin" title="Administración" /></>;
 
   function openBookingDialog(booking: Booking, mode: "attendance" | "confirmation" | "turno") {

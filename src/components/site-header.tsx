@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { Menu, X } from "lucide-react";
+import logo from "../../logo.png";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AUTH_CONFIGURED } from "@/lib/env";
@@ -24,8 +25,10 @@ export function SiteHeader() {
     <header className="sticky top-0 z-40 border-b border-border/60 bg-background/80 backdrop-blur-xl">
       <div className="relative flex w-full flex-wrap items-center justify-between gap-2 px-3 py-2.5 md:px-4 lg:px-5">
         <Link to="/reserva" className="flex items-center gap-2">
-          <img src="/logo.png" alt="Mi Turno Ya Reservado" className="h-10 w-10 rounded-full object-cover" />
-          <span className="font-display text-lg font-semibold tracking-tight">Mi Turno Ya</span>
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full border border-gold/30 bg-black">
+            <img src={logo} alt="Mi Turno Ya Reservado" className="h-full w-full object-contain object-center" />
+          </span>
+          <span className="font-display text-lg font-semibold tracking-tight">Mi Turno Ya Reservado</span>
         </Link>
 
         <nav className="hidden items-center justify-end gap-1 text-sm md:flex">
