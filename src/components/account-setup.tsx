@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { LoadingScreen } from "@/components/loading-screen";
 import { useAppAuth, type AccountRole } from "@/lib/auth";
 import { saveAccountRole } from "@/lib/cloud-sync";
@@ -8,8 +7,6 @@ import { saveAccountRole } from "@/lib/cloud-sync";
 export function AccountSetup({ onComplete }: { onComplete: (role: AccountRole) => void }) {
   const { user } = useAppAuth();
   const [role, setRole] = useState<AccountRole>("client");
-  const [storeCode, setStoreCode] = useState("");
-  const [inviteCode, setInviteCode] = useState("");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -17,7 +14,7 @@ export function AccountSetup({ onComplete }: { onComplete: (role: AccountRole) =
     setSaving(true);
     setError("");
     try {
-      await saveAccountRole(role, inviteCode, storeCode);
+      await saveAccountRole(role);
       onComplete(role);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "No se pudo guardar tu cuenta en la base de datos.");
@@ -42,19 +39,12 @@ export function AccountSetup({ onComplete }: { onComplete: (role: AccountRole) =
           </select>
         </label>
         {role === "admin" && (
-          <div className="mt-4 space-y-3">
-            <label className="block text-sm text-muted-foreground">
-              Código de la tienda
-              <Input className="mt-2" value={storeCode} maxLength={20} onChange={(event) => setStoreCode(event.target.value.toUpperCase().replace(/[^A-Z0-9_-]/g, ""))} placeholder="Ej.: GENERAL o código de tu tienda" />
-            </label>
-            <label className="block text-sm text-muted-foreground">
-              Código de invitación admin
-              <Input className="mt-2" type="password" value={inviteCode} onChange={(event) => setInviteCode(event.target.value)} placeholder="Código entregado por el propietario" />
-            </label>
-          </div>
+          <p className="mt-4 rounded-lg border border-gold/20 bg-gold/5 p-3 text-sm text-muted-foreground">
+            Cualquier cuenta verificada puede elegir este rol. Se creará una tienda propia y aislada, con un código único para compartir con tus clientes; no tendrás acceso a otras tiendas.
+          </p>
         )}
         {error && <p role="alert" className="mt-4 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">{error}</p>}
-        <Button className="mt-6 w-full bg-gold text-primary-foreground hover:bg-gold-soft" disabled={role === "admin" && (!storeCode.trim() || !inviteCode.trim())} onClick={() => void saveRole()}>
+        <Button className="mt-6 w-full bg-gold text-primary-foreground hover:bg-gold-soft" disabled={saving} onClick={() => void saveRole()}>
           Guardar en la base de datos
         </Button>
       </section>

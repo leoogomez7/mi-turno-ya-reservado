@@ -9,7 +9,7 @@ import { toast } from "sonner";
 import { professionalStore, type Professional, type ProfessionalService } from "@/lib/professional-store";
 import { AuthRequired } from "@/components/auth-required";
 import { useAppAuth } from "@/lib/auth";
-import { createStore, createStoreAdminInvite, getAvailableStores, getCurrentStoreCode, updateStoreSettings, type StoreSettings } from "@/lib/cloud-sync";
+import { createStore, getAvailableStores, getCurrentStoreCode, updateStoreSettings, type StoreSettings } from "@/lib/cloud-sync";
 import { LoadingScreen } from "@/components/loading-screen";
 
 const defaultFormState: Partial<Professional> = {
@@ -43,9 +43,6 @@ export function ProfessionalsManager() {
   const [currentStoreCode, setCurrentStoreCode] = useState(getCurrentStoreCode());
   const [storeSettings, setStoreSettings] = useState<StoreSettings>(emptyStoreSettings);
   const [savingSettings, setSavingSettings] = useState(false);
-  const [inviteCode, setInviteCode] = useState("");
-  const [creatingInvite, setCreatingInvite] = useState(false);
-
   const [viewDialogOpen, setViewDialogOpen] = useState(false);
   const [viewMode, setViewMode] = useState<"schedule" | "services">("schedule");
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
@@ -176,19 +173,6 @@ export function ProfessionalsManager() {
     }
   }
 
-  async function generateAdminInvite() {
-    setCreatingInvite(true);
-    try {
-      const invite = await createStoreAdminInvite();
-      setInviteCode(invite.code);
-      toast.success(`Código de invitación creado para ${invite.storeCode}.`);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "No se pudo generar el código.");
-    } finally {
-      setCreatingInvite(false);
-    }
-  }
-
   async function deleteProfessional(id: string) {
     try {
       await professionalStore.remove(id);
@@ -292,18 +276,6 @@ export function ProfessionalsManager() {
               </Button>
             </div>
             <p className="mt-3 text-xs text-muted-foreground">El código debe tener entre 3 y 20 caracteres (letras, números, guion o guion bajo) y no puede repetirse. Compartilo con tus clientes para que encuentren tu tienda al reservar.</p>
-            {currentStoreCode !== "GENERAL" && (
-              <div className="mt-5 border-t border-border pt-4">
-                <div className="flex flex-wrap items-center gap-3">
-                  <Button type="button" variant="outline" disabled={creatingInvite} onClick={() => void generateAdminInvite()}>
-                    {creatingInvite ? "Generando…" : "Invitar otro administrador"}
-                  </Button>
-                  {inviteCode && <code className="rounded-lg border border-border bg-background px-3 py-2 text-sm">{inviteCode}</code>}
-                  {inviteCode && <Button type="button" size="sm" variant="ghost" onClick={() => void navigator.clipboard.writeText(inviteCode).then(() => toast.success("Código copiado."))}>Copiar</Button>}
-                </div>
-                <p className="mt-2 text-xs text-muted-foreground">El código permite asociar una cuenta admin con esta tienda. Compartilo de manera privada.</p>
-              </div>
-            )}
           </section>
 
           <section className="rounded-3xl border border-border bg-card p-6">

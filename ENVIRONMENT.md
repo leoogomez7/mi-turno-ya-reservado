@@ -16,25 +16,24 @@ No subir `.env.local` ni compartir valores privados. Los campos con prefijo `VIT
 
 | Variable | Uso | Dónde se configura |
 | --- | --- | --- |
-| `VITE_KINDE_DOMAIN` | Dominio público del tenant Kinde para el SDK web | `.env.local` y Vercel |
-| `VITE_KINDE_CLIENT_ID` | Client ID público de la aplicación Kinde | `.env.local` y Vercel |
-| `VITE_KINDE_ORG_CODE` | Organización Kinde opcional | `.env.local` y Vercel |
-| `VITE_KINDE_CONNECTION_ID` | Conexión de email opcional de Kinde | `.env.local` y Vercel |
+| `DOMAIN_USER` | Dominio público del tenant Kinde para el SDK web | `.env.local` y Vercel |
+| `AUTH_USER` | Client ID público de la aplicación Kinde | `.env.local` y Vercel |
+| `ORG_CODE` | Organización Kinde opcional | `.env.local` y Vercel |
+| `AUTH_CONNECTION_ID` | Conexión de email opcional de Kinde | `.env.local` y Vercel |
 | `KINDE_ISSUER_URL` | Emisor esperado al verificar tokens en el servidor; debe corresponder al dominio Kinde | Solo servidor / Vercel |
 | `KINDE_CLIENT_ID` | Audiencia esperada al verificar tokens; debe coincidir con el Client ID anterior | Solo servidor / Vercel |
 | `TURSO_DATABASE_URL` | URL de la base Turso de turnos y profesionales | Solo servidor / Vercel |
 | `TURSO_AUTH_TOKEN` | Credencial privada de Turso | Solo servidor / Vercel |
-| `ADMIN_INVITE_CODE` | Código privado de bootstrap para crear el primer administrador de la tienda GENERAL | Solo servidor / Vercel |
-| Código de tienda / invitación admin | Código público único elegido por tienda y códigos privados de invitación admin de un solo uso | Se guardan en Turso; se crean desde Profesionales y no son variables de entorno |
+| Código de tienda | Código público único generado al registrar una tienda administradora; Turso garantiza su unicidad | Se guarda en Turso y se comparte con clientes |
 | `MERCADOPAGO_ACCESS_TOKEN` | Token privado para crear preferencias de pago | Solo servidor / Vercel |
-| `PUBLIC_APP_URL` | URL pública usada en los retornos de Mercado Pago | Vercel; opcional local |
+| `PUBLIC_APP_URL` | Dirección base publicada de la aplicación, sin rutas como `/reserva`; Mercado Pago vuelve allí después del pago | Vercel; opcional local |
 
 ## Roles y seguridad
 
-El selector permite elegir cliente o administrador/profesional. `ADMIN_INVITE_CODE` sirve únicamente para crear el primer administrador de GENERAL. Luego, cada administrador crea su tienda desde Profesionales y puede generar invitaciones de un solo uso para sumar administradores a ese local. Así no hace falta saber de antemano cuántos habrá; el backend asocia cada invitación a una tienda y valida el email Kinde verificado. El API verifica firma, emisor y audiencia del token antes de leer o modificar Turso.
+El selector permite elegir cliente o administrador/profesional. Cualquier usuario con email verificado en Kinde puede elegir administrador; al hacerlo recibe una tienda propia y un código público único generado por el servidor y guardado en Turso. El primer administrador que se registre puede recibir la tienda heredada `GENERAL`; los siguientes reciben códigos aleatorios nuevos. Cada tienda mantiene sus propios profesionales y reservas, sin acceso administrativo a las demás tiendas. El backend valida la firma, el emisor y la audiencia del token antes de modificar Turso.
 
 Cada administrador registrado crea su tienda desde la sección Profesionales con nombre y código de 3 a 20 caracteres; el código debe ser único. Turso separa profesionales y reservas por tienda. En `/reserva`, cualquier visitante puede buscar por nombre o código y seleccionar la tienda antes de ver la disponibilidad. Las reservas guardan el código seleccionado. Los datos previos se migran a la tienda heredada `GENERAL`.
 
-Para configurar la primera cuenta administradora, generá un código largo y aleatorio, guardalo como `ADMIN_INVITE_CODE` en Vercel y en `.env.local` durante desarrollo, y compartilo de forma privada. Se ingresa en el modal de registro y nunca se incluye en una variable `VITE_`.
+No existe ni se necesita código de invitación de administrador. El usuario verifica su cuenta en Kinde, selecciona Administrador / Profesional y el sistema crea o asigna su tienda. Comparte con clientes únicamente el código público de tienda que aparece en el panel; no da permisos de administrador.
 
 Las reservas de visitantes se envían al API y se guardan en Turso; no existe persistencia local ni modo offline. Los clientes que inician sesión consultan los turnos asociados a su email. La agenda, los profesionales y los datos de contacto y transferencia de cada tienda se guardan en Turso; solo un administrador puede modificar profesionales, configuración de tienda o todos los turnos.

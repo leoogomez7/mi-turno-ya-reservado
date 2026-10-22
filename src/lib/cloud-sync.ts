@@ -163,18 +163,11 @@ export async function createStore(name: string, code: string) {
   return response.store;
 }
 
-export async function createStoreAdminInvite() {
-  if (!tokenGetter) throw new Error("Iniciá sesión como administrador para invitar a otra persona.");
-  return request<{ code: string; storeCode: string }>("POST", { action: "create-store-invite" });
-}
-
-export async function saveAccountRole(role: AccountRole, inviteCode = "", requestedStoreCode = "") {
+export async function saveAccountRole(role: AccountRole) {
   if (!tokenGetter || !activeAccount) throw new Error("Iniciá sesión antes de configurar tu cuenta.");
   const saved = await request<{ role: AccountRole; storeCode: string | null }>("POST", {
     action: "set-account-role",
     role,
-    inviteCode,
-    storeCode: requestedStoreCode.trim().toUpperCase(),
   });
   storeCode = saved.storeCode ?? "";
   await bootstrapCloudData(activeAccount, tokenGetter, storeCode || undefined);

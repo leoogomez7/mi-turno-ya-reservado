@@ -1,23 +1,16 @@
 import { createClient } from "@libsql/client";
 import { createRemoteJWKSet, jwtVerify } from "jose";
-import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import { randomBytes } from "node:crypto";
 
 const COLLECTIONS = ["bookings", "professionals"];
 const DEFAULT_STORE_CODE = "GENERAL";
 let schemaReady;
+let legacyInvitesRemoved = false;
 
 function requiredEnv(name) {
   const value = process.env[name]?.trim();
   if (!value) throw new Error(`Falta configurar ${name} en el servidor.`);
   return value;
-}
-
-function isValidAdminInvite(candidate) {
-  const configured = process.env.ADMIN_INVITE_CODE?.trim();
-  if (!configured || typeof candidate !== "string" || !candidate.trim()) return false;
-  const expectedBuffer = Buffer.from(configured);
-  const candidateBuffer = Buffer.from(candidate.trim());
-  return expectedBuffer.length === candidateBuffer.length && timingSafeEqual(expectedBuffer, candidateBuffer);
 }
 
 function normalizeStoreCode(value) {
@@ -122,12 +115,6 @@ async function database() {
       owner_id TEXT NOT NULL,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     )`,
-    `CREATE TABLE IF NOT EXISTS admin_invites (
-      code_hash TEXT PRIMARY KEY,
-      store_code TEXT NOT NULL,
-      created_by TEXT NOT NULL,
-      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-    )`,
     "CREATE INDEX IF NOT EXISTS bookings_updated ON bookings(updated_at)",
     "CREATE INDEX IF NOT EXISTS professionals_updated ON professionals(updated_at)",
   ]).then(() => undefined).catch((error) => {
@@ -137,6 +124,10 @@ async function database() {
   await schemaReady;
   await ensureRoleStoreColumn(db);
   await ensureStoreSettingsColumn(db);
+  if (!legacyInvitesRemoved) {
+    await db.execute("DROP TABLE IF EXISTS admin_invites");
+    legacyInvitesRemoved = true;
+  }
   await db.execute({
     sql: "INSERT INTO stores (code, name, owner_id) VALUES (?, ?, ?) ON CONFLICT(code) DO NOTHING",
     args: [DEFAULT_STORE_CODE, "Mi Turno Ya", "legacy"],
@@ -326,34 +317,61 @@ export default async function handler(request, response) {
         if (!user.emailVerified) return response.status(403).json({ error: "Verificá tu email en Kinde antes de configurar el acceso." });
         const requestedRole = body.role === "admin" ? "admin" : body.role === "client" ? "client" : null;
         if (!requestedRole) return response.status(400).json({ error: "Tipo de cuenta inválido." });
-
-        let storeCode = null;
-        if (requestedRole === "admin") {
-          storeCode = normalizeStoreCode(body.storeCode);
-          const inviteCode = typeof body.inviteCode === "string" ? body.inviteCode.trim() : "";
-          if (!storeCode || !inviteCode) return response.status(400).json({ error: "Ingresá el código de tienda y la invitación de administrador." });
-          const inviteHash = createHash("sha256").update(inviteCode).digest("hex");
-          const invite = await db.execute({ sql: "SELECT store_code FROM admin_invites WHERE code_hash = ?", args: [inviteHash] });
-          const invitedStore = normalizeStoreCode(invite.rows[0]?.store_code);
-          const bootstrapStore = await db.execute({ sql: "SELECT owner_id FROM stores WHERE code = ?", args: [DEFAULT_STORE_CODE] });
-          const bootstrapAllowed = storeCode === DEFAULT_STORE_CODE
-            && String(bootstrapStore.rows[0]?.owner_id) === "legacy"
-            && isValidAdminInvite(inviteCode);
-          if (invitedStore !== storeCode && !bootstrapAllowed) {
-            return response.status(403).json({ error: "La invitación no es válida para esa tienda." });
+        const transaction = await db.transaction("write");
+        try {
+          const existingAccount = await transaction.execute({
+            sql: "SELECT role, store_code FROM account_roles WHERE user_id = ?",
+            args: [user.id],
+          });
+          const existingStoreCode = normalizeStoreCode(existingAccount.rows[0]?.store_code);
+          if (requestedRole === "admin" && existingAccount.rows[0]?.role === "admin" && existingStoreCode) {
+            await transaction.commit();
+            return response.status(200).json({ role: requestedRole, storeCode: existingStoreCode });
           }
-          const storeExists = await db.execute({ sql: "SELECT code FROM stores WHERE code = ?", args: [storeCode] });
-          if (!storeExists.rows[0]) return response.status(404).json({ error: "La tienda no existe." });
+
+          if (requestedRole === "client") {
+            await transaction.execute({
+              sql: `INSERT INTO account_roles (user_id, email, role, store_code, updated_at) VALUES (?, ?, 'client', NULL, CURRENT_TIMESTAMP)
+                ON CONFLICT(user_id) DO UPDATE SET email = excluded.email, role = 'client', store_code = NULL, updated_at = CURRENT_TIMESTAMP`,
+              args: [user.id, user.email],
+            });
+            await transaction.commit();
+            return response.status(200).json({ role: requestedRole, storeCode: null });
+          }
+
+          const generalOwner = await transaction.execute({ sql: "SELECT owner_id FROM stores WHERE code = ?", args: [DEFAULT_STORE_CODE] });
+          const generalAdmins = await transaction.execute({ sql: "SELECT 1 FROM account_roles WHERE role = 'admin' AND store_code = ? LIMIT 1", args: [DEFAULT_STORE_CODE] });
+          let storeCode;
+          if (String(generalOwner.rows[0]?.owner_id) === "legacy" && generalAdmins.rows.length === 0) {
+            storeCode = DEFAULT_STORE_CODE;
+            await transaction.execute({ sql: "UPDATE stores SET owner_id = ? WHERE code = ? AND owner_id = 'legacy'", args: [user.id, storeCode] });
+          } else {
+            for (let attempt = 0; attempt < 5; attempt += 1) {
+              const candidate = `TURNO-${randomBytes(4).toString("hex").toUpperCase()}`;
+              try {
+                await transaction.execute({
+                  sql: "INSERT INTO stores (code, name, owner_id) VALUES (?, ?, ?)",
+                  args: [candidate, "Mi tienda", user.id],
+                });
+                storeCode = candidate;
+                break;
+              } catch (error) {
+                if (!String(error?.message || "").toLowerCase().includes("unique") || attempt === 4) throw error;
+              }
+            }
+          }
+          if (!storeCode) throw new Error("No se pudo generar un código único para la tienda.");
+          await transaction.execute({
+            sql: `INSERT INTO account_roles (user_id, email, role, store_code, updated_at) VALUES (?, ?, 'admin', ?, CURRENT_TIMESTAMP)
+              ON CONFLICT(user_id) DO UPDATE SET email = excluded.email, role = 'admin', store_code = excluded.store_code, updated_at = CURRENT_TIMESTAMP`,
+            args: [user.id, user.email, storeCode],
+          });
+          await transaction.commit();
+          return response.status(200).json({ role: requestedRole, storeCode });
+        } catch (error) {
+          await transaction.rollback().catch(() => undefined);
+          throw error;
         }
-        await db.execute({
-          sql: `INSERT INTO account_roles (user_id, email, role, store_code, updated_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
-            ON CONFLICT(user_id) DO UPDATE SET email = excluded.email, role = excluded.role, store_code = excluded.store_code, updated_at = CURRENT_TIMESTAMP`,
-          args: [user.id, user.email, requestedRole, storeCode],
-        });
-        if (requestedRole === "admin" && storeCode === DEFAULT_STORE_CODE) {
-          await db.execute({ sql: "UPDATE stores SET owner_id = ? WHERE code = ? AND owner_id = 'legacy'", args: [user.id, DEFAULT_STORE_CODE] });
-        }
-        return response.status(200).json({ role: requestedRole, storeCode });
       } catch (error) {
         console.error("No se pudo guardar el rol de cuenta", error);
         return response.status(500).json({ error: "No se pudo guardar la cuenta en la base de datos." });
@@ -390,24 +408,6 @@ export default async function handler(request, response) {
       } catch (error) {
         console.error("No se pudieron guardar los datos de la tienda", error);
         return response.status(500).json({ error: "No se pudieron guardar los datos de la tienda." });
-      }
-    }
-    if (user && body?.action === "create-store-invite") {
-      try {
-        const roleResult = await db.execute({ sql: "SELECT role, store_code FROM account_roles WHERE user_id = ?", args: [user.id] });
-        const role = roleResult.rows[0]?.role;
-        const storeCode = normalizeStoreCode(roleResult.rows[0]?.store_code);
-        if (role !== "admin" || !user.emailVerified || !storeCode) return response.status(403).json({ error: "Solo el administrador de una tienda puede invitar administradores." });
-        const code = `ADM-${randomBytes(18).toString("base64url")}`;
-        const codeHash = createHash("sha256").update(code).digest("hex");
-        await db.execute({
-          sql: "INSERT INTO admin_invites (code_hash, store_code, created_by) VALUES (?, ?, ?)",
-          args: [codeHash, storeCode, user.id],
-        });
-        return response.status(201).json({ code, storeCode });
-      } catch (error) {
-        console.error("No se pudo crear la invitación de administrador", error);
-        return response.status(500).json({ error: "No se pudo crear el código de invitación." });
       }
     }
     if (user || body?.action !== "guest-booking") {
