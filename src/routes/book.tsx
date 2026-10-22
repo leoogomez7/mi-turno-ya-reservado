@@ -84,6 +84,10 @@ export function BookPage() {
     };
   }, []);
 
+  useEffect(() => {
+    if (selectedStoreCode) setStorePickerOpen(false);
+  }, [selectedStoreCode]);
+
   const matchingStores = stores.filter((store) => `${store.name} ${store.code}`.toLowerCase().includes(storeSearch.trim().toLowerCase()));
   const selectedStore = stores.find((store) => store.code === selectedStoreCode);
   const storeSettings = selectedStore?.settings;
@@ -309,12 +313,12 @@ Notas: ${customer.notes || "Ninguna"}`;
           </div>
         </section>
         <Dialog open={storePickerOpen} onOpenChange={(open) => {
-          if (open || selectedStoreCode) setStorePickerOpen(open);
+          setStorePickerOpen(open);
         }}>
           <DialogContent className="max-h-[85vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="font-display text-2xl">Elegí una tienda</DialogTitle>
-              <DialogDescription>Buscá por nombre o código. Al seleccionarla, se abre el formulario de reserva.</DialogDescription>
+              <DialogDescription>Buscá por nombre o código. Si la tienda general está disponible, podés continuar sin ingresar un código.</DialogDescription>
             </DialogHeader>
             <div className="space-y-3">
               <Input

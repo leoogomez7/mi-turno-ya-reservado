@@ -413,6 +413,15 @@ export default async function handler(request, response) {
         role = user.emailVerified && (existingRole === "admin" || existingRole === "client") ? existingRole : "unassigned";
         userStoreCode = role === "admin" ? normalizeStoreCode(storedRoleResult.rows[0]?.store_code) : requestedStoreCode;
       }
+      if (!userStoreCode && role !== "admin") {
+        const defaultStore = await db.execute({
+          sql: "SELECT subscription_expires_at FROM stores WHERE code = ?",
+          args: [DEFAULT_STORE_CODE],
+        });
+        if (defaultStore.rows[0] && isSubscriptionActive(defaultStore.rows[0].subscription_expires_at)) {
+          userStoreCode = DEFAULT_STORE_CODE;
+        }
+      }
       if (userStoreCode) {
         const storeExists = await db.execute({ sql: "SELECT code, subscription_expires_at FROM stores WHERE code = ?", args: [userStoreCode] });
         if (!storeExists.rows[0]) return response.status(404).json({ error: "No encontramos esa tienda. Revisá el nombre o código." });
