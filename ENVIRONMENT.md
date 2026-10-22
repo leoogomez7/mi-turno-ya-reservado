@@ -5,21 +5,21 @@ Este documento corresponde al proyecto raíz `mi-turno-ya-reservado-main`. No do
 ## Archivos de entorno
 
 - `.env.example`: inventario versionable de las variables que usa esta aplicación. Contiene solo nombres y ejemplos, nunca credenciales reales.
-- `.env.local`: valores locales para Vite. Está excluido de Git; crear copiando `.env.example` y completar los valores.
+- `.env.local` (o `.env` para local): valores locales para Vite. Está excluido de Git; crear copiando `.env.example` y completar los valores.
 - Vercel → Project → Settings → Environment Variables: configuración de producción, preview y desarrollo. Las variables del servidor se guardan aquí y se aplican con un nuevo despliegue.
 
 El servidor Vite simple no ejecuta los handlers de `api/`; para probar Kinde/Turso localmente se necesita un runtime que sirva funciones Vercel, además de autorizar el origen local como callback/logout URL en Kinde. La aplicación no guarda reservas ni profesionales en el navegador: si el API o Turso no están disponibles, las operaciones deben fallar y no se guardan localmente.
 
-No subir `.env.local` ni compartir valores privados. Los campos con prefijo `VITE_` se incorporan al navegador: usar solo para configuración pública. Nunca poner tokens, secretos ni contraseñas en variables `VITE_`.
+No subir `.env.local` ni compartir valores privados. Para Vite, los campos públicos deben empezar con `VITE_` para que lleguen al navegador. Nunca poner tokens, secretos ni contraseñas en variables `VITE_`.
 
 ## Variables
 
 | Variable                     | Uso                                                                                                                   | Dónde se configura                                |
 | ---------------------------- | --------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
-| `DOMAIN_USER`              | Dominio público del tenant Kinde para el SDK web                                                                     | `.env.local` y Vercel                            |
-| `AUTH_USER`                | Client ID público de la aplicación Kinde                                                                            | `.env.local` y Vercel                            |
-| `ORG_CODE`                 | Organización Kinde opcional                                                                                          | `.env.local` y Vercel                            |
-| `AUTH_CONNECTION_ID`       | Conexión de email opcional de Kinde                                                                                  | `.env.local` y Vercel                            |
+| `VITE_DOMAIN_USER`         | Dominio público del tenant Kinde para el SDK web                                                                     | `.env.local` y Vercel                            |
+| `VITE_AUTH_USER`           | Client ID público de la aplicación Kinde                                                                            | `.env.local` y Vercel                            |
+| `VITE_ORG_CODE`            | Organización Kinde opcional                                                                                          | `.env.local` y Vercel                            |
+| `VITE_AUTH_CONNECTION_ID`  | Conexión de email opcional de Kinde                                                                                  | `.env.local` y Vercel                            |
 | `KINDE_ISSUER_URL`         | Emisor esperado al verificar tokens en el servidor; debe corresponder al dominio Kinde                                | Solo servidor / Vercel                             |
 | `KINDE_CLIENT_ID`          | Audiencia esperada al verificar tokens; debe coincidir con el Client ID anterior                                      | Solo servidor / Vercel                             |
 | `TURSO_DATABASE_URL`       | URL de la base Turso de turnos y profesionales                                                                        | Solo servidor / Vercel                             |

@@ -82,7 +82,7 @@ export function SiteHeader() {
             <DialogDescription>Después de iniciar sesión, elegí el tipo de cuenta. La elección y los permisos se guardan en la base de datos.</DialogDescription>
           </DialogHeader>
           <div className="py-3">
-            {!AUTH_CONFIGURED && <p className="text-sm text-destructive">Kinde no está configurado. Consultá el archivo .env.example.</p>}
+            {!AUTH_CONFIGURED && <p className="text-sm text-destructive">Kinde no está configurado. Revisá .env / .env.local y Vercel.</p>}
           </div>
           <DialogFooter className="flex-col sm:flex-row">
             <Button variant="outline" onClick={() => setAuthMode(authMode === "register" ? "login" : "register")}>

@@ -352,7 +352,7 @@ Notas: ${customer.notes || "Ninguna"}`;
           <DialogContent className="max-h-[85vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="font-display text-2xl">Elegí una tienda</DialogTitle>
-              <DialogDescription>Buscá por nombre o código. Si la tienda general está disponible, podés continuar sin ingresar un código.</DialogDescription>
+              <DialogDescription>Buscá por nombre o código.</DialogDescription>
             </DialogHeader>
             <div className="space-y-3">
               <Input
@@ -390,7 +390,7 @@ Notas: ${customer.notes || "Ninguna"}`;
                   ))}
                 </div>
               )}
-              {storeSearchSubmitted && storeNotFound && <p role="status" className="rounded-lg border border-border p-3 text-sm text-muted-foreground">No encontramos tiendas con ese nombre o código.</p>}
+              {storeSearchSubmitted && storeNotFound && <p role="status" className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">No encontramos tiendas con ese nombre o código.</p>}
             </div>
           </DialogContent>
         </Dialog>

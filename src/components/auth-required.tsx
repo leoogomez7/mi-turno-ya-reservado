@@ -15,7 +15,7 @@ export function AuthRequired({ role, title }: { role: AccountRole; title: string
         <p className="text-xs uppercase tracking-widest text-gold">Acceso a tu cuenta</p>
         <h1 className="mt-2 font-display text-3xl font-semibold">{title}</h1>
         <p className="mt-3 text-sm text-muted-foreground">
-          {!configured ? "La autenticación Kinde todavía no está configurada. Revisá .env.example y las variables de Vercel." : description}
+          {!configured ? "La autenticación Kinde todavía no está configurada. Revisá .env / .env.local y las variables de Vercel." : description}
         </p>
         {configured && (
           <Button className="mt-6 bg-gold text-primary-foreground hover:bg-gold-soft" disabled={isLoading || busy} onClick={async () => {
