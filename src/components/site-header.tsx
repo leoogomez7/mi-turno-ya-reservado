@@ -81,15 +81,12 @@ export function SiteHeader() {
             <DialogTitle>{authMode === "register" ? "Crear cuenta" : "Iniciar sesión"}</DialogTitle>
             <DialogDescription>Después de iniciar sesión, elegí el tipo de cuenta. La elección y los permisos se guardan en la base de datos.</DialogDescription>
           </DialogHeader>
-          <div className="py-3">
-            {!AUTH_CONFIGURED && <p className="text-sm text-destructive">Kinde no está configurado. Revisá .env / .env.local y Vercel.</p>}
-          </div>
           <DialogFooter className="flex-col sm:flex-row">
             <Button variant="outline" onClick={() => setAuthMode(authMode === "register" ? "login" : "register")}>
               {authMode === "register" ? "Ya tengo cuenta" : "Crear cuenta"}
             </Button>
             <Button disabled={!AUTH_CONFIGURED} className="bg-gold text-primary-foreground hover:bg-gold-soft" onClick={() => void startAuth()}>
-              {authMode === "register" ? "Continuar con Kinde" : "Iniciar con Kinde"}
+              {authMode === "register" ? "Continuar" : "Iniciar sesión"}
             </Button>
           </DialogFooter>
         </DialogContent>

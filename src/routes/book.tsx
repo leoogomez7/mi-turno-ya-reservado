@@ -414,7 +414,7 @@ Notas: ${customer.notes || "Ninguna"}`;
         </div>
 
         {stepError && (
-          <div className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-700">
+          <div className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
             {stepError}
           </div>
         )}
@@ -467,7 +467,7 @@ Notas: ${customer.notes || "Ninguna"}`;
               {paymentLoading ? (
                 <div className="flex items-center justify-center gap-3 py-6 text-muted-foreground"><LoaderCircle className="h-5 w-5 animate-spin text-gold" /> Recalculando el total…</div>
               ) : paymentError ? (
-                <p role="alert" className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-400">{paymentError}</p>
+                <p role="alert" className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">{paymentError}</p>
               ) : paymentUrl ? (
                 <Button asChild className="bg-gold text-primary-foreground hover:bg-gold-soft"><a href={paymentUrl}>Ir a pagar</a></Button>
               ) : null}

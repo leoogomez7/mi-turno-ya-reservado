@@ -43,7 +43,7 @@ export function AccountSetup({ onComplete }: { onComplete: (role: AccountRole) =
             Cualquier cuenta verificada puede elegir este rol. Se creará una sucursal propia y aislada, con un código único para compartir con tus clientes; no tendrás acceso a otras sucursales.
           </p>
         )}
-        {error && <p role="alert" className="mt-4 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">{error}</p>}
+        {error && <p role="alert" className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">{error}</p>}
         <Button className="mt-6 w-full bg-gold text-primary-foreground hover:bg-gold-soft" disabled={saving} onClick={() => void saveRole()}>
           Guardar en la base de datos
         </Button>

@@ -32,8 +32,8 @@ const unavailableAuth: AuthContextValue = {
   role: null,
   setVerifiedRole: () => undefined,
   getIdToken: async () => undefined,
-  login: () => window.alert("La autenticación todavía no está configurada. Revisá .env.example y configurá Kinde."),
-  register: () => window.alert("La autenticación todavía no está configurada. Revisá .env.example y configurá Kinde."),
+  login: () => undefined,
+  register: () => undefined,
   logout: () => undefined,
 };
 

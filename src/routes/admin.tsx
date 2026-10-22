@@ -296,7 +296,7 @@ function AdminPage() {
                 </p>
               )}
               {storeInfo?.subscriptionExpiresAt && subscriptionDaysRemaining !== null && subscriptionDaysRemaining <= 0 && (
-                <p role="alert" className="mt-3 rounded-lg border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
+                <p role="alert" className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">
                   Tu plan venció el {format(new Date(storeInfo.subscriptionExpiresAt), "d 'de' MMMM yyyy", { locale: es })}. La sucursal dejó de aparecer en las búsquedas y no puede recibir reservas hasta que pagues un nuevo plan.
                 </p>
               )}
@@ -371,7 +371,7 @@ function AdminPage() {
               {editMode === "attendance" && (
                 <div className="grid gap-3 sm:grid-cols-2">
                   <Button className="bg-emerald-500 text-white" onClick={() => confirmAttendance("completed")}>Sí asistió</Button>
-                  <Button className="bg-red-500 text-white" onClick={() => confirmAttendance("no-show")}>No asistió</Button>
+                  <Button className="border border-red-500/30 bg-red-500/10 text-red-300 hover:bg-red-500/20" onClick={() => confirmAttendance("no-show")}>No asistió</Button>
                 </div>
               )}
 
@@ -517,7 +517,7 @@ function AgendaList({
                 {b.isTest && <Badge variant="outline" className="border-emerald-300 text-emerald-400">Turno de prueba</Badge>}
                 {b.status === "pending-payment" && <Badge variant="outline" className="border-amber-300 text-amber-300">Pago pendiente · {b.customer.paymentMethod}</Badge>}
                 {b.status === "completed" && <Badge variant="outline" className="border-emerald-300 text-emerald-400">Asistió</Badge>}
-                {b.status === "no-show" && <Badge variant="outline" className="border-red-300 text-red-400">No asistió</Badge>}
+                {b.status === "no-show" && <Badge variant="outline" className="border-red-500/30 bg-red-500/10 text-red-300">No asistió</Badge>}
                 {b.status !== "pending-payment" && b.status !== "cancelled" && (
                   <Badge variant="outline" className={b.appointmentConfirmation === "confirmed" ? "border-emerald-300 text-emerald-400" : "border-amber-300 text-amber-300"}>
                     {b.appointmentConfirmation === "confirmed" ? "Turno confirmado" : "No confirmó todavía"}

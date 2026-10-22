@@ -364,7 +364,7 @@ export function ProfessionalsManager() {
                       Profesional de prueba
                     </Button>
                   ) : editingId ? (
-                    <Button variant="outline" className="w-full text-red-500" onClick={() => requestDeleteProfessional(editingId)}>
+                    <Button variant="outline" className="w-full border-red-500/30 text-red-300 hover:bg-red-500/10 hover:text-red-300" onClick={() => requestDeleteProfessional(editingId)}>
                       Eliminar profesional
                     </Button>
                   ) : null}
@@ -417,7 +417,7 @@ export function ProfessionalsManager() {
                       <div key={`${entry.date}-${index}`} className="rounded-2xl border border-border bg-muted p-4">
                         <div className="flex items-center justify-between gap-2">
                           <div className="font-medium">Fecha {index + 1}</div>
-                          <Button variant="ghost" size="sm" onClick={() => removeScheduleDate(index)} className="text-red-500">
+                          <Button variant="ghost" size="sm" onClick={() => removeScheduleDate(index)} className="text-red-300 hover:bg-red-500/10 hover:text-red-300">
                             Eliminar
                           </Button>
                         </div>
@@ -446,7 +446,7 @@ export function ProfessionalsManager() {
                       <div key={service.id} className="rounded-2xl border border-border bg-muted p-4">
                         <div className="flex items-center justify-between gap-2">
                           <div className="text-sm font-medium">{service.name || "Sin nombre"}</div>
-                          <Button variant="ghost" size="sm" onClick={() => removeServiceRow(index)} className="text-red-500">
+                          <Button variant="ghost" size="sm" onClick={() => removeServiceRow(index)} className="text-red-300 hover:bg-red-500/10 hover:text-red-300">
                             Eliminar
                           </Button>
                         </div>
@@ -539,7 +539,7 @@ export function ProfessionalsManager() {
                       <div key={service.id} className="rounded-2xl border border-border bg-muted p-4">
                         <div className="mb-3 flex items-center justify-between gap-3">
                           <div className="text-sm font-semibold">Servicio {index + 1}</div>
-                          <Button variant="ghost" onClick={() => removeServiceRow(index)} className="text-red-500">
+                          <Button variant="ghost" onClick={() => removeServiceRow(index)} className="text-red-300 hover:bg-red-500/10 hover:text-red-300">
                             <Trash2 className="h-4 w-4" />
                           </Button>
                         </div>
