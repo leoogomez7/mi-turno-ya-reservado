@@ -110,7 +110,7 @@ export function BookPage() {
       setStepError(null);
       toast.success(`Seleccionaste ${store.name}.`);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "No se pudo cambiar de tienda.");
+      toast.error(error instanceof Error ? error.message : "No se pudo cambiar de sucursal.");
     } finally {
       setStoreLoading(false);
     }
@@ -123,7 +123,7 @@ export function BookPage() {
     const pathStep = stepForPath(location.pathname);
     if (pathStep === undefined) return;
     if (Number(pathStep) > 0 && !selectedStoreCode) {
-      const message = "Elegí una tienda para poder continuar con la reserva.";
+      const message = "Elegí una sucursal para poder continuar con la reserva.";
       setStep(0);
       setStepError(message);
       setStorePickerOpen(true);
@@ -169,7 +169,7 @@ export function BookPage() {
       .map((s) => s.name)
       .join(", ");
     const message = `Hola! Quiero confirmar un turno.
-  Tienda: ${stores.find((store) => store.code === selectedStoreCode)?.name ?? selectedStoreCode} (${selectedStoreCode})
+  Sucursal: ${stores.find((store) => store.code === selectedStoreCode)?.name ?? selectedStoreCode} (${selectedStoreCode})
 Nombre: ${customer.fullName}
 Teléfono: ${customer.phone}
 Email: ${customer.email}
@@ -254,7 +254,7 @@ Notas: ${customer.notes || "Ninguna"}`;
 
   function sendTransferConfirmation() {
     if (!storeSettings?.whatsapp) {
-      toast.error("La tienda todavía no configuró su WhatsApp.");
+      toast.error("La sucursal todavía no configuró su WhatsApp.");
       return;
     }
     const message = `Hola, quiero enviar el comprobante de transferencia de mi turno por $${price.toLocaleString("es-AR")}. Nombre: ${customer.fullName}, fecha: ${date ? format(date, "dd/MM/yyyy") : ""}, horario: ${time}.`;
@@ -273,7 +273,7 @@ Notas: ${customer.notes || "Ninguna"}`;
 
   function handleContinue() {
     if (!selectedStoreCode) {
-      const message = "Elegí una tienda para poder continuar con la reserva.";
+      const message = "Elegí una sucursal para poder continuar con la reserva.";
       setStepError(message);
       setStorePickerOpen(true);
       toast.error(message);
@@ -320,7 +320,7 @@ Notas: ${customer.notes || "Ninguna"}`;
           )}
           role={!selectedStoreCode ? "button" : undefined}
           tabIndex={!selectedStoreCode ? 0 : undefined}
-          aria-label={!selectedStoreCode ? "Buscar tienda para reservar" : undefined}
+          aria-label={!selectedStoreCode ? "Buscar sucursal para reservar" : undefined}
           onClick={() => {
             if (!selectedStoreCode) setStorePickerOpen(true);
           }}
@@ -333,16 +333,16 @@ Notas: ${customer.notes || "Ninguna"}`;
         >
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
-              <p className="text-xs uppercase tracking-widest text-gold">{selectedStoreCode ? "Tienda seleccionada" : "Antes de reservar"}</p>
+              <p className="text-xs uppercase tracking-widest text-gold">{selectedStoreCode ? "Sucursal seleccionada" : "Antes de reservar"}</p>
               <h2 className="mt-1 font-display text-xl font-semibold">
                 {selectedStoreCode
                   ? stores.find((store) => store.code === selectedStoreCode)?.name ?? selectedStoreCode
-                  : "Seleccioná una tienda · Tocá aquí para buscar"}
+                  : "Seleccioná una sucursal · Tocá aquí para buscar"}
               </h2>
             </div>
             <div className="flex items-center gap-3">
               {selectedStoreCode && <p className="text-xs text-muted-foreground">Código: {selectedStoreCode}</p>}
-              {selectedStoreCode && <Button type="button" size="sm" variant="outline" onClick={() => setStorePickerOpen(true)}>Cambiar tienda</Button>}
+              {selectedStoreCode && <Button type="button" size="sm" variant="outline" onClick={() => setStorePickerOpen(true)}>Cambiar sucursal</Button>}
             </div>
           </div>
         </section>
@@ -351,7 +351,7 @@ Notas: ${customer.notes || "Ninguna"}`;
         }}>
           <DialogContent className="max-h-[85vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle className="font-display text-2xl">Elegí una tienda</DialogTitle>
+              <DialogTitle className="font-display text-2xl">Elegí una sucursal</DialogTitle>
               <DialogDescription>Buscá por nombre o código.</DialogDescription>
             </DialogHeader>
             <div className="space-y-3">
@@ -371,14 +371,14 @@ Notas: ${customer.notes || "Ninguna"}`;
                     if (matchingStores.length === 1) void chooseStore(matchingStores[0]);
                   }
                 }}
-                placeholder="Nombre o código de tienda"
+                placeholder="Nombre o código de sucursal"
               />
               <Button type="button" disabled={storeLoading || !storeSearch.trim()} className="w-full bg-gold text-primary-foreground hover:bg-gold-soft" onClick={() => {
                 setStoreSearchSubmitted(true);
                 setStoreNotFound(matchingStores.length === 0);
                 if (matchingStores.length === 1) void chooseStore(matchingStores[0]);
               }}>
-                {storeLoading ? "Cargando tienda…" : "Buscar tienda"}
+                {storeLoading ? "Cargando sucursal…" : "Buscar sucursal"}
               </Button>
               {storeSearchSubmitted && matchingStores.length > 0 && (
                 <div className="max-h-64 space-y-2 overflow-y-auto">
@@ -390,7 +390,7 @@ Notas: ${customer.notes || "Ninguna"}`;
                   ))}
                 </div>
               )}
-              {storeSearchSubmitted && storeNotFound && <p role="status" className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">No encontramos tiendas con ese nombre o código.</p>}
+              {storeSearchSubmitted && storeNotFound && <p role="status" className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">No encontramos sucursales con ese nombre o código.</p>}
             </div>
           </DialogContent>
         </Dialog>
@@ -807,7 +807,7 @@ function StepConfirm({
     <div>
       <SectionTitle icon={Check} title="Paso 5" subtitle="Resumen de tu turno" />
       <div className="grid gap-3 text-sm">
-        <Row label="Tienda" value={`${storeName} · ${storeCode}`} />
+        <Row label="Sucursal" value={`${storeName} · ${storeCode}`} />
         <Row label="Cliente" value={customer.fullName} />
         <Row label="Contacto" value={`${customer.email} · ${customer.phone}`} />
         <Row label="Profesional" value={barber?.name ?? "-"} />

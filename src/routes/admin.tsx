@@ -83,7 +83,7 @@ function AdminPage() {
     setPendingPurchaseId(purchaseId);
     setSubscriptionBusy(true);
     if (status !== "success") {
-      setPaymentNotice(status === "pending" ? "El pago está pendiente. La tienda se activará cuando Mercado Pago lo apruebe." : "El pago no se completó. La tienda sigue sin activar.");
+      setPaymentNotice(status === "pending" ? "El pago está pendiente. La sucursal se activará cuando Mercado Pago lo apruebe." : "El pago no se completó. La sucursal sigue sin activar.");
       setSubscriptionBusy(false);
       return;
     }
@@ -273,7 +273,7 @@ function AdminPage() {
           <div>
             <p className="text-xs uppercase tracking-widest text-gold">Panel administrador</p>
             <h1 className="font-display text-4xl font-semibold">Agenda & Estadísticas</h1>
-            <p className="mt-2 text-sm text-muted-foreground">Tienda: <span className="font-semibold text-gold">{getCurrentStoreCode()}</span></p>
+            <p className="mt-2 text-sm text-muted-foreground">Sucursal: <span className="font-semibold text-gold">{getCurrentStoreCode()}</span></p>
           </div>
         </div>
 
@@ -285,19 +285,19 @@ function AdminPage() {
               <p className="mt-1 text-sm text-muted-foreground">
                 {subscriptionIsActive && storeInfo?.subscriptionExpiresAt
                   ? `Activo hasta ${format(new Date(storeInfo.subscriptionExpiresAt), "d 'de' MMMM yyyy", { locale: es })}.` 
-                  : "La tienda no aparece en las búsquedas y no acepta reservas hasta activar un plan."}
+                  : "La sucursal no aparece en las búsquedas y no acepta reservas hasta activar un plan."}
               </p>
               {storeInfo?.subscriptionPlanType === "trial" && subscriptionIsActive && (
                 <p className="mt-2 text-sm font-medium text-gold">Estás usando tu prueba gratuita de 4 días. Elegí un paquete antes de que venza para continuar.</p>
               )}
               {storeInfo?.subscriptionExpiresAt && subscriptionDaysRemaining !== null && subscriptionDaysRemaining > 0 && subscriptionDaysRemaining <= 3 && (
                 <p role="alert" className="mt-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-200">
-                  Tu plan vence {subscriptionDaysRemaining === 1 ? "dentro de 1 día" : `dentro de ${subscriptionDaysRemaining} días`}. Recordá elegir y pagar un plan manualmente para mantener activa la tienda.
+                  Tu plan vence {subscriptionDaysRemaining === 1 ? "dentro de 1 día" : `dentro de ${subscriptionDaysRemaining} días`}. Recordá elegir y pagar un plan manualmente para mantener activa la sucursal.
                 </p>
               )}
               {storeInfo?.subscriptionExpiresAt && subscriptionDaysRemaining !== null && subscriptionDaysRemaining <= 0 && (
                 <p role="alert" className="mt-3 rounded-lg border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
-                  Tu plan venció el {format(new Date(storeInfo.subscriptionExpiresAt), "d 'de' MMMM yyyy", { locale: es })}. La tienda dejó de aparecer en las búsquedas y no puede recibir reservas hasta que pagues un nuevo plan.
+                  Tu plan venció el {format(new Date(storeInfo.subscriptionExpiresAt), "d 'de' MMMM yyyy", { locale: es })}. La sucursal dejó de aparecer en las búsquedas y no puede recibir reservas hasta que pagues un nuevo plan.
                 </p>
               )}
               <p className="mt-2 text-xs text-muted-foreground">El plan es prepago y no se renueva ni cobra automáticamente. El sistema te avisa aquí cuando falten 3 días para el vencimiento.</p>

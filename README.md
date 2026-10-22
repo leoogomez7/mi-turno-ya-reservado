@@ -6,7 +6,7 @@
 
 ## Configuración de cuentas y base de datos
 
-La configuración de autenticación Kinde, la base Turso, permisos y variables públicas/privadas está documentada en [ENVIRONMENT.md](ENVIRONMENT.md). Usá [.env.example](.env.example) como lista de variables; no guardes secretos reales en archivos versionados.
+La configuración de autenticación Kinde, la base Turso, permisos y variables públicas/privadas está documentada en [ENVIRONMENT.md](ENVIRONMENT.md).
 
 ---
 

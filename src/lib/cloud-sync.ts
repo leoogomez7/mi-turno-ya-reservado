@@ -151,13 +151,13 @@ export function getAvailableStores() {
 
 export async function selectStore(code: string, account: string, getToken?: () => Promise<string | undefined>) {
   const nextCode = code.trim().toUpperCase();
-  if (!availableStores.some((store) => store.code === nextCode)) throw new Error("No encontramos esa tienda.");
+  if (!availableStores.some((store) => store.code === nextCode)) throw new Error("No encontramos esa sucursal.");
   storeCode = nextCode;
   await bootstrapCloudData(account, getToken ?? (async () => undefined), nextCode);
 }
 
 export async function createStore(name: string, code: string) {
-  if (!tokenGetter) throw new Error("Iniciá sesión como administrador para crear una tienda.");
+  if (!tokenGetter) throw new Error("Iniciá sesión como administrador para crear una sucursal.");
   const response = await request<{ store: Store }>("POST", { action: "create-store", store: { name, code: code.trim().toUpperCase() } });
   availableStores = [...availableStores.filter((store) => store.code !== response.store.code), response.store].sort((a, b) => a.name.localeCompare(b.name, "es"));
   storeCode = response.store.code;
@@ -182,7 +182,7 @@ export async function saveAccountRole(role: AccountRole) {
 }
 
 export async function updateStoreSettings(settings: StoreSettings) {
-  if (!tokenGetter) throw new Error("Iniciá sesión como administrador para editar los datos de la tienda.");
+  if (!tokenGetter) throw new Error("Iniciá sesión como administrador para editar los datos de la sucursal.");
   const response = await request<{ code: string; settings: StoreSettings }>("POST", { action: "update-store-settings", settings });
   availableStores = availableStores.map((store) => store.code === response.code ? { ...store, settings: response.settings } : store);
   window.dispatchEvent(new Event("mi-turno-ya:store-changed"));

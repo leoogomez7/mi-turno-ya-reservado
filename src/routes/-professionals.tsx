@@ -73,9 +73,9 @@ export function ProfessionalsManager() {
     try {
       const saved = await updateStoreSettings(storeSettings);
       setStoreSettings(saved);
-      toast.success("Datos de la tienda guardados en la base de datos.");
+      toast.success("Datos de la sucursal guardados en la base de datos.");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "No se pudieron guardar los datos de la tienda.");
+      toast.error(error instanceof Error ? error.message : "No se pudieron guardar los datos de la sucursal.");
     } finally {
       setSavingSettings(false);
     }
@@ -165,9 +165,9 @@ export function ProfessionalsManager() {
       setStoreName("");
       setStoreCode("");
       setProfessionals(professionalStore.all());
-      toast.success(`Tienda ${created.name} creada con el código ${created.code}.`);
+      toast.success(`Sucursal ${created.name} creada con el código ${created.code}.`);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "No se pudo crear la tienda.");
+      toast.error(error instanceof Error ? error.message : "No se pudo crear la sucursal.");
     } finally {
       setSavingStore(false);
     }
@@ -263,26 +263,26 @@ export function ProfessionalsManager() {
           <section className="rounded-3xl border border-gold/30 bg-card p-6">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
-                <p className="text-xs uppercase tracking-widest text-gold">Tienda</p>
-                <h2 className="mt-1 font-display text-2xl font-semibold">Tu tienda y código de reserva</h2>
-                <p className="mt-2 text-sm text-muted-foreground">Código actual: <strong className="text-gold">{currentStoreCode}</strong>. Los turnos y profesionales quedan separados por tienda.</p>
+                  <p className="text-xs uppercase tracking-widest text-gold">Sucursal</p>
+                  <h2 className="mt-1 font-display text-2xl font-semibold">Tu sucursal y código de reserva</h2>
+                  <p className="mt-2 text-sm text-muted-foreground">Código actual: <strong className="text-gold">{currentStoreCode}</strong>. Los turnos y profesionales quedan separados por sucursal.</p>
               </div>
             </div>
             <div className="mt-5 grid gap-3 sm:grid-cols-[1fr_220px_auto]">
-              <Input value={storeName} onChange={(event) => setStoreName(event.target.value)} placeholder="Nombre de la tienda" maxLength={100} />
+                <Input value={storeName} onChange={(event) => setStoreName(event.target.value)} placeholder="Nombre de la sucursal" maxLength={100} />
               <Input value={storeCode} onChange={(event) => setStoreCode(event.target.value.toUpperCase().replace(/[^A-Z0-9_-]/g, ""))} placeholder="Código único (ej. BARBER01)" maxLength={20} />
               <Button disabled={savingStore || storeName.trim().length < 2 || storeCode.trim().length < 3} className="bg-gold text-primary-foreground hover:bg-gold-soft" onClick={() => void saveStore()}>
-                {savingStore ? "Guardando…" : "Crear tienda"}
+                  {savingStore ? "Guardando…" : "Crear sucursal"}
               </Button>
             </div>
-            <p className="mt-3 text-xs text-muted-foreground">El código debe tener entre 3 y 20 caracteres (letras, números, guion o guion bajo) y no puede repetirse. Compartilo con tus clientes para que encuentren tu tienda al reservar.</p>
+              <p className="mt-3 text-xs text-muted-foreground">El código debe tener entre 3 y 20 caracteres (letras, números, guion o guion bajo) y no puede repetirse. Compartilo con tus clientes para que encuentren tu sucursal al reservar.</p>
           </section>
 
           <section className="rounded-3xl border border-border bg-card p-6">
             <div className="mb-5">
               <p className="text-xs uppercase tracking-widest text-gold">Datos guardados en Turso</p>
               <h2 className="mt-1 font-display text-2xl font-semibold">Contacto y transferencia</h2>
-              <p className="mt-2 text-sm text-muted-foreground">Estos datos pertenecen a la tienda seleccionada y se cargan desde la base de datos.</p>
+                <p className="mt-2 text-sm text-muted-foreground">Estos datos pertenecen a la sucursal seleccionada y se cargan desde la base de datos.</p>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Dirección">
@@ -305,7 +305,7 @@ export function ProfessionalsManager() {
               </Field>
             </div>
             <Button type="button" disabled={savingSettings || !currentStoreCode} onClick={() => void saveSettings()} className="mt-5 bg-gold text-primary-foreground hover:bg-gold-soft">
-              {savingSettings ? "Guardando…" : "Guardar datos de la tienda"}
+              {savingSettings ? "Guardando…" : "Guardar datos de la sucursal"}
             </Button>
           </section>
 

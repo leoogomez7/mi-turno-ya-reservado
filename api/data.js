@@ -268,7 +268,7 @@ async function verifyMercadoPagoPayment(db, paymentId, expectedOwnerId) {
     if (order.status !== "pending") throw new Error("La compra de suscripción no está pendiente.");
 
     const storeResult = await transaction.execute({ sql: "SELECT subscription_expires_at FROM stores WHERE code = ?", args: [String(order.store_code)] });
-    if (!storeResult.rows[0]) throw new Error("No encontramos la tienda de esta suscripción.");
+    if (!storeResult.rows[0]) throw new Error("No encontramos la sucursal de esta suscripción.");
     const currentExpiry = String(storeResult.rows[0].subscription_expires_at ?? "");
     const startDate = currentExpiry && Date.parse(currentExpiry) > Date.now() ? currentExpiry : new Date().toISOString();
     const expiresAt = Number(order.duration_days) > 0
@@ -312,7 +312,7 @@ function recordId(record) {
 async function validateBookingAvailability(db, booking, storeCode, bookingId = "") {
   const storeResult = await db.execute({ sql: "SELECT subscription_expires_at FROM stores WHERE code = ?", args: [storeCode] });
   if (!storeResult.rows[0] || !isSubscriptionActive(storeResult.rows[0].subscription_expires_at)) {
-    return "La tienda no tiene un plan activo para aceptar reservas.";
+    return "La sucursal no tiene un plan activo para aceptar reservas.";
   }
   const validDate = typeof booking.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(booking.date);
   const parsedDate = validDate ? new Date(`${booking.date}T12:00:00Z`) : null;
@@ -424,10 +424,10 @@ export default async function handler(request, response) {
       }
       if (userStoreCode) {
         const storeExists = await db.execute({ sql: "SELECT code, subscription_expires_at FROM stores WHERE code = ?", args: [userStoreCode] });
-        if (!storeExists.rows[0]) return response.status(404).json({ error: "No encontramos esa tienda. Revisá el nombre o código." });
+        if (!storeExists.rows[0]) return response.status(404).json({ error: "No encontramos esa sucursal. Revisá el nombre o código." });
         if (role === "admin") await activateFreeTrial(db, userStoreCode);
         if (role !== "admin" && !isSubscriptionActive(storeExists.rows[0].subscription_expires_at)) {
-          return response.status(404).json({ error: "Esta tienda no está disponible para reservas en este momento." });
+          return response.status(404).json({ error: "Esta sucursal no está disponible para reservas en este momento." });
         }
       }
       const [bookingRows, professionalRows] = await Promise.all([
@@ -499,9 +499,9 @@ export default async function handler(request, response) {
         if (!plan) return response.status(400).json({ error: "Elegí uno de los planes disponibles." });
         const roleResult = await db.execute({ sql: "SELECT role, store_code FROM account_roles WHERE user_id = ?", args: [user.id] });
         const storeCode = normalizeStoreCode(roleResult.rows[0]?.store_code);
-        if (roleResult.rows[0]?.role !== "admin" || !storeCode) return response.status(403).json({ error: "Solo el administrador de una tienda puede contratar el plan." });
+        if (roleResult.rows[0]?.role !== "admin" || !storeCode) return response.status(403).json({ error: "Solo el administrador de una sucursal puede contratar el plan." });
         const storeResult = await db.execute({ sql: "SELECT code FROM stores WHERE code = ?", args: [storeCode] });
-        if (!storeResult.rows[0]) return response.status(404).json({ error: "No encontramos tu tienda." });
+        if (!storeResult.rows[0]) return response.status(404).json({ error: "No encontramos tu sucursal." });
         const accessToken = requiredEnv("MERCADOPAGO_ACCESS_TOKEN");
         const host = request.headers.host || "localhost";
         const protocol = request.headers["x-forwarded-proto"] || "https";
@@ -553,11 +553,11 @@ export default async function handler(request, response) {
         if (!plan) return response.status(400).json({ error: "Elegí uno de los planes disponibles." });
         const roleResult = await db.execute({ sql: "SELECT role, store_code FROM account_roles WHERE user_id = ?", args: [user.id] });
         const storeCode = normalizeStoreCode(roleResult.rows[0]?.store_code);
-        if (roleResult.rows[0]?.role !== "admin" || !storeCode) return response.status(403).json({ error: "Solo el administrador de una tienda puede canjear el código." });
+        if (roleResult.rows[0]?.role !== "admin" || !storeCode) return response.status(403).json({ error: "Solo el administrador de una sucursal puede canjear el código." });
         const transaction = await db.transaction("write");
         try {
           const store = await transaction.execute({ sql: "SELECT subscription_expires_at FROM stores WHERE code = ?", args: [storeCode] });
-          if (!store.rows[0]) throw new Error("No encontramos tu tienda.");
+          if (!store.rows[0]) throw new Error("No encontramos tu sucursal.");
           const currentExpiry = String(store.rows[0].subscription_expires_at ?? "");
           const startDate = currentExpiry && Date.parse(currentExpiry) > Date.now() ? currentExpiry : new Date().toISOString();
           const expiresAt = plan.days > 0
@@ -631,7 +631,7 @@ export default async function handler(request, response) {
               try {
                 await transaction.execute({
                   sql: "INSERT INTO stores (code, name, owner_id) VALUES (?, ?, ?)",
-                  args: [candidate, "Mi tienda", user.id],
+                  args: [candidate, "Mi sucursal", user.id],
                 });
                 storeCode = candidate;
                 break;
@@ -640,7 +640,7 @@ export default async function handler(request, response) {
               }
             }
           }
-          if (!storeCode) throw new Error("No se pudo generar un código único para la tienda.");
+          if (!storeCode) throw new Error("No se pudo generar un código único para la sucursal.");
           await transaction.execute({
             sql: `INSERT INTO account_roles (user_id, email, role, store_code, updated_at) VALUES (?, ?, 'admin', ?, CURRENT_TIMESTAMP)
               ON CONFLICT(user_id) DO UPDATE SET email = excluded.email, role = 'admin', store_code = excluded.store_code, updated_at = CURRENT_TIMESTAMP`,
@@ -660,7 +660,7 @@ export default async function handler(request, response) {
     if (user && body?.action === "create-store") {
       try {
         const roleResult = await db.execute({ sql: "SELECT role, store_code FROM account_roles WHERE user_id = ?", args: [user.id] });
-        if (roleResult.rows[0]?.role !== "admin" || !user.emailVerified) return response.status(403).json({ error: "Solo una cuenta administradora verificada puede crear una tienda." });
+        if (roleResult.rows[0]?.role !== "admin" || !user.emailVerified) return response.status(403).json({ error: "Solo una cuenta administradora verificada puede crear una sucursal." });
         const code = normalizeStoreCode(body.store?.code);
         const name = typeof body.store?.name === "string" ? body.store.name.trim() : "";
         if (!/^[A-Z0-9][A-Z0-9_-]{2,19}$/.test(code) || name.length < 2 || name.length > 100) {
@@ -671,8 +671,8 @@ export default async function handler(request, response) {
         return response.status(201).json({ ok: true, store: { code, name, settings: {} } });
       } catch (error) {
         if (String(error?.message || "").toLowerCase().includes("unique")) return response.status(409).json({ error: "Ese código ya está utilizado. Elegí otro." });
-        console.error("No se pudo crear la tienda", error);
-        return response.status(500).json({ error: "No se pudo crear la tienda." });
+        console.error("No se pudo crear la sucursal", error);
+        return response.status(500).json({ error: "No se pudo crear la sucursal." });
       }
     }
     if (user && body?.action === "update-store-settings") {
@@ -681,13 +681,13 @@ export default async function handler(request, response) {
         const role = roleResult.rows[0]?.role;
         const storeCode = normalizeStoreCode(roleResult.rows[0]?.store_code);
         const settings = validateStoreSettings(body.settings);
-        if (role !== "admin" || !user.emailVerified || !storeCode) return response.status(403).json({ error: "Solo el administrador de una tienda puede modificar sus datos." });
+        if (role !== "admin" || !user.emailVerified || !storeCode) return response.status(403).json({ error: "Solo el administrador de una sucursal puede modificar sus datos." });
         if (!settings) return response.status(400).json({ error: "Revisá los datos de contacto y transferencia." });
         await db.execute({ sql: "UPDATE stores SET settings = ? WHERE code = ?", args: [JSON.stringify(settings), storeCode] });
         return response.status(200).json({ code: storeCode, settings });
       } catch (error) {
-        console.error("No se pudieron guardar los datos de la tienda", error);
-        return response.status(500).json({ error: "No se pudieron guardar los datos de la tienda." });
+        console.error("No se pudieron guardar los datos de la sucursal", error);
+        return response.status(500).json({ error: "No se pudieron guardar los datos de la sucursal." });
       }
     }
     if (user || body?.action !== "guest-booking") {
@@ -716,8 +716,8 @@ export default async function handler(request, response) {
     try {
       const storeCode = normalizeStoreCode(request.headers["x-store-code"]) || DEFAULT_STORE_CODE;
       const storeResult = await db.execute({ sql: "SELECT code, subscription_expires_at FROM stores WHERE code = ?", args: [storeCode] });
-      if (!storeResult.rows[0]) return response.status(404).json({ error: "No encontramos la tienda seleccionada." });
-      if (!isSubscriptionActive(storeResult.rows[0].subscription_expires_at)) return response.status(403).json({ error: "Esta tienda no tiene un plan activo para aceptar reservas." });
+      if (!storeResult.rows[0]) return response.status(404).json({ error: "No encontramos la sucursal seleccionada." });
+      if (!isSubscriptionActive(storeResult.rows[0].subscription_expires_at)) return response.status(403).json({ error: "Esta sucursal no tiene un plan activo para aceptar reservas." });
       booking.storeCode = storeCode;
       const professionalResult = await db.execute({ sql: "SELECT value FROM professionals WHERE id = ?", args: [storedRecordId(storeCode, booking.barberId)] });
       if (!professionalResult.rows[0]) return response.status(400).json({ error: "El profesional elegido ya no está disponible." });
@@ -828,11 +828,11 @@ export default async function handler(request, response) {
       if (storedRecord.rows[0]) {
         const priorRecord = JSON.parse(String(storedRecord.rows[0].value));
         if (normalizeStoreCode(priorRecord.storeCode || DEFAULT_STORE_CODE) !== storeCode) {
-          return response.status(403).json({ error: "El registro no pertenece a la tienda seleccionada." });
+          return response.status(403).json({ error: "El registro no pertenece a la sucursal seleccionada." });
         }
       }
       if (body.collection === "bookings" && role !== "admin") {
-        if (normalizeStoreCode(record.storeCode) !== storeCode) return response.status(403).json({ error: "La reserva no corresponde a la tienda seleccionada." });
+        if (normalizeStoreCode(record.storeCode) !== storeCode) return response.status(403).json({ error: "La reserva no corresponde a la sucursal seleccionada." });
         if (typeof record.customer?.email !== "string" || record.customer.email.trim().toLowerCase() !== user.email) {
           return response.status(403).json({ error: "Solo puedes guardar turnos asociados a tu propio correo." });
         }
@@ -881,7 +881,7 @@ export default async function handler(request, response) {
       const existing = await db.execute({ sql: `SELECT value FROM ${body.collection} WHERE id = ?`, args: [databaseId] });
       if (!existing.rows[0]) continue;
       if (normalizeStoreCode(JSON.parse(String(existing.rows[0].value)).storeCode || DEFAULT_STORE_CODE) !== storeCode) {
-        return response.status(403).json({ error: "El registro no pertenece a esta tienda." });
+        return response.status(403).json({ error: "El registro no pertenece a esta sucursal." });
       }
       statements.push({ sql: `DELETE FROM ${body.collection} WHERE id = ?`, args: [databaseId] });
     }

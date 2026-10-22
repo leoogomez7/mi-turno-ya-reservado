@@ -40,7 +40,7 @@ export function AccountSetup({ onComplete }: { onComplete: (role: AccountRole) =
         </label>
         {role === "admin" && (
           <p className="mt-4 rounded-lg border border-gold/20 bg-gold/5 p-3 text-sm text-muted-foreground">
-            Cualquier cuenta verificada puede elegir este rol. Se creará una tienda propia y aislada, con un código único para compartir con tus clientes; no tendrás acceso a otras tiendas.
+            Cualquier cuenta verificada puede elegir este rol. Se creará una sucursal propia y aislada, con un código único para compartir con tus clientes; no tendrás acceso a otras sucursales.
           </p>
         )}
         {error && <p role="alert" className="mt-4 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">{error}</p>}
