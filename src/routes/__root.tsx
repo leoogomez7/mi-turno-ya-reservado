@@ -7,11 +7,14 @@ import {
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
 import { reportAppError } from "../lib/error-reporting";
 import { Toaster } from "@/components/ui/sonner";
+import { toast } from "sonner";
+import { AuthProvider, useAppAuth, type AccountRole } from "@/lib/auth";
+import { bootstrapCloudData, clearCloudSession } from "@/lib/cloud-sync";
 
 function NotFoundComponent() {
   return (
@@ -35,11 +38,11 @@ function NotFoundComponent() {
   );
 }
 
-function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
+function ErrorComponent({ error, reset }: { error: unknown; reset: () => void }) {
   console.error(error);
   const router = useRouter();
   useEffect(() => {
-    reportAppError(error, { boundary: "tanstack_root_error_component" });
+    if (error instanceof Error) reportAppError(error, { boundary: "tanstack_root_error_component" });
   }, [error]);
 
   return (
@@ -90,8 +93,8 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     links: [
       {
         rel: "icon",
-        type: "image/svg+xml",
-        href: "/favicon.svg",
+        type: "image/png",
+        href: "/logo.png",
       },
       {
         rel: "stylesheet",
@@ -124,8 +127,78 @@ function RootComponent() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <Outlet />
-      <Toaster theme="dark" position="top-center" />
+      <AuthProvider>
+        <CloudDataBootstrap>
+          <Outlet />
+          <Toaster theme="dark" position="top-center" />
+        </CloudDataBootstrap>
+      </AuthProvider>
     </QueryClientProvider>
+  );
+}
+
+function CloudDataBootstrap({ children }: { children: ReactNode }) {
+  const { configured, isAuthenticated, isLoading, user, role, getIdToken, setVerifiedRole } = useAppAuth();
+  const [readyFor, setReadyFor] = useState<string | null>(null);
+  const [error, setError] = useState("");
+  const [attempt, setAttempt] = useState(0);
+
+  useEffect(() => {
+    if (isLoading) return;
+    if (!configured) {
+      clearCloudSession();
+      setVerifiedRole(null);
+      void bootstrapCloudData("guest", async () => undefined).catch((reason: unknown) => {
+        console.warn("No se pudieron cargar los profesionales públicos desde Turso", reason);
+      }).finally(() => setReadyFor("guest"));
+      return;
+    }
+    if (!isAuthenticated) {
+      clearCloudSession();
+      setVerifiedRole(null);
+      setError("");
+      void bootstrapCloudData("guest", async () => undefined).catch((reason: unknown) => {
+        console.warn("No se pudieron cargar los profesionales públicos desde Turso", reason);
+      }).finally(() => setReadyFor("guest"));
+      return;
+    }
+
+    const email = user?.email?.trim().toLowerCase();
+    if (!email) {
+      setError("La sesión Kinde no contiene un correo para cargar tus turnos.");
+      return;
+    }
+
+    let cancelled = false;
+    setError("");
+    const selectedRole = role ?? (sessionStorage.getItem("mi-turno-ya-requested-role") === "admin" ? "admin" : "client") as AccountRole;
+    void bootstrapCloudData(email, getIdToken, selectedRole)
+      .then((verifiedRole) => {
+        if (cancelled) return;
+        if (selectedRole === "admin" && verifiedRole !== "admin") {
+          toast.error("No se pudo habilitar la cuenta administradora. Verificá el código de invitación y que el email de Kinde esté verificado.");
+        }
+        setVerifiedRole(verifiedRole === "admin" || verifiedRole === "client" ? verifiedRole : null);
+        setReadyFor(email);
+      })
+      .catch((reason: unknown) => {
+        console.error("No se pudieron cargar los datos de Turso", reason);
+        if (!cancelled) setError(reason instanceof Error ? reason.message : "No se pudieron cargar tus datos.");
+      });
+    return () => { cancelled = true; };
+  }, [configured, getIdToken, isAuthenticated, isLoading, role, setVerifiedRole, user?.email, attempt]);
+
+  const owner = isAuthenticated ? user?.email?.trim().toLowerCase() ?? "" : "guest";
+  const ready = !isLoading && readyFor === owner;
+  if (ready) return <>{children}</>;
+
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-gradient-dark px-4">
+      <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 text-center">
+        <p className="text-lg font-semibold">{error ? "No se pudieron cargar tus datos" : "Conectando con tu cuenta"}</p>
+        <p className="mt-2 text-sm text-muted-foreground">{error || "Sincronizando turnos y profesionales."}</p>
+        {error && <button type="button" className="mt-4 rounded-lg bg-gold px-4 py-2 text-sm font-medium text-black" onClick={() => setAttempt((value) => value + 1)}>Reintentar</button>}
+      </div>
+    </div>
   );
 }

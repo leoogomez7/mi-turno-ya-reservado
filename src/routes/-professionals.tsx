@@ -7,6 +7,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { professionalStore, type Professional, type ProfessionalService } from "@/lib/professional-store";
+import { AuthRequired } from "@/components/auth-required";
+import { useAppAuth } from "@/lib/auth";
+import { createStore, createStoreAdminInvite, getCurrentStoreCode } from "@/lib/cloud-sync";
 
 const defaultFormState: Partial<Professional> = {
   name: "",
@@ -17,21 +20,20 @@ const defaultFormState: Partial<Professional> = {
   scheduleDates: [],
 };
 
-const ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD ?? "";
-
 export function ProfessionalsManager() {
+  const { isAuthenticated, isLoading, role } = useAppAuth();
   const formRef = useRef<HTMLDivElement | null>(null);
   const [professionals, setProfessionals] = useState<Professional[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<Partial<Professional>>(defaultFormState);
+  const [storeName, setStoreName] = useState("");
+  const [storeCode, setStoreCode] = useState("");
+  const [savingStore, setSavingStore] = useState(false);
+  const [currentStoreCode, setCurrentStoreCode] = useState(getCurrentStoreCode());
+  const [inviteCode, setInviteCode] = useState("");
+  const [creatingInvite, setCreatingInvite] = useState(false);
 
-  const [adminPasswordDialogOpen, setAdminPasswordDialogOpen] = useState(false);
-  const [adminPassword, setAdminPassword] = useState("");
-  const [showAdminPassword, setShowAdminPassword] = useState(false);
-  const [pendingAdminAction, setPendingAdminAction] = useState<"save" | "delete" | "modify" | null>(null);
-  const [pendingProfessionalId, setPendingProfessionalId] = useState<string | null>(null);
-  const [passwordPromptText, setPasswordPromptText] = useState("");
   const [viewDialogOpen, setViewDialogOpen] = useState(false);
   const [viewMode, setViewMode] = useState<"schedule" | "services">("schedule");
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
@@ -41,6 +43,16 @@ export function ProfessionalsManager() {
     load();
     window.addEventListener("professionals:changed", load);
     return () => window.removeEventListener("professionals:changed", load);
+  }, []);
+
+  useEffect(() => {
+    const updateStore = () => setCurrentStoreCode(getCurrentStoreCode());
+    window.addEventListener("mi-turno-ya:store-changed", updateStore);
+    window.addEventListener("mi-turno-ya:cloud-ready", updateStore);
+    return () => {
+      window.removeEventListener("mi-turno-ya:store-changed", updateStore);
+      window.removeEventListener("mi-turno-ya:cloud-ready", updateStore);
+    };
   }, []);
 
   const selectedProfessional = useMemo(
@@ -70,52 +82,6 @@ export function ProfessionalsManager() {
     }, 120);
     return () => window.clearTimeout(timeout);
   }, [showForm]);
-
-  function ensurePassword(passwordToCheck: string): boolean {
-    if (passwordToCheck !== ADMIN_PASSWORD) {
-      toast.error("Contraseña incorrecta.");
-      return false;
-    }
-    return true;
-  }
-
-  function openAdminPasswordDialog(
-    promptText: string,
-    action: "save" | "delete" | "modify",
-    professionalId?: string,
-  ) {
-    setPasswordPromptText(promptText);
-    setPendingAdminAction(action);
-    setPendingProfessionalId(professionalId ?? null);
-    setAdminPassword("");
-    setShowAdminPassword(false);
-    setAdminPasswordDialogOpen(true);
-  }
-
-  function closeAdminPasswordDialog() {
-    setAdminPasswordDialogOpen(false);
-    setPendingAdminAction(null);
-    setPendingProfessionalId(null);
-    setAdminPassword("");
-    setShowAdminPassword(false);
-  }
-
-  function confirmAdminPassword() {
-    if (!ensurePassword(adminPassword)) return;
-
-    if (pendingAdminAction === "save") {
-      performSaveProfessional();
-    } else if (pendingAdminAction === "delete" && pendingProfessionalId) {
-      deleteProfessional(pendingProfessionalId);
-    } else if (pendingAdminAction === "modify" && pendingProfessionalId) {
-      setViewDialogOpen(false);
-      setDetailDialogOpen(false);
-      setEditingId(pendingProfessionalId);
-      setShowForm(true);
-    }
-
-    closeAdminPasswordDialog();
-  }
 
   function openViewDialog(mode: "schedule" | "services") {
     setViewMode(mode);
@@ -160,7 +126,36 @@ export function ProfessionalsManager() {
   }
 
   function saveProfessional() {
-    openAdminPasswordDialog("Ingrese la contraseña admin para guardar profesional", "save");
+    performSaveProfessional();
+  }
+
+  async function saveStore() {
+    setSavingStore(true);
+    try {
+      const created = await createStore(storeName, storeCode);
+      setCurrentStoreCode(created.code);
+      setStoreName("");
+      setStoreCode("");
+      setProfessionals(professionalStore.all());
+      toast.success(`Tienda ${created.name} creada con el código ${created.code}.`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo crear la tienda.");
+    } finally {
+      setSavingStore(false);
+    }
+  }
+
+  async function generateAdminInvite() {
+    setCreatingInvite(true);
+    try {
+      const invite = await createStoreAdminInvite();
+      setInviteCode(invite.code);
+      toast.success(`Código de invitación creado para ${invite.storeCode}.`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo generar el código.");
+    } finally {
+      setCreatingInvite(false);
+    }
   }
 
   function deleteProfessional(id: string) {
@@ -172,7 +167,7 @@ export function ProfessionalsManager() {
   }
 
   function requestDeleteProfessional(id: string) {
-    openAdminPasswordDialog("Ingrese la contraseña admin para eliminar profesional", "delete", id);
+    deleteProfessional(id);
   }
 
   function updateService(index: number, service: Partial<ProfessionalService>) {
@@ -219,8 +214,12 @@ export function ProfessionalsManager() {
     setForm({ ...form, services });
   }
 
+  if (isLoading) return <div className="min-h-screen bg-gradient-dark" />;
+  if (!isAuthenticated || role !== "admin") return <><SiteHeader /><AuthRequired role="admin" title="Profesionales" /></>;
+
   return (
     <div className="min-h-screen bg-gradient-dark">
+      <SiteHeader />
         <main className="mx-auto max-w-6xl px-6 py-10">
         <div className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
@@ -242,6 +241,36 @@ export function ProfessionalsManager() {
         </div>
 
         <div className="space-y-6">
+          <section className="rounded-3xl border border-gold/30 bg-card p-6">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <p className="text-xs uppercase tracking-widest text-gold">Tienda</p>
+                <h2 className="mt-1 font-display text-2xl font-semibold">Tu tienda y código de reserva</h2>
+                <p className="mt-2 text-sm text-muted-foreground">Código actual: <strong className="text-gold">{currentStoreCode}</strong>. Los turnos y profesionales quedan separados por tienda.</p>
+              </div>
+            </div>
+            <div className="mt-5 grid gap-3 sm:grid-cols-[1fr_220px_auto]">
+              <Input value={storeName} onChange={(event) => setStoreName(event.target.value)} placeholder="Nombre de la tienda" maxLength={100} />
+              <Input value={storeCode} onChange={(event) => setStoreCode(event.target.value.toUpperCase().replace(/[^A-Z0-9_-]/g, ""))} placeholder="Código único (ej. BARBER01)" maxLength={20} />
+              <Button disabled={savingStore || storeName.trim().length < 2 || storeCode.trim().length < 3} className="bg-gold text-primary-foreground hover:bg-gold-soft" onClick={() => void saveStore()}>
+                {savingStore ? "Guardando…" : "Crear tienda"}
+              </Button>
+            </div>
+            <p className="mt-3 text-xs text-muted-foreground">El código debe tener entre 3 y 20 caracteres (letras, números, guion o guion bajo) y no puede repetirse. Compartilo con tus clientes para que encuentren tu tienda al reservar.</p>
+            {currentStoreCode !== "GENERAL" && (
+              <div className="mt-5 border-t border-border pt-4">
+                <div className="flex flex-wrap items-center gap-3">
+                  <Button type="button" variant="outline" disabled={creatingInvite} onClick={() => void generateAdminInvite()}>
+                    {creatingInvite ? "Generando…" : "Invitar otro administrador"}
+                  </Button>
+                  {inviteCode && <code className="rounded-lg border border-border bg-background px-3 py-2 text-sm">{inviteCode}</code>}
+                  {inviteCode && <Button type="button" size="sm" variant="ghost" onClick={() => void navigator.clipboard.writeText(inviteCode).then(() => toast.success("Código copiado."))}>Copiar</Button>}
+                </div>
+                <p className="mt-2 text-xs text-muted-foreground">El código permite asociar una cuenta admin con esta tienda. Compartilo de manera privada.</p>
+              </div>
+            )}
+          </section>
+
           {showForm && (
             <div ref={formRef} className="rounded-3xl border border-border bg-card p-6">
               <div className="mb-6 flex items-center justify-between gap-3">
@@ -312,42 +341,6 @@ export function ProfessionalsManager() {
               </div>
             </div>
           )}
-
-          <Dialog open={adminPasswordDialogOpen} onOpenChange={setAdminPasswordDialogOpen}>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Contraseña de administrador</DialogTitle>
-                <DialogDescription>{passwordPromptText}</DialogDescription>
-              </DialogHeader>
-              <Field label="Contraseña">
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
-                  <Input
-                    type={showAdminPassword ? "text" : "password"}
-                    value={adminPassword}
-                    onChange={(e) => setAdminPassword(e.target.value)}
-                    autoFocus
-                    placeholder="Ingrese contraseña"
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="h-10 whitespace-nowrap"
-                    onClick={() => setShowAdminPassword((current) => !current)}
-                  >
-                    {showAdminPassword ? "Ocultar" : "Mostrar"}
-                  </Button>
-                </div>
-              </Field>
-              <DialogFooter>
-                <Button onClick={confirmAdminPassword} className="bg-gold text-primary-foreground hover:bg-gold-soft">
-                  Confirmar
-                </Button>
-                <Button variant="outline" onClick={closeAdminPasswordDialog}>
-                  Cancelar
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
 
           <Dialog open={viewDialogOpen} onOpenChange={setViewDialogOpen}>
             <DialogContent>
@@ -576,11 +569,12 @@ export function ProfessionalsManager() {
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => openAdminPasswordDialog(
-                            "Ingrese la contraseña admin para modificar profesional",
-                            "modify",
-                            professional.id,
-                          )}
+                          onClick={() => {
+                            setViewDialogOpen(false);
+                            setDetailDialogOpen(false);
+                            setEditingId(professional.id);
+                            setShowForm(true);
+                          }}
                         >
                           Modificar
                         </Button>
@@ -607,7 +601,7 @@ export function ProfessionalsManager() {
         </div>
 
         <div className="mt-8 rounded-3xl border border-border bg-card p-6">
-          <p className="text-sm text-muted-foreground">Para agregar o modificar un profesional se solicitara una contraseña.</p>
+          <p className="text-sm text-muted-foreground">Para agregar o modificar un profesional se solicitara iniciar sesión.</p>
         </div>
       </main>
     </div>

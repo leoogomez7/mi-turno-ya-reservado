@@ -1,5 +1,6 @@
 import { BARBERS, SERVICES, type Service, BUSINESS } from "./salon-data";
 import { parseISO } from "date-fns";
+import { getCloudRecords, getCurrentStoreCode, isCloudInitialized, isCloudReady, persistCloudCollection } from "./cloud-sync";
 
 export interface ProfessionalService {
   id: string;
@@ -57,6 +58,7 @@ export function getAvailableSlotsForDate(professional: Professional, date: Date)
 
 export interface Professional {
   id: string;
+  storeCode?: string;
   name: string;
   specialty: string;
   address?: string;
@@ -81,6 +83,7 @@ function normalizeSlot(slot: string): string {
 }
 
 function read(): Professional[] {
+  if (isCloudInitialized()) return getCloudRecords("professionals");
   if (typeof window === "undefined") return [];
   try {
     return JSON.parse(localStorage.getItem(KEY) || "null") ?? [];
@@ -91,6 +94,11 @@ function read(): Professional[] {
 
 function write(list: Professional[]) {
   if (typeof window === "undefined") return;
+  if (isCloudReady()) {
+    persistCloudCollection("professionals", list);
+    window.dispatchEvent(new Event("professionals:changed"));
+    return;
+  }
   localStorage.setItem(KEY, JSON.stringify(list));
   window.dispatchEvent(new Event("professionals:changed"));
 }
@@ -169,6 +177,11 @@ function isFixedProfessional(id: string) {
 
 export const professionalStore = {
   all(): Professional[] {
+    if (isCloudInitialized()) {
+      const cloudProfessionals = read();
+      if (cloudProfessionals.length > 0) return cloudProfessionals;
+      return getCurrentStoreCode() === "GENERAL" ? FIXED_PROFESSIONALS : [];
+    }
     const saved = read();
     if (saved.length === 0) return FIXED_PROFESSIONALS;
 
@@ -187,7 +200,7 @@ export const professionalStore = {
     if (existingIds.has(id)) {
       id = crypto.randomUUID();
     }
-    const newProfessional: Professional = { id, ...professional };
+    const newProfessional: Professional = { id, storeCode: getCurrentStoreCode(), ...professional };
     write([...list.filter((p) => p.id !== id), newProfessional]);
     return newProfessional;
   },

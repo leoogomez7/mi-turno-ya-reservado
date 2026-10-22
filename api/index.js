@@ -1,4 +1,5 @@
 import * as serverModule from "../dist/server/server.js";
+import dataHandler from "./data.js";
 const server = serverModule.default ?? serverModule;
 
 const RequestImpl = globalThis.Request ?? (await import("node:undici")).Request;
@@ -6,6 +7,10 @@ const RequestImpl = globalThis.Request ?? (await import("node:undici")).Request;
 export default async function handler(req, res) {
   const host = req.headers.host || "localhost";
   const url = new URL(req.url, `https://${host}`);
+
+  if (url.pathname === "/api/data") {
+    return dataHandler(req, res);
+  }
 
   if (url.pathname === "/api/mercadopago/preference") {
     if (req.method !== "POST") {

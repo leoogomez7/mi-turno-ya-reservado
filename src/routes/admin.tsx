@@ -14,6 +14,9 @@ import { SERVICES } from "@/lib/salon-data";
 import { bookingStore, getBarber, type Booking } from "@/lib/booking-store";
 import { professionalStore, getProfessional, getProfessionalService, getAvailableSlotsForDate, type Professional } from "@/lib/professional-store";
 import { toast } from "sonner";
+import { AuthRequired } from "@/components/auth-required";
+import { useAppAuth } from "@/lib/auth";
+import { getCurrentStoreCode } from "@/lib/cloud-sync";
 
 export const Route = createFileRoute("/admin")({
   head: () => ({ meta: [{ title: "Panel" }] }),
@@ -21,11 +24,11 @@ export const Route = createFileRoute("/admin")({
 });
 
 function AdminPage() {
+  const { isAuthenticated, isLoading, role } = useAppAuth();
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [bookingEditDialogOpen, setBookingEditDialogOpen] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
-  const [editMode, setEditMode] = useState<"attendance" | "turno" | null>(null);
-  const [attendanceChoice, setAttendanceChoice] = useState<"completed" | "no-show">("completed");
+  const [editMode, setEditMode] = useState<"attendance" | "confirmation" | "turno" | null>(null);
   const [editedDate, setEditedDate] = useState("");
   const [editedTime, setEditedTime] = useState("");
   const [editedProfessionalId, setEditedProfessionalId] = useState("");
@@ -40,7 +43,6 @@ function AdminPage() {
 
   useEffect(() => {
     if (!selectedBooking) return;
-    setAttendanceChoice(selectedBooking.status === "completed" ? "completed" : "no-show");
     setEditedDate(selectedBooking.date);
     setEditedTime(selectedBooking.time);
     setEditedProfessionalId(selectedBooking.barberId);
@@ -55,7 +57,10 @@ function AdminPage() {
     return getAvailableSlotsForDate(editedProfessional, new Date(editedDate));
   }, [editedProfessional, editedDate]);
 
-  function openBookingDialog(booking: Booking, mode: "attendance" | "turno") {
+  if (isLoading) return <div className="min-h-screen bg-gradient-dark" />;
+  if (!isAuthenticated || role !== "admin") return <><SiteHeader /><AuthRequired role="admin" title="Administración" /></>;
+
+  function openBookingDialog(booking: Booking, mode: "attendance" | "confirmation" | "turno") {
     setSelectedBooking(booking);
     setEditMode(mode);
     setBookingEditDialogOpen(true);
@@ -100,6 +105,13 @@ function AdminPage() {
     closeBookingDialog();
   }
 
+  function setAppointmentConfirmation(choice: "confirmed" | "pending") {
+    if (!selectedBooking) return;
+    bookingStore.update(selectedBooking.id, { appointmentConfirmation: choice });
+    toast.success(choice === "confirmed" ? "Turno confirmado por el cliente" : "El cliente todavía no confirmó el turno");
+    closeBookingDialog();
+  }
+
   function deleteBooking(id: string) {
     bookingStore.remove(id);
     toast("Turno eliminado");
@@ -118,6 +130,7 @@ function AdminPage() {
           <div>
             <p className="text-xs uppercase tracking-widest text-gold">Panel administrador</p>
             <h1 className="font-display text-4xl font-semibold">Agenda & Estadísticas</h1>
+            <p className="mt-2 text-sm text-muted-foreground">Tienda: <span className="font-semibold text-gold">{getCurrentStoreCode()}</span></p>
           </div>
         </div>
 
@@ -149,10 +162,12 @@ function AdminPage() {
             <DialogHeader>
               <DialogTitle>
                 {editMode === "attendance" && "Asistencia"}
+                {editMode === "confirmation" && "Confirmación de turno"}
                 {editMode === "turno" && "Modificar turno"}
               </DialogTitle>
               <DialogDescription>
                 {editMode === "attendance" && "Selecciona si el cliente asistió o no al turno."}
+                {editMode === "confirmation" && "¿El cliente confirmó el turno?"}
                 {editMode === "turno" && "Modifica profesional, servicio y horario en un solo paso."}
               </DialogDescription>
             </DialogHeader>
@@ -162,6 +177,13 @@ function AdminPage() {
                 <div className="grid gap-3 sm:grid-cols-2">
                   <Button className="bg-emerald-500 text-white" onClick={() => confirmAttendance("completed")}>Sí asistió</Button>
                   <Button className="bg-red-500 text-white" onClick={() => confirmAttendance("no-show")}>No asistió</Button>
+                </div>
+              )}
+
+              {editMode === "confirmation" && (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Button className="bg-emerald-500 text-white" onClick={() => setAppointmentConfirmation("confirmed")}>Confirmó turno</Button>
+                  <Button className="bg-amber-500 text-white hover:bg-amber-600" onClick={() => setAppointmentConfirmation("pending")}>No confirmó todavía</Button>
                 </div>
               )}
 
@@ -228,7 +250,7 @@ function AdminPage() {
               )}
             </div>
 
-            {editMode && editMode !== "attendance" ? (
+            {editMode === "turno" ? (
               <DialogFooter>
                 <Button className="bg-gold text-primary-foreground hover:bg-gold-soft" onClick={saveBookingEdit}>
                   Guardar cambios
@@ -264,7 +286,7 @@ function AgendaList({
   onConfirmPayment,
 }: {
   bookings: Booking[];
-  onOpenBookingDialog: (booking: Booking, mode: "attendance" | "turno") => void;
+  onOpenBookingDialog: (booking: Booking, mode: "attendance" | "confirmation" | "turno") => void;
   onDeleteBooking: (id: string) => void;
   onConfirmPayment: (id: string) => void;
 }) {
@@ -301,6 +323,11 @@ function AgendaList({
                 {b.status === "pending-payment" && <Badge variant="outline" className="border-amber-300 text-amber-300">Pago pendiente · {b.customer.paymentMethod}</Badge>}
                 {b.status === "completed" && <Badge variant="outline" className="border-emerald-300 text-emerald-400">Asistió</Badge>}
                 {b.status === "no-show" && <Badge variant="outline" className="border-red-300 text-red-400">No asistió</Badge>}
+                {b.status !== "pending-payment" && b.status !== "cancelled" && (
+                  <Badge variant="outline" className={b.appointmentConfirmation === "confirmed" ? "border-emerald-300 text-emerald-400" : "border-amber-300 text-amber-300"}>
+                    {b.appointmentConfirmation === "confirmed" ? "Turno confirmado" : "No confirmó todavía"}
+                  </Badge>
+                )}
                 <span>{b.customer.phone}</span>
               </div>
             </div>
@@ -311,6 +338,9 @@ function AgendaList({
               )}
               {b.status === "confirmed" && (
                 <Button size="sm" variant="outline" onClick={() => onOpenBookingDialog(b, "attendance")}>Indicar asistencia</Button>
+              )}
+              {b.status !== "pending-payment" && b.status !== "cancelled" && (
+                <Button size="sm" variant="outline" onClick={() => onOpenBookingDialog(b, "confirmation")}>Confirmar turno</Button>
               )}
               <Button size="sm" variant="outline" onClick={() => onOpenBookingDialog(b, "turno")}>Modificar turno</Button>
               <Button size="sm" variant="destructive" disabled={b.isTest} onClick={() => onDeleteBooking(b.id)}>

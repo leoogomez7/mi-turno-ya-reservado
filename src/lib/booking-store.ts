@@ -1,5 +1,6 @@
 import { SERVICES } from "./salon-data";
 import { getProfessional as findProfessional, getProfessionalService } from "./professional-store";
+import { getCloudRecords, isCloudInitialized, isCloudReady, persistCloudCollection } from "./cloud-sync";
 
 export interface Customer {
   fullName: string;
@@ -13,6 +14,7 @@ export interface Customer {
 
 export interface Booking {
   id: string;
+  storeCode?: string;
   customer: Customer;
   barberId: string;
   serviceIds: string[];
@@ -21,6 +23,7 @@ export interface Booking {
   duration: number;
   totalPrice: number;
   status: "pending-payment" | "confirmed" | "cancelled" | "completed" | "no-show";
+  appointmentConfirmation?: "confirmed" | "pending";
   createdAt: string;
   isTest?: boolean;
 }
@@ -77,6 +80,7 @@ function isFixedBooking(id: string) {
 }
 
 function read(): Booking[] {
+  if (isCloudInitialized()) return getCloudRecords("bookings");
   if (typeof window === "undefined") return [];
   try {
     return JSON.parse(localStorage.getItem(KEY) || "[]");
@@ -86,12 +90,19 @@ function read(): Booking[] {
 }
 
 function write(list: Booking[]) {
+  if (isCloudReady()) {
+    persistCloudCollection("bookings", list);
+    window.dispatchEvent(new Event("bookings:changed"));
+    return;
+  }
   localStorage.setItem(KEY, JSON.stringify(list));
+  if (isCloudInitialized()) persistCloudCollection("bookings", list);
   window.dispatchEvent(new Event("bookings:changed"));
 }
 
 export const bookingStore = {
   all(): Booking[] {
+    if (isCloudInitialized()) return read().sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
     const saved = read();
     if (saved.length === 0) return FIXED_BOOKINGS.slice().sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
 

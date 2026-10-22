@@ -16,6 +16,8 @@ import { toast } from "sonner";
 import { SERVICES, BUSINESS, generateSlots } from "@/lib/salon-data";
 import { bookingStore, getBarber, sumDuration, sumPrice, type Customer } from "@/lib/booking-store";
 import { professionalStore, getProfessionalServiceList, getScheduleForDate, generateSlotsFromSchedule } from "@/lib/professional-store";
+import { useAppAuth } from "@/lib/auth";
+import { getAvailableStores, getCurrentStoreCode, selectStore, type Store } from "@/lib/cloud-sync";
 
 export const Route = createFileRoute("/book")({
   beforeLoad: () => {
@@ -34,6 +36,7 @@ const STEP_PATHS = {
 const RESERVATION_DRAFT_KEY = "mi-turno-ya-reservado-draft";
 
 interface ReservationDraft {
+  storeCode?: string;
   customer: Customer;
   barberId: string;
   serviceIds: string[];
@@ -46,6 +49,8 @@ function stepForPath(pathname: string) {
 }
 
 export function BookPage() {
+  const { isAuthenticated, role, user } = useAppAuth();
+  const auth = useAppAuth();
   const location = useLocation();
   const initialStep = stepForPath(location.pathname) ?? 0;
   const [step, setStep] = useState<number>(Number(initialStep));
@@ -65,17 +70,44 @@ export function BookPage() {
   const [serviceIds, setServiceIds] = useState<string[]>([]);
   const [date, setDate] = useState<Date | null>(null);
   const [time, setTime] = useState<string>("");
+  const [stores, setStores] = useState<Store[]>(getAvailableStores());
+  const [selectedStoreCode, setSelectedStoreCode] = useState(getCurrentStoreCode());
+  const [storeSearch, setStoreSearch] = useState("");
+  const [storeLoading, setStoreLoading] = useState(false);
+
+  useEffect(() => {
+    if (role === "client" && user?.email) {
+      setCustomer((current) => current.email ? current : { ...current, email: user.email ?? "" });
+    }
+  }, [role, user?.email]);
+
+  useEffect(() => {
+    const reloadStores = () => {
+      setStores(getAvailableStores());
+      setSelectedStoreCode(getCurrentStoreCode());
+    };
+    window.addEventListener("mi-turno-ya:cloud-ready", reloadStores);
+    window.addEventListener("mi-turno-ya:store-changed", reloadStores);
+    return () => {
+      window.removeEventListener("mi-turno-ya:cloud-ready", reloadStores);
+      window.removeEventListener("mi-turno-ya:store-changed", reloadStores);
+    };
+  }, []);
 
   useEffect(() => {
     try {
       const saved = sessionStorage.getItem(RESERVATION_DRAFT_KEY);
       if (saved) {
         const draft = JSON.parse(saved) as ReservationDraft;
-        if (draft.customer) setCustomer(draft.customer);
-        if (typeof draft.barberId === "string") setBarberId(draft.barberId);
-        if (Array.isArray(draft.serviceIds)) setServiceIds(draft.serviceIds);
-        if (draft.date) setDate(new Date(`${draft.date}T12:00:00`));
-        if (typeof draft.time === "string") setTime(draft.time);
+        if (typeof draft.storeCode === "string" && draft.storeCode !== getCurrentStoreCode()) {
+          sessionStorage.removeItem(RESERVATION_DRAFT_KEY);
+        } else {
+            if (draft.customer) setCustomer(draft.customer);
+            if (typeof draft.barberId === "string") setBarberId(draft.barberId);
+            if (Array.isArray(draft.serviceIds)) setServiceIds(draft.serviceIds);
+            if (draft.date) setDate(new Date(`${draft.date}T12:00:00`));
+            if (typeof draft.time === "string") setTime(draft.time);
+        }
       }
     } catch {
       sessionStorage.removeItem(RESERVATION_DRAFT_KEY);
@@ -86,6 +118,7 @@ export function BookPage() {
   useEffect(() => {
     if (!draftLoaded) return;
     const draft: ReservationDraft = {
+      storeCode: selectedStoreCode,
       customer,
       barberId,
       serviceIds,
@@ -93,7 +126,29 @@ export function BookPage() {
       time,
     };
     sessionStorage.setItem(RESERVATION_DRAFT_KEY, JSON.stringify(draft));
-  }, [draftLoaded, customer, barberId, serviceIds, date, time]);
+  }, [draftLoaded, customer, barberId, serviceIds, date, time, selectedStoreCode]);
+
+  const matchingStores = stores.filter((store) => `${store.name} ${store.code}`.toLowerCase().includes(storeSearch.trim().toLowerCase()));
+
+  async function chooseStore(store: Store) {
+    if (store.code === selectedStoreCode) return;
+    setStoreLoading(true);
+    try {
+      await selectStore(store.code, user?.email ?? "guest", auth.getIdToken, role ?? undefined);
+      setSelectedStoreCode(store.code);
+      setBarberId("");
+      setServiceIds([]);
+      setDate(null);
+      setTime("");
+      clearReservationDraft();
+      setStepError(null);
+      toast.success(`Seleccionaste ${store.name}.`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo cambiar de tienda.");
+    } finally {
+      setStoreLoading(false);
+    }
+  }
 
   function clearReservationDraft() {
     sessionStorage.removeItem(RESERVATION_DRAFT_KEY);
@@ -128,6 +183,10 @@ export function BookPage() {
   }, [step, customer, barberId, serviceIds, date, time]);
 
   async function confirm() {
+    if (isAuthenticated && role === "client" && user?.email && customer.email.trim().toLowerCase() !== user.email.trim().toLowerCase()) {
+      toast.error("Para ver este turno en tu cuenta, usá el mismo correo con el que iniciaste sesión.");
+      return;
+    }
     if (!date || !time) {
       toast.error("Seleccioná fecha y horario antes de confirmar.");
       return;
@@ -139,6 +198,7 @@ export function BookPage() {
       .map((s) => s.name)
       .join(", ");
     const message = `Hola! Quiero confirmar un turno.
+  Tienda: ${stores.find((store) => store.code === selectedStoreCode)?.name ?? selectedStoreCode} (${selectedStoreCode})
 Nombre: ${customer.fullName}
 Teléfono: ${customer.phone}
 Email: ${customer.email}
@@ -152,6 +212,7 @@ Notas: ${customer.notes || "Ninguna"}`;
 
     if (customer.paymentMethod === "transferencia") {
       bookingStore.add({
+        storeCode: selectedStoreCode,
         customer, barberId, serviceIds,
         date: format(date, "yyyy-MM-dd"),
         time, duration, totalPrice: price, status: "pending-payment",
@@ -183,6 +244,7 @@ Notas: ${customer.notes || "Ninguna"}`;
           throw new Error(result.error || "No se pudo preparar el pago.");
         }
         bookingStore.add({
+          storeCode: selectedStoreCode,
           customer, barberId, serviceIds,
           date: format(date, "yyyy-MM-dd"),
           time, duration, totalPrice: price, status: "pending-payment",
@@ -198,6 +260,7 @@ Notas: ${customer.notes || "Ninguna"}`;
     }
 
     bookingStore.add({
+      storeCode: selectedStoreCode,
       customer, barberId, serviceIds,
       date: format(date, "yyyy-MM-dd"),
       time, duration, totalPrice: price,
@@ -260,6 +323,24 @@ Notas: ${customer.notes || "Ninguna"}`;
     <div className="min-h-screen bg-gradient-dark">
       <SiteHeader />
       <main className="mx-auto flex min-h-[calc(100svh-56px)] w-full max-w-4xl flex-col justify-center px-4 py-4 sm:px-6 md:py-5">
+        <section className="mb-4 rounded-2xl border border-gold/30 bg-card/70 p-4 sm:p-5">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <p className="text-xs uppercase tracking-widest text-gold">Reservar en</p>
+              <h2 className="mt-1 font-display text-xl font-semibold">Elegí una tienda</h2>
+            </div>
+            <p className="text-xs text-muted-foreground">Código: {selectedStoreCode}</p>
+          </div>
+          <Input className="mt-3" value={storeSearch} onChange={(event) => setStoreSearch(event.target.value)} placeholder="Buscar por nombre o ingresar código de tienda" />
+          <div className="mt-3 flex flex-wrap gap-2">
+            {matchingStores.map((store) => (
+              <Button key={store.code} type="button" size="sm" disabled={storeLoading} variant={store.code === selectedStoreCode ? "default" : "outline"} className={store.code === selectedStoreCode ? "bg-gold text-primary-foreground hover:bg-gold-soft" : ""} onClick={() => void chooseStore(store)}>
+                {store.name} · {store.code}
+              </Button>
+            ))}
+            {matchingStores.length === 0 && <p className="text-sm text-muted-foreground">No encontramos tiendas con ese nombre o código.</p>}
+          </div>
+        </section>
         {paymentReturn && (
           <div role="status" className="mb-4 rounded-xl border border-gold/30 bg-gold/10 px-4 py-3 text-sm text-foreground">
             {paymentReturn === "success"
@@ -276,7 +357,7 @@ Notas: ${customer.notes || "Ninguna"}`;
           {step === 1 && <StepBarber value={barberId} onChange={setBarberId} />}
           {step === 2 && <StepServices value={serviceIds} onChange={setServiceIds} hairType={customer.hairType} setHairType={(v) => setCustomer({ ...customer, hairType: v })} barberId={barberId} />}
           {step === 3 && <StepDateTime date={date} setDate={setDate} time={time} setTime={setTime} barberId={barberId} duration={duration} />}
-          {step === 4 && (draftLoaded && date ? <StepConfirm customer={customer} barberId={barberId} serviceIds={serviceIds} date={date} time={time} duration={duration} price={price} /> : <p className="py-8 text-center text-sm text-muted-foreground">Cargando los datos de tu reserva…</p>)}
+          {step === 4 && (draftLoaded && date ? <StepConfirm storeName={stores.find((store) => store.code === selectedStoreCode)?.name ?? selectedStoreCode} storeCode={selectedStoreCode} customer={customer} barberId={barberId} serviceIds={serviceIds} date={date} time={time} duration={duration} price={price} /> : <p className="py-8 text-center text-sm text-muted-foreground">Cargando los datos de tu reserva…</p>)}
         </div>
 
         {stepError && (
@@ -654,8 +735,9 @@ function StepDateTime({
 }
 
 function StepConfirm({
-  customer, barberId, serviceIds, date, time, duration, price,
+  storeName, storeCode, customer, barberId, serviceIds, date, time, duration, price,
 }: {
+  storeName: string; storeCode: string;
   customer: Customer; barberId: string; serviceIds: string[];
   date: Date; time: string; duration: number; price: number;
 }) {
@@ -668,6 +750,7 @@ function StepConfirm({
     <div>
       <SectionTitle icon={Check} title="Paso 5" subtitle="Resumen de tu turno" />
       <div className="grid gap-3 text-sm">
+        <Row label="Tienda" value={`${storeName} · ${storeCode}`} />
         <Row label="Cliente" value={customer.fullName} />
         <Row label="Contacto" value={`${customer.email} · ${customer.phone}`} />
         <Row label="Profesional" value={barber?.name ?? "-"} />
