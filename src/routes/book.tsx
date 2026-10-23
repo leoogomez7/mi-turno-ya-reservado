@@ -312,7 +312,7 @@ Notas: ${customer.notes || "Ninguna"}`;
   return (
     <div className="min-h-screen bg-gradient-dark">
       <SiteHeader />
-      <main className="mx-auto flex w-full max-w-6xl flex-col px-4 py-10 sm:px-6">
+      <main className="mx-auto flex w-full max-w-7xl flex-col px-4 py-10 sm:px-6">
         <section
           className={cn(
             "mb-4 rounded-2xl border border-gold/30 bg-card/70 p-4 sm:p-5",
@@ -342,7 +342,7 @@ Notas: ${customer.notes || "Ninguna"}`;
             </div>
             <div className="flex items-center gap-3">
               {selectedStoreCode && <p className="text-xs text-muted-foreground">Código: {selectedStoreCode}</p>}
-              {selectedStoreCode && <Button type="button" size="sm" variant="outline" onClick={() => setStorePickerOpen(true)}>Cambiar sucursal</Button>}
+              {selectedStoreCode && <Button type="button" size="sm" variant="outline" className="border-gold/40 hover:border-gold" onClick={() => setStorePickerOpen(true)}>Cambiar sucursal</Button>}
             </div>
           </div>
         </section>
@@ -409,7 +409,7 @@ Notas: ${customer.notes || "Ninguna"}`;
         )}
         <Stepper step={step} />
 
-        <div className="mt-4 rounded-2xl border border-border bg-card/60 p-5 sm:p-6">
+        <div className="mt-4 rounded-2xl border border-gold/30 bg-card/60 p-5 sm:p-6">
           {step === 0 && <StepCustomer customer={customer} setCustomer={setCustomer} />}
           {step === 1 && <StepBarber value={barberId} onChange={setBarberId} />}
           {step === 2 && <StepServices value={serviceIds} onChange={setServiceIds} hairType={customer.hairType} setHairType={(v) => setCustomer({ ...customer, hairType: v })} barberId={barberId} />}

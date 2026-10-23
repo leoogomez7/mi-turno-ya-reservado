@@ -483,7 +483,7 @@ export function ProfessionalsManager() {
   return (
     <div className="min-h-screen bg-gradient-dark">
       <SiteHeader />
-      <main className="mx-auto max-w-6xl px-6 py-10">
+      <main className="mx-auto w-full max-w-7xl px-4 py-10 sm:px-6">
         <div className="space-y-6">
           <section className="rounded-3xl border border-gold/30 bg-card p-6">
             <div className="flex flex-wrap items-start justify-between gap-4">
@@ -1015,7 +1015,7 @@ function ProfessionalsPage() {
   return (
     <div className="min-h-screen bg-gradient-dark">
       <SiteHeader />
-      <main className="mx-auto max-w-6xl px-6 py-10">
+      <main className="mx-auto w-full max-w-7xl px-4 py-10 sm:px-6">
         <ProfessionalsManager />
       </main>
     </div>

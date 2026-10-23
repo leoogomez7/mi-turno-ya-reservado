@@ -97,7 +97,11 @@ function PlanPage() {
     : null;
   const selectedPlan = SUBSCRIPTION_PLANS.find((plan) => plan.id === selectedPlanId) ?? SUBSCRIPTION_PLANS[0];
 
-  if (isLoading || (isAuthenticated && role === "admin" && !storeInfoLoaded)) {
+  const subscriptionDataReady = Boolean(
+    storeInfoLoaded && storeInfo && storeInfo.subscriptionExpiresAt !== undefined,
+  );
+
+  if (isLoading || (isAuthenticated && role === "admin" && !subscriptionDataReady)) {
     return <LoadingScreen message="Preparando tu plan" />;
   }
   if (!isAuthenticated || role !== "admin") return <><SiteHeader /><AuthRequired role="admin" title="Plan" /></>;
@@ -155,7 +159,7 @@ function PlanPage() {
   return (
     <div className="min-h-screen bg-gradient-dark">
       <SiteHeader />
-      <main className="mx-auto max-w-6xl px-6 py-10">
+      <main className="mx-auto w-full max-w-7xl px-4 py-10 sm:px-6">
         <section className="mb-8 rounded-3xl border border-gold/30 bg-card p-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div>
