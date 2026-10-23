@@ -875,21 +875,23 @@ export function ProfessionalsManager() {
 
           <Dialog open={detailDialogOpen} onOpenChange={setDetailDialogOpen}>
             <DialogContent className={viewMode === "schedule" ? "w-[calc(100vw-2rem)] max-h-[90vh] overflow-x-hidden overflow-y-auto sm:max-w-2xl" : "max-h-[90vh] overflow-y-auto"}>
-              <DialogHeader>
-                <DialogTitle>{viewMode === "schedule" ? schedulePanel === "weekly" ? "Horarios" : "Excepciones" : "Editar servicios"}</DialogTitle>
-                <DialogDescription>
-                  {viewMode === "schedule"
-                    ? schedulePanel === "weekly" ? "Configurá el horario semanal del profesional." : "Elegí fechas para cambiar el horario o marcar el día como cerrado."
-                    : "Modificá la lista de servicios disponibles para el profesional."}
-                </DialogDescription>
-              </DialogHeader>
+              {(viewMode !== "schedule" || schedulePanel !== "weekly") && (
+                <DialogHeader>
+                  <DialogTitle>{viewMode === "schedule" ? "Excepciones" : "Editar servicios"}</DialogTitle>
+                  <DialogDescription>
+                    {viewMode === "schedule"
+                      ? "Elegí fechas para cambiar el horario o marcar el día como cerrado."
+                      : "Modificá la lista de servicios disponibles para el profesional."}
+                  </DialogDescription>
+                </DialogHeader>
+              )}
               <div className="space-y-4 py-2">
                 {viewMode === "schedule" ? (
                   <div className="min-w-0 space-y-6">
                     {schedulePanel === "weekly" && (
-                    <section className="rounded-2xl border border-border bg-background/60 p-4">
-                      <h3 className="font-semibold">Horario semanal</h3>
-                      <p className="mt-1 text-sm text-muted-foreground">Elegí qué días atendés y definí el horario de cada uno.</p>
+                    <section>
+                      <h3 className="font-display text-2xl font-semibold">Horarios</h3>
+                      <p className="mt-1 text-sm text-muted-foreground">Configurá el horario semanal del profesional.</p>
                       <div className="mt-4 space-y-3">
                         {WEEKDAYS.map((day) => {
                           const schedule = form.weeklySchedule?.find((entry) => entry.dayOfWeek === day.id);
