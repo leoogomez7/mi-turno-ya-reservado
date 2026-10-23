@@ -68,29 +68,43 @@ function parseStoreSettings(value) {
   try {
     const settings = JSON.parse(String(value || "{}"));
     const source = settings && typeof settings === "object" && !Array.isArray(settings) ? settings : {};
+    const street = typeof source.street === "string" ? source.street : typeof source.address === "string" ? source.address : "";
+    const height = typeof source.height === "string" ? source.height : "";
+    const city = typeof source.city === "string" ? source.city : "";
+    const province = typeof source.province === "string" ? source.province : "";
+    const postalCode = typeof source.postalCode === "string" ? source.postalCode : "";
+    const address = [street, height, city, province, postalCode].filter(Boolean).join(", ");
     return {
-      address: typeof source.address === "string" ? source.address : "",
+      address: address || (typeof source.address === "string" ? source.address : ""),
+      street,
+      height,
+      city,
+      province,
+      postalCode,
       whatsapp: typeof source.whatsapp === "string" ? source.whatsapp : "",
+      instagram: typeof source.instagram === "string" ? source.instagram : "",
       transferHolder: typeof source.transferHolder === "string" ? source.transferHolder : "",
       transferBank: typeof source.transferBank === "string" ? source.transferBank : "",
       transferCbu: typeof source.transferCbu === "string" ? source.transferCbu : "",
       transferAlias: typeof source.transferAlias === "string" ? source.transferAlias : "",
     };
   } catch {
-    return { address: "", whatsapp: "", transferHolder: "", transferBank: "", transferCbu: "", transferAlias: "" };
+    return { address: "", street: "", height: "", city: "", province: "", postalCode: "", whatsapp: "", instagram: "", transferHolder: "", transferBank: "", transferCbu: "", transferAlias: "" };
   }
 }
 
 function validateStoreSettings(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  const fields = ["address", "whatsapp", "transferHolder", "transferBank", "transferCbu", "transferAlias"];
+  const fields = ["street", "height", "city", "province", "postalCode", "whatsapp", "instagram", "transferHolder", "transferBank", "transferCbu", "transferAlias"];
   const settings = {};
   for (const field of fields) {
     const setting = value[field] ?? "";
-    if (typeof setting !== "string" || setting.length > 200) return null;
+    const maxLength = field === "street" ? 150 : field === "height" || field === "postalCode" ? 20 : field === "whatsapp" ? 25 : field === "instagram" ? 100 : 200;
+    if (typeof setting !== "string" || setting.length > maxLength) return null;
     settings[field] = setting.trim();
   }
   if (settings.whatsapp && !/^\+?[0-9 ()-]{8,25}$/.test(settings.whatsapp)) return null;
+  settings.address = [settings.street, settings.height, settings.city, settings.province, settings.postalCode].filter(Boolean).join(", ");
   return settings;
 }
 
@@ -749,11 +763,41 @@ export default async function handler(request, response) {
         const settings = validateStoreSettings(body.settings);
         if (role !== "admin" || !user.emailVerified || !storeCode) return response.status(403).json({ error: "Solo el administrador de una sucursal puede modificar sus datos." });
         if (!settings) return response.status(400).json({ error: "Revisá los datos de contacto y transferencia." });
+        if (!settings.transferHolder.trim()) return response.status(400).json({ error: "El titular de la cuenta es obligatorio." });
+        if (!settings.transferCbu.trim() && !settings.transferAlias.trim()) return response.status(400).json({ error: "Completá el CBU o el alias para recibir transferencias." });
         await db.execute({ sql: "UPDATE stores SET settings = ? WHERE code = ?", args: [JSON.stringify(settings), storeCode] });
         return response.status(200).json({ code: storeCode, settings });
       } catch (error) {
         console.error("No se pudieron guardar los datos de la sucursal", error);
         return response.status(500).json({ error: "No se pudieron guardar los datos de la sucursal." });
+      }
+    }
+    if (user && body?.action === "update-store-contact") {
+      try {
+        const roleResult = await db.execute({ sql: "SELECT role, store_code FROM account_roles WHERE user_id = ?", args: [user.id] });
+        const role = roleResult.rows[0]?.role;
+        const storeCode = normalizeStoreCode(roleResult.rows[0]?.store_code);
+        if (role !== "admin" || !user.emailVerified || !storeCode) return response.status(403).json({ error: "Solo el administrador de una sucursal puede modificar sus datos de contacto." });
+        const storeResult = await db.execute({ sql: "SELECT settings FROM stores WHERE code = ?", args: [storeCode] });
+        if (!storeResult.rows[0]) return response.status(404).json({ error: "No encontramos la sucursal." });
+        const currentSettings = parseStoreSettings(storeResult.rows[0].settings);
+        const contact = body.contact && typeof body.contact === "object" && !Array.isArray(body.contact) ? body.contact : {};
+        const settings = validateStoreSettings({
+          ...currentSettings,
+          street: contact.street ?? currentSettings.street,
+          height: contact.height ?? currentSettings.height,
+          city: contact.city ?? currentSettings.city,
+          province: contact.province ?? currentSettings.province,
+          postalCode: contact.postalCode ?? currentSettings.postalCode,
+          whatsapp: contact.whatsapp ?? currentSettings.whatsapp,
+          instagram: contact.instagram ?? currentSettings.instagram,
+        });
+        if (!settings) return response.status(400).json({ error: "Revisá los datos de contacto ingresados." });
+        await db.execute({ sql: "UPDATE stores SET settings = ? WHERE code = ?", args: [JSON.stringify(settings), storeCode] });
+        return response.status(200).json({ code: storeCode, settings });
+      } catch (error) {
+        console.error("No se pudieron guardar los datos de contacto", error);
+        return response.status(500).json({ error: "No se pudieron guardar los datos de contacto." });
       }
     }
     if (user || body?.action !== "guest-booking") {

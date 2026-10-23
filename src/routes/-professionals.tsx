@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Check, Plus, Trash2 } from "lucide-react";
 import { SiteHeader } from "@/components/site-header";
 import { Button } from "@/components/ui/button";
@@ -9,7 +9,7 @@ import { toast } from "sonner";
 import { professionalStore, type Professional, type ProfessionalService } from "@/lib/professional-store";
 import { AuthRequired } from "@/components/auth-required";
 import { useAppAuth } from "@/lib/auth";
-import { createStore, getAvailableStores, getCurrentStoreCode, isCloudInitialized, updateStoreSettings, type StoreSettings } from "@/lib/cloud-sync";
+import { createStore, getAvailableStores, getCurrentStoreCode, isCloudInitialized, updateStoreContact, updateStoreSettings, type StoreSettings } from "@/lib/cloud-sync";
 import { LoadingScreen } from "@/components/loading-screen";
 
 const defaultFormState: Partial<Professional> = {
@@ -23,52 +23,37 @@ const defaultFormState: Partial<Professional> = {
 
 const emptyStoreSettings: StoreSettings = {
   address: "",
+  street: "",
+  height: "",
+  city: "",
+  province: "",
+  postalCode: "",
   whatsapp: "",
+  instagram: "",
   transferHolder: "",
   transferBank: "",
   transferCbu: "",
   transferAlias: "",
 };
-const storeCreationDraftKey = "mi-turno-ya:store-creation-draft";
-
 export function ProfessionalsManager() {
   const { isAuthenticated, isLoading, role } = useAppAuth();
-  const formRef = useRef<HTMLDivElement | null>(null);
   const [professionals, setProfessionals] = useState<Professional[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<Partial<Professional>>(defaultFormState);
-  const [storeName, setStoreName] = useState("");
-  const [storeCode, setStoreCode] = useState("");
-  const [storeDraftLoaded, setStoreDraftLoaded] = useState(false);
+  const [storeName, setStoreName] = useState(() => getAvailableStores().find((store) => store.code === getCurrentStoreCode())?.name ?? "");
+  const [storeCode, setStoreCode] = useState(getCurrentStoreCode());
+  const [storeDraftLoaded, setStoreDraftLoaded] = useState(isCloudInitialized());
   const [savingStore, setSavingStore] = useState(false);
   const [currentStoreCode, setCurrentStoreCode] = useState(getCurrentStoreCode());
   const [currentStoreName, setCurrentStoreName] = useState(() => getAvailableStores().find((store) => store.code === getCurrentStoreCode())?.name ?? "");
   const [storeSettings, setStoreSettings] = useState<StoreSettings>(emptyStoreSettings);
   const [loadingStoreSettings, setLoadingStoreSettings] = useState(true);
+  const [savingContact, setSavingContact] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
   const [viewDialogOpen, setViewDialogOpen] = useState(false);
   const [viewMode, setViewMode] = useState<"schedule" | "services">("schedule");
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
-
-  useEffect(() => {
-    try {
-      const draft = sessionStorage.getItem(storeCreationDraftKey);
-      if (draft) {
-        const parsed = JSON.parse(draft) as { name?: unknown; code?: unknown };
-        if (typeof parsed.name === "string") setStoreName(parsed.name);
-        if (typeof parsed.code === "string") setStoreCode(parsed.code);
-      }
-    } catch {
-      sessionStorage.removeItem(storeCreationDraftKey);
-    }
-    setStoreDraftLoaded(true);
-  }, []);
-
-  useEffect(() => {
-    if (!storeDraftLoaded) return;
-    sessionStorage.setItem(storeCreationDraftKey, JSON.stringify({ name: storeName, code: storeCode }));
-  }, [storeCode, storeDraftLoaded, storeName]);
 
   useEffect(() => {
     const load = () => setProfessionals(professionalStore.all());
@@ -84,13 +69,19 @@ export function ProfessionalsManager() {
       const store = getAvailableStores().find((item) => item.code === code);
       if (store) {
         setCurrentStoreName(store.name);
+        setStoreName(store.name);
+        setStoreCode(store.code);
         setStoreSettings(store.settings ?? emptyStoreSettings);
         setLoadingStoreSettings(false);
       } else if (cloudReady || isCloudInitialized()) {
         setCurrentStoreName("");
+        setStoreName("");
+        setStoreCode("");
+        setStoreDraftLoaded(true);
         setStoreSettings(emptyStoreSettings);
         setLoadingStoreSettings(false);
       }
+      if (store || cloudReady || isCloudInitialized()) setStoreDraftLoaded(true);
     };
     const updateOnStoreChange = () => updateStore(true);
     const updateOnCloudReady = () => updateStore(true);
@@ -104,6 +95,14 @@ export function ProfessionalsManager() {
   }, []);
 
   async function saveSettings() {
+    if (!storeSettings.transferHolder.trim()) {
+      toast.error("El titular de la cuenta es obligatorio.");
+      return;
+    }
+    if (!storeSettings.transferCbu.trim() && !storeSettings.transferAlias.trim()) {
+      toast.error("Completá el CBU o el alias para recibir transferencias.");
+      return;
+    }
     setSavingSettings(true);
     try {
       const saved = await updateStoreSettings(storeSettings);
@@ -113,6 +112,27 @@ export function ProfessionalsManager() {
       toast.error(error instanceof Error ? error.message : "No se pudieron guardar los datos de la sucursal.");
     } finally {
       setSavingSettings(false);
+    }
+  }
+
+  async function saveContact() {
+    setSavingContact(true);
+    try {
+      const saved = await updateStoreContact({
+        street: storeSettings.street,
+        height: storeSettings.height,
+        city: storeSettings.city,
+        province: storeSettings.province,
+        postalCode: storeSettings.postalCode,
+        whatsapp: storeSettings.whatsapp,
+        instagram: storeSettings.instagram,
+      });
+      setStoreSettings(saved);
+      toast.success("Datos de contacto guardados en la base de datos.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudieron guardar los datos de contacto.");
+    } finally {
+      setSavingContact(false);
     }
   }
 
@@ -135,14 +155,6 @@ export function ProfessionalsManager() {
       setForm(defaultFormState);
     }
   }, [selectedProfessional]);
-
-  useEffect(() => {
-    if (!showForm) return;
-    const timeout = window.setTimeout(() => {
-      formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }, 120);
-    return () => window.clearTimeout(timeout);
-  }, [showForm]);
 
   function openViewDialog(mode: "schedule" | "services") {
     setViewMode(mode);
@@ -198,9 +210,8 @@ export function ProfessionalsManager() {
       const created = await createStore(storeName, storeCode);
       setCurrentStoreCode(created.code);
       setCurrentStoreName(created.name);
-      setStoreName("");
-      setStoreCode("");
-      sessionStorage.removeItem(storeCreationDraftKey);
+      setStoreName(created.name);
+      setStoreCode(created.code);
       setProfessionals(professionalStore.all());
       toast.success(`Sucursal ${created.name} guardada con el código ${created.code}.`);
     } catch (error) {
@@ -279,8 +290,8 @@ export function ProfessionalsManager() {
         <main className="mx-auto max-w-6xl px-6 py-10">
         <div className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p className="text-xs uppercase tracking-widest text-gold">Panel</p>
-            <h1 className="font-display text-4xl font-semibold">Profesionales</h1>
+            <p className="text-xs uppercase tracking-widest text-gold">Editar</p>
+            <h1 className="font-display text-4xl font-semibold">Configuración</h1>
           </div>
           <div className="flex flex-wrap gap-3">
             <Button
@@ -317,18 +328,36 @@ export function ProfessionalsManager() {
 
           <section className="rounded-3xl border border-gold/30 bg-card p-6">
             <div className="mb-5">
-              <p className="text-xs uppercase tracking-widest text-gold">Datos de la sucursal</p>
-              <h2 className="mt-1 font-display text-2xl font-semibold">Contacto</h2>
-                <p className="mt-2 text-sm text-muted-foreground">Información de la sucursal.</p>
+              <p className="text-xs uppercase tracking-widest text-gold">Contacto</p>
+              <h2 className="mt-1 font-display text-2xl font-semibold">Dirección de la sucursal</h2>
+              <p className="mt-2 text-sm text-muted-foreground">Dirección, WhatsApp e Instagram de la sucursal.</p>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Dirección">
-                <Input disabled={loadingStoreSettings} value={storeSettings.address} onChange={(event) => setStoreSettings({ ...storeSettings, address: event.target.value })} maxLength={200} placeholder={loadingStoreSettings ? "Cargando..." : "Dirección del local"} />
+              <Field label="Calle">
+                <Input disabled={loadingStoreSettings} value={storeSettings.street} onChange={(event) => setStoreSettings({ ...storeSettings, street: event.target.value })} maxLength={150} placeholder={loadingStoreSettings ? "Cargando..." : "Nombre de la calle"} />
+              </Field>
+              <Field label="Altura">
+                <Input disabled={loadingStoreSettings} value={storeSettings.height} onChange={(event) => setStoreSettings({ ...storeSettings, height: event.target.value })} maxLength={20} placeholder={loadingStoreSettings ? "Cargando..." : "Número"} />
+              </Field>
+              <Field label="Ciudad">
+                <Input disabled={loadingStoreSettings} value={storeSettings.city} onChange={(event) => setStoreSettings({ ...storeSettings, city: event.target.value })} maxLength={100} placeholder={loadingStoreSettings ? "Cargando..." : "Ciudad"} />
+              </Field>
+              <Field label="Provincia">
+                <Input disabled={loadingStoreSettings} value={storeSettings.province} onChange={(event) => setStoreSettings({ ...storeSettings, province: event.target.value })} maxLength={100} placeholder={loadingStoreSettings ? "Cargando..." : "Provincia"} />
+              </Field>
+              <Field label="Código postal">
+                <Input disabled={loadingStoreSettings} value={storeSettings.postalCode} onChange={(event) => setStoreSettings({ ...storeSettings, postalCode: event.target.value })} maxLength={20} placeholder={loadingStoreSettings ? "Cargando..." : "Código postal"} />
               </Field>
               <Field label="WhatsApp">
-                <Input disabled={loadingStoreSettings} value={storeSettings.whatsapp} onChange={(event) => setStoreSettings({ ...storeSettings, whatsapp: event.target.value })} maxLength={25} placeholder={loadingStoreSettings ? "Cargando..." : "5491112345678"} />
+                <Input type="tel" disabled={loadingStoreSettings} value={storeSettings.whatsapp} onChange={(event) => setStoreSettings({ ...storeSettings, whatsapp: event.target.value })} maxLength={25} placeholder={loadingStoreSettings ? "Cargando..." : "5491112345678"} />
+              </Field>
+              <Field label="Instagram">
+                <Input disabled={loadingStoreSettings} value={storeSettings.instagram} onChange={(event) => setStoreSettings({ ...storeSettings, instagram: event.target.value })} maxLength={100} placeholder={loadingStoreSettings ? "Cargando..." : "@usuario"} />
               </Field>
             </div>
+            <Button type="button" disabled={loadingStoreSettings || savingContact || !currentStoreCode} onClick={() => void saveContact()} className="mt-5 bg-gold text-primary-foreground hover:bg-gold-soft">
+              {savingContact ? "Guardando…" : "Guardar dirección y contacto"}
+            </Button>
           </section>
 
           <section className="rounded-3xl border border-gold/30 bg-card p-6">
@@ -338,43 +367,47 @@ export function ProfessionalsManager() {
               <p className="mt-2 text-sm text-muted-foreground">Información bancaria para recibir transferencias.</p>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Titular de la cuenta">
-                <Input disabled={loadingStoreSettings} value={storeSettings.transferHolder} onChange={(event) => setStoreSettings({ ...storeSettings, transferHolder: event.target.value })} maxLength={200} placeholder={loadingStoreSettings ? "Cargando..." : ""} />
+              <Field label="Titular de la cuenta (obligatorio)">
+                <Input required disabled={loadingStoreSettings} value={storeSettings.transferHolder} onChange={(event) => setStoreSettings({ ...storeSettings, transferHolder: event.target.value })} maxLength={200} placeholder={loadingStoreSettings ? "Cargando..." : ""} />
               </Field>
-              <Field label="Banco">
+              <Field label="Banco (opcional)">
                 <Input disabled={loadingStoreSettings} value={storeSettings.transferBank} onChange={(event) => setStoreSettings({ ...storeSettings, transferBank: event.target.value })} maxLength={200} placeholder={loadingStoreSettings ? "Cargando..." : ""} />
               </Field>
-              <Field label="CBU">
+              <Field label="CBU (completá CBU o alias)">
                 <Input disabled={loadingStoreSettings} value={storeSettings.transferCbu} onChange={(event) => setStoreSettings({ ...storeSettings, transferCbu: event.target.value })} maxLength={200} placeholder={loadingStoreSettings ? "Cargando..." : ""} />
               </Field>
-              <Field label="Alias">
+              <Field label="Alias (completá CBU o alias)">
                 <Input disabled={loadingStoreSettings} value={storeSettings.transferAlias} onChange={(event) => setStoreSettings({ ...storeSettings, transferAlias: event.target.value })} maxLength={200} placeholder={loadingStoreSettings ? "Cargando..." : ""} />
               </Field>
             </div>
             <Button type="button" disabled={loadingStoreSettings || savingSettings || !currentStoreCode} onClick={() => void saveSettings()} className="mt-5 bg-gold text-primary-foreground hover:bg-gold-soft">
-              {savingSettings ? "Guardando…" : "Guardar datos de la sucursal"}
+              {savingSettings ? "Guardando…" : "Guardar datos"}
             </Button>
           </section>
 
-          {showForm && (
-            <div ref={formRef} className="rounded-3xl border border-border bg-card p-6">
-              <div className="mb-6 flex items-center justify-between gap-3">
+          <Dialog open={showForm} onOpenChange={(open) => {
+            setShowForm(open);
+            if (!open) {
+              setEditingId(null);
+              setForm(defaultFormState);
+            }
+          }}>
+            <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+              <DialogHeader className="mb-2">
                 <div>
                   <p className="text-xs uppercase tracking-widest text-muted-foreground">Formulario</p>
-                  <h2 className="font-display text-2xl font-semibold">
+                  <DialogTitle className="font-display text-2xl font-semibold">
                     {editingId ? "Editar profesional" : "Agregar profesional"}
-                  </h2>
+                  </DialogTitle>
                 </div>
-              </div>
+                <DialogDescription>Completá los datos y configurá sus horarios y servicios.</DialogDescription>
+              </DialogHeader>
               <div className="grid gap-4">
                 <Field label="Nombre del profesional">
                   <Input value={form.name ?? ""} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Nombre completo" />
                 </Field>
                 <Field label="Rubro">
                   <Input value={form.specialty ?? ""} onChange={(e) => setForm({ ...form, specialty: e.target.value })} placeholder="Especialidad o rubro" />
-                </Field>
-                <Field label="Dirección">
-                  <Input value={form.address ?? ""} onChange={(e) => setForm({ ...form, address: e.target.value })} placeholder="Dirección donde atiende" />
                 </Field>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <Field label="Fechas disponibles">
@@ -402,7 +435,7 @@ export function ProfessionalsManager() {
                     </div>
                   </Field>
                 </div>
-                <div className="flex flex-col gap-3">
+                <div className="flex flex-col gap-3 pt-2">
                   <Button onClick={saveProfessional} className="w-full bg-gold text-primary-foreground hover:bg-gold-soft">
                     Guardar profesional
                   </Button>
@@ -415,17 +448,13 @@ export function ProfessionalsManager() {
                       Eliminar profesional
                     </Button>
                   ) : null}
-                  <Button variant="outline" onClick={() => {
-                    setShowForm(false);
-                    setEditingId(null);
-                    setForm(defaultFormState);
-                  }} className="w-full">
+                  <Button variant="outline" onClick={() => setShowForm(false)} className="w-full">
                     Cancelar
                   </Button>
                 </div>
               </div>
-            </div>
-          )}
+            </DialogContent>
+          </Dialog>
 
           <Dialog open={viewDialogOpen} onOpenChange={setViewDialogOpen}>
             <DialogContent>

@@ -41,7 +41,7 @@ const AuthContext = createContext<AuthContextValue>(unavailableAuth);
 
 export function rememberAuthReturnPath(path: string) {
   if (typeof window === "undefined") return;
-  const allowedPaths = ["/admin", "/plan", "/profesionales", "/mis-turnos", "/reserva"];
+  const allowedPaths = ["/admin", "/plan", "/configuracion", "/profesionales", "/mis-turnos", "/reserva"];
   if (allowedPaths.includes(path)) {
     window.sessionStorage.setItem("kinde-auth-return-path", path);
   }

@@ -5,12 +5,19 @@ import type { AccountRole } from "@/lib/auth";
 type CloudSnapshot = { bookings: Booking[]; professionals: Professional[] };
 export type StoreSettings = {
   address: string;
+  street: string;
+  height: string;
+  city: string;
+  province: string;
+  postalCode: string;
   whatsapp: string;
+  instagram: string;
   transferHolder: string;
   transferBank: string;
   transferCbu: string;
   transferAlias: string;
 };
+export type StoreContactSettings = Pick<StoreSettings, "street" | "height" | "city" | "province" | "postalCode" | "whatsapp" | "instagram">;
 export type Store = {
   code: string;
   name: string;
@@ -189,6 +196,14 @@ export async function saveAccountRole(role: AccountRole) {
 export async function updateStoreSettings(settings: StoreSettings) {
   if (!tokenGetter) throw new Error("Iniciá sesión como administrador para editar los datos de la sucursal.");
   const response = await request<{ code: string; settings: StoreSettings }>("POST", { action: "update-store-settings", settings });
+  availableStores = availableStores.map((store) => store.code === response.code ? { ...store, settings: response.settings } : store);
+  window.dispatchEvent(new Event("mi-turno-ya:store-changed"));
+  return response.settings;
+}
+
+export async function updateStoreContact(contact: StoreContactSettings) {
+  if (!tokenGetter) throw new Error("Iniciá sesión como administrador para editar los datos de contacto.");
+  const response = await request<{ code: string; settings: StoreSettings }>("POST", { action: "update-store-contact", contact });
   availableStores = availableStores.map((store) => store.code === response.code ? { ...store, settings: response.settings } : store);
   window.dispatchEvent(new Event("mi-turno-ya:store-changed"));
   return response.settings;

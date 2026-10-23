@@ -38,7 +38,7 @@ export function SiteHeader() {
 
         <nav className="hidden items-center justify-end gap-1 text-sm md:flex">
           <Link to="/reserva" className="px-3 py-2 text-muted-foreground hover:text-foreground [&.active]:text-gold">Reservar</Link>
-          {role === "admin" && <Link to="/profesionales" className="px-3 py-2 text-muted-foreground hover:text-foreground [&.active]:text-foreground">Profesionales</Link>}
+          {role === "admin" && <Link to="/configuracion" className="px-3 py-2 text-muted-foreground hover:text-foreground [&.active]:text-foreground">Configuración</Link>}
           {role === "admin" && <Link to="/admin" className="px-3 py-2 text-muted-foreground hover:text-foreground [&.active]:text-foreground">Administración</Link>}
           {role === "admin" && <Link to="/plan" className="px-3 py-2 text-muted-foreground hover:text-foreground [&.active]:text-foreground">Plan</Link>}
           {isAuthenticated && role === "client" && <Link to="/mis-turnos" className="px-3 py-2 text-muted-foreground hover:text-foreground [&.active]:text-foreground">Mis turnos</Link>}
@@ -76,7 +76,7 @@ export function SiteHeader() {
               >
                 Reservar
               </Link>
-              {role === "admin" && <Link to="/profesionales" onClick={() => setOpen(false)} className="block rounded-2xl px-4 py-3 text-foreground hover:bg-border/10">Profesionales</Link>}
+              {role === "admin" && <Link to="/configuracion" onClick={() => setOpen(false)} className="block rounded-2xl px-4 py-3 text-foreground hover:bg-border/10">Configuración</Link>}
               {role === "admin" && <Link to="/admin" onClick={() => setOpen(false)} className="block rounded-2xl px-4 py-3 text-foreground hover:bg-border/10">Administración</Link>}
               {role === "admin" && <Link to="/plan" onClick={() => setOpen(false)} className="block rounded-2xl px-4 py-3 text-foreground hover:bg-border/10">Plan</Link>}
               {isAuthenticated && role === "client" && (

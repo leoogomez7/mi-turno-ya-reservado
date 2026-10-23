@@ -20,7 +20,7 @@ function RootRedirect() {
     if (isAuthenticated && role === "admin") void navigate({ to: "/admin", replace: true });
     else if (isAuthenticated && role === "client") void navigate({ to: "/reserva", replace: true });
     else if (returnPath === "/admin") void navigate({ to: "/admin", replace: true });
-    else if (returnPath === "/profesionales") void navigate({ to: "/profesionales", replace: true });
+    else if (returnPath === "/configuracion" || returnPath === "/profesionales") void navigate({ to: "/configuracion", replace: true });
     else if (returnPath === "/mis-turnos") void navigate({ to: "/mis-turnos", replace: true });
     else void navigate({ to: "/reserva", replace: true });
   }, [isAuthenticated, isLoading, navigate, role]);
