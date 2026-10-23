@@ -447,7 +447,7 @@ export default async function handler(request, response) {
       const [bookingRows, professionalRows, storesResult] = await Promise.all([
         db.execute("SELECT id, value FROM bookings ORDER BY updated_at DESC"),
         db.execute("SELECT id, value FROM professionals ORDER BY updated_at DESC"),
-        db.execute("SELECT code, name, settings, subscription_expires_at, subscription_plan_type FROM stores ORDER BY name COLLATE NOCASE"),
+        db.execute("SELECT code, name, owner_id, settings, subscription_expires_at, subscription_plan_type FROM stores ORDER BY name COLLATE NOCASE"),
       ]);
       const allBookings = bookingRows.rows.map((row) => JSON.parse(String(row.value)));
       const storeBookings = userStoreCode
@@ -473,6 +473,7 @@ export default async function handler(request, response) {
         .filter((row) => String(row.id).startsWith(`${userStoreCode}:`))
         .map((row) => ({ ...JSON.parse(String(row.value)), id: String(row.id).slice(userStoreCode.length + 1) })) : [];
       const stores = storesResult.rows
+        .filter((row) => !(String(row.code) === DEFAULT_STORE_CODE && String(row.owner_id) === "legacy"))
         .filter((row) => isSubscriptionActive(row.subscription_expires_at) || (role === "admin" && String(row.code) === userStoreCode))
         .map((row) => ({
           code: String(row.code),

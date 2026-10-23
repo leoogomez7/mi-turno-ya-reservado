@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "@tanstack/react-router";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
+import { Plus } from "lucide-react";
 import { toast } from "sonner";
 
 import { AuthRequired } from "@/components/auth-required";
@@ -114,22 +116,30 @@ export function AgendaManager() {
   return (
     <div className="min-h-screen bg-gradient-dark">
       <SiteHeader />
-      <main className="mx-auto max-w-6xl px-6 py-10">
-        <div className="mb-8">
-          <p className="text-xs uppercase tracking-widest text-gold">Control</p>
-          <h1 className="font-display text-4xl font-semibold">Agenda</h1>
-        </div>
-
-        {!visibleBookings.length ? (
-          <p className="rounded-xl border border-dashed border-border p-10 text-center text-muted-foreground">No hay turnos confirmados todavía.</p>
-        ) : (
-          <div className="space-y-2">
-            {visibleBookings.map((booking) => {
+      <main className="mx-auto w-full max-w-6xl px-4 py-10 sm:px-6">
+        <section className="w-full rounded-3xl border border-gold/30 bg-card p-6">
+          <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <p className="text-xs uppercase tracking-widest text-gold">Control</p>
+              <h1 className="font-display text-2xl font-semibold">Agenda</h1>
+            </div>
+            <Link
+              to="/reserva"
+              className="inline-flex h-10 items-center rounded-md bg-gold px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-gold-soft"
+            >
+              <Plus className="mr-2 h-4 w-4" /> Nuevo turno
+            </Link>
+          </div>
+          {!visibleBookings.length ? (
+            <p className="rounded-xl border border-dashed border-gold/30 p-10 text-center text-muted-foreground">No hay turnos agendados todavía.</p>
+          ) : (
+            <div className="space-y-2">
+              {visibleBookings.map((booking) => {
               const professional = getBarber(booking.barberId);
               const services = booking.serviceIds.map((id) => getProfessionalService(booking.barberId, id)?.name).filter(Boolean).join(", ");
               const date = parseISO(`${booking.date}T${booking.time}`);
               return (
-                <div key={booking.id} className="flex flex-wrap items-center gap-4 rounded-xl border border-border bg-card p-4">
+                <div key={booking.id} className="flex flex-wrap items-center gap-4 rounded-xl border border-gold/30 bg-card p-4">
                   <div className="flex w-20 shrink-0 flex-col items-center rounded-lg bg-gold/10 px-2 py-2 text-gold">
                     <span className="text-[10px] uppercase tracking-widest">{format(date, "EEE", { locale: es })}</span>
                     <span className="font-display text-2xl font-semibold">{format(date, "d")}</span>
@@ -158,9 +168,10 @@ export function AgendaManager() {
                   </div>
                 </div>
               );
-            })}
-          </div>
-        )}
+              })}
+            </div>
+          )}
+        </section>
 
         <Dialog open={dialogOpen} onOpenChange={(open) => open ? setDialogOpen(true) : closeDialog()}>
           <DialogContent>

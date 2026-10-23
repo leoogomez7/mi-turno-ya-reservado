@@ -2,14 +2,14 @@ import { createFileRoute, useLocation } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
-import { AlertTriangle, Check, CreditCard } from "lucide-react";
+import { AlertTriangle, Check } from "lucide-react";
 
 import { SiteHeader } from "@/components/site-header";
 import { AuthRequired } from "@/components/auth-required";
 import { Button } from "@/components/ui/button";
 import { LoadingScreen } from "@/components/loading-screen";
 import { useAppAuth } from "@/lib/auth";
-import { bootstrapCloudData, createSubscriptionCheckout, getAvailableStores, getCurrentStoreCode, redeemSubscriptionPromo, verifySubscriptionPayment, type Store } from "@/lib/cloud-sync";
+import { bootstrapCloudData, createSubscriptionCheckout, getAvailableStores, getCurrentStoreCode, isCloudInitialized, redeemSubscriptionPromo, verifySubscriptionPayment, type Store } from "@/lib/cloud-sync";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/plan")({
@@ -30,6 +30,7 @@ function PlanPage() {
   const { isAuthenticated, isLoading, role, getIdToken, user } = useAppAuth();
   const location = useLocation();
   const [storeInfo, setStoreInfo] = useState<Store | undefined>(() => getAvailableStores().find((store) => store.code === getCurrentStoreCode()));
+  const [storeInfoLoaded, setStoreInfoLoaded] = useState(isCloudInitialized);
   const [selectedPlanId, setSelectedPlanId] = useState<string>("15d");
   const [promoCode, setPromoCode] = useState("");
   const [currentTime, setCurrentTime] = useState(Date.now());
@@ -38,7 +39,10 @@ function PlanPage() {
   const [pendingPurchaseId, setPendingPurchaseId] = useState("");
 
   useEffect(() => {
-    const update = () => setStoreInfo(getAvailableStores().find((store) => store.code === getCurrentStoreCode()));
+    const update = () => {
+      setStoreInfo(getAvailableStores().find((store) => store.code === getCurrentStoreCode()));
+      setStoreInfoLoaded(isCloudInitialized());
+    };
     update();
     window.addEventListener("mi-turno-ya:cloud-ready", update);
     window.addEventListener("mi-turno-ya:store-changed", update);
@@ -93,7 +97,9 @@ function PlanPage() {
     : null;
   const selectedPlan = SUBSCRIPTION_PLANS.find((plan) => plan.id === selectedPlanId) ?? SUBSCRIPTION_PLANS[0];
 
-  if (isLoading) return <LoadingScreen message="Preparando tu plan" />;
+  if (isLoading || (isAuthenticated && role === "admin" && !storeInfoLoaded)) {
+    return <LoadingScreen message="Preparando tu plan" />;
+  }
   if (!isAuthenticated || role !== "admin") return <><SiteHeader /><AuthRequired role="admin" title="Plan" /></>;
 
   async function startSubscriptionCheckout() {
@@ -186,7 +192,6 @@ function PlanPage() {
                 </p>
               )}
             </div>
-            <CreditCard className="h-7 w-7 text-gold" />
           </div>
           <div className="mt-5 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {SUBSCRIPTION_PLANS.map((plan) => (

@@ -37,13 +37,6 @@ export function AdminPage() {
     <div className="min-h-screen bg-gradient-dark">
       <SiteHeader />
       <main className="mx-auto max-w-6xl px-6 py-10">
-        <div className="mb-8 flex items-end justify-between">
-          <div>
-            <p className="text-xs uppercase tracking-widest text-gold">Control</p>
-            <h1 className="font-display text-4xl font-semibold">Estadísticas</h1>
-          </div>
-        </div>
-
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Stat icon={TrendingUp} label="Profesional con más atención" value={`${stats.topBarber.name} · ${stats.topBarber.count}`} />
           <Stat icon={TrendingUp} label="Profesional con menos atención" value={`${stats.lowBarber.name} · ${stats.lowBarber.count}`} />
@@ -62,7 +55,7 @@ export function AdminPage() {
 
 function Stat({ icon: Icon, label, value }: { icon: any; label: string; value: string | number }) {
   return (
-    <div className="rounded-2xl border border-border bg-card p-5">
+    <div className="rounded-2xl border border-gold/30 bg-card p-5">
       <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-gold/15 text-gold">
         <Icon className="h-5 w-5" />
       </div>
@@ -92,7 +85,7 @@ function ChartCard({ title, data }: { title: string; data: { name: string; value
   const colors = ["#F59E0B", "#60A5FA", "#34D399", "#A855F7", "#F97316", "#22C55E"];
 
   return (
-    <div className="rounded-2xl border border-border bg-card p-6">
+    <div className="rounded-2xl border border-gold/30 bg-card p-6">
       <h3 className="mb-4 font-display text-lg font-semibold">{title}</h3>
       {data.length === 0 ? (
         <p className="py-10 text-center text-sm text-muted-foreground">Sin datos aún.</p>

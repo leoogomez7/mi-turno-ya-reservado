@@ -58,7 +58,7 @@ export function SiteHeader() {
 
         <nav className="hidden items-center justify-end gap-1 text-sm md:flex">
           {role === "admin" && (
-            <div className="mr-2 grid grid-cols-[auto_minmax(0,1fr)] gap-x-2 rounded-lg border border-border/60 bg-background/50 px-3 py-1.5 text-xs leading-4">
+            <div className="mr-2 grid grid-cols-[auto_minmax(0,1fr)] gap-x-2 rounded-lg border border-gold/30 bg-background/50 px-3 py-1.5 text-xs leading-4">
               <span className="text-muted-foreground">Sucursal</span>
               <span className="truncate font-semibold text-gold" title={branchInfo.name}>{branchInfo.name}</span>
               <span className="text-muted-foreground">Código</span>
@@ -66,21 +66,25 @@ export function SiteHeader() {
             </div>
           )}
           <Link to="/reserva" className="px-3 py-2 text-muted-foreground hover:text-foreground [&.active]:text-gold">Reservar</Link>
-          {role === "admin" && <Link to="/configuracion" className="px-3 py-2 text-muted-foreground hover:text-foreground [&.active]:text-gold">Configuración</Link>}
           {role === "admin" && <Link to="/agenda" className="px-3 py-2 text-muted-foreground hover:text-foreground [&.active]:text-gold">Agenda</Link>}
           {role === "admin" && <Link to="/estadisticas" className="px-3 py-2 text-muted-foreground hover:text-foreground [&.active]:text-gold">Estadísticas</Link>}
           {role === "admin" && <Link to="/plan" className="px-3 py-2 text-muted-foreground hover:text-foreground [&.active]:text-gold">Plan</Link>}
+          {role === "admin" && <Link to="/configuracion" className="px-3 py-2 text-muted-foreground hover:text-foreground [&.active]:text-gold">Configuración</Link>}
           {isAuthenticated && role === "client" && <Link to="/mis-turnos" className="px-3 py-2 text-muted-foreground hover:text-foreground [&.active]:text-gold">Mis turnos</Link>}
           {isAuthenticated && role === "admin" ? (
-            <Link to="/estadisticas" className="inline-flex h-9 items-center rounded-md border border-input bg-background px-3 text-xs font-medium text-foreground transition-colors hover:bg-accent hover:text-accent-foreground">
-              {user?.email || "Estadísticas"}
+            <Link to="/configuracion" className="inline-flex h-9 items-center rounded-md border border-gold/30 bg-background px-3 text-xs font-medium text-foreground transition-colors hover:bg-accent hover:text-accent-foreground">
+              {user?.email || "Configuración"}
             </Link>
           ) : isAuthenticated && role === "client" ? (
-            <Link to="/mis-turnos" className="inline-flex h-9 items-center rounded-md border border-input bg-background px-3 text-xs font-medium text-foreground transition-colors hover:bg-accent hover:text-accent-foreground">
+            <Link to="/mis-turnos" className="inline-flex h-9 items-center rounded-md border border-gold/30 bg-background px-3 text-xs font-medium text-foreground transition-colors hover:bg-accent hover:text-accent-foreground">
               {user?.email || "Mis turnos"}
             </Link>
+          ) : isAuthenticated && role === "unassigned" ? (
+            <Link to="/configuracion" className="inline-flex h-9 items-center rounded-md border border-gold/30 bg-background px-3 text-xs font-medium text-foreground transition-colors hover:bg-accent hover:text-accent-foreground">
+              {user?.email || "Configuración"}
+            </Link>
           ) : isAuthenticated ? (
-            <Button size="sm" variant="outline" disabled>{user?.email || "Cuenta"}</Button>
+            <Button size="sm" variant="outline" className="border-gold/30" disabled>{user?.email || "Cuenta"}</Button>
           ) : (
             <Button size="sm" variant="ghost" className="px-3 py-2 text-muted-foreground hover:bg-transparent hover:text-foreground [&.active]:text-gold" onClick={() => setAuthDialogOpen(true)}>Ingresar</Button>
           )}
@@ -99,7 +103,7 @@ export function SiteHeader() {
           <div className="absolute left-1/2 top-full z-50 mt-2 w-[calc(100vw-2rem)] max-w-xs -translate-x-1/2 rounded-3xl border border-border/60 bg-black p-3 shadow-2xl md:hidden">
             <nav className="flex flex-col gap-2 text-sm">
               {role === "admin" && (
-                <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 rounded-2xl border border-border/60 bg-background/50 px-4 py-3 text-xs leading-5">
+                <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 rounded-2xl border border-gold/30 bg-background/50 px-4 py-3 text-xs leading-5">
                   <span className="text-muted-foreground">Sucursal</span>
                   <span className="truncate font-semibold text-gold" title={branchInfo.name}>{branchInfo.name}</span>
                   <span className="text-muted-foreground">Código</span>
@@ -113,10 +117,10 @@ export function SiteHeader() {
               >
                 Reservar
               </Link>
-              {role === "admin" && <Link to="/configuracion" onClick={() => setOpen(false)} className="block rounded-2xl px-4 py-3 text-foreground hover:bg-border/10 [&.active]:bg-gold/10 [&.active]:text-gold">Configuración</Link>}
               {role === "admin" && <Link to="/agenda" onClick={() => setOpen(false)} className="block rounded-2xl px-4 py-3 text-foreground hover:bg-border/10 [&.active]:bg-gold/10 [&.active]:text-gold">Agenda</Link>}
               {role === "admin" && <Link to="/estadisticas" onClick={() => setOpen(false)} className="block rounded-2xl px-4 py-3 text-foreground hover:bg-border/10 [&.active]:bg-gold/10 [&.active]:text-gold">Estadísticas</Link>}
               {role === "admin" && <Link to="/plan" onClick={() => setOpen(false)} className="block rounded-2xl px-4 py-3 text-foreground hover:bg-border/10 [&.active]:bg-gold/10 [&.active]:text-gold">Plan</Link>}
+              {role === "admin" && <Link to="/configuracion" onClick={() => setOpen(false)} className="block rounded-2xl px-4 py-3 text-foreground hover:bg-border/10 [&.active]:bg-gold/10 [&.active]:text-gold">Configuración</Link>}
               {isAuthenticated && role === "client" && (
                 <Link to="/mis-turnos" onClick={() => setOpen(false)} className="block rounded-2xl px-4 py-3 text-foreground hover:bg-border/10 [&.active]:bg-gold/10 [&.active]:text-gold">
                   Mis turnos

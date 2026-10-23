@@ -312,7 +312,7 @@ Notas: ${customer.notes || "Ninguna"}`;
   return (
     <div className="min-h-screen bg-gradient-dark">
       <SiteHeader />
-      <main className="mx-auto flex min-h-[calc(100svh-56px)] w-full max-w-4xl flex-col justify-center px-4 py-4 sm:px-6 md:py-5">
+      <main className="mx-auto flex w-full max-w-6xl flex-col px-4 py-10 sm:px-6">
         <section
           className={cn(
             "mb-4 rounded-2xl border border-gold/30 bg-card/70 p-4 sm:p-5",
@@ -494,7 +494,7 @@ function TransferDetail({ label, value, onCopy }: { label: string; value: string
 
 function Stepper({ step }: { step: number }) {
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex w-full items-center gap-2 rounded-2xl border border-gold/30 bg-card/50 p-3 sm:gap-3 sm:p-4">
       {STEPS.map((label, i) => {
         const done = i < step;
         const active = i === step;

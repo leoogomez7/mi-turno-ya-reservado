@@ -71,7 +71,7 @@ export function ProfessionalsManager() {
   const [serviceDialogOpen, setServiceDialogOpen] = useState(false);
   const [servicesListOpen, setServicesListOpen] = useState(false);
   const [editingServiceId, setEditingServiceId] = useState<string | null>(null);
-  const [serviceDraft, setServiceDraft] = useState<ProfessionalService>({ id: "", name: "", duration: 30, price: 0 });
+  const [serviceDraft, setServiceDraft] = useState<ProfessionalService>({ id: "", name: "", duration: 0, price: 0 });
   const [scheduleDateDialogOpen, setScheduleDateDialogOpen] = useState(false);
   const [activeScheduleDate, setActiveScheduleDate] = useState<Date | undefined>();
   const [scheduleDateClosed, setScheduleDateClosed] = useState(false);
@@ -197,7 +197,7 @@ export function ProfessionalsManager() {
 
   function openNewServiceDialog() {
     setEditingServiceId(null);
-    setServiceDraft({ id: crypto.randomUUID(), name: "", duration: 30, price: 0 });
+    setServiceDraft({ id: crypto.randomUUID(), name: "", duration: 0, price: 0 });
     setServiceDialogOpen(true);
   }
 
@@ -520,7 +520,7 @@ export function ProfessionalsManager() {
                 }}
                 className="bg-gold text-primary-foreground hover:bg-gold-soft"
               >
-                <Plus className="mr-2 h-4 w-4" /> Nuevo profesional
+                Nuevo profesional
               </Button>
             </div>
             <div className="space-y-4">
@@ -651,7 +651,6 @@ export function ProfessionalsManager() {
             <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
               <DialogHeader className="mb-2">
                 <div>
-                  <p className="text-xs uppercase tracking-widest text-muted-foreground">Formulario</p>
                   <DialogTitle className="font-display text-2xl font-semibold">
                     {editingId ? "Editar profesional" : "Agregar profesional"}
                   </DialogTitle>
@@ -676,30 +675,22 @@ export function ProfessionalsManager() {
                       <p className="text-sm text-muted-foreground">
                         {(form.weeklySchedule ?? []).some((entry) => !entry.closed) || (form.scheduleDates ?? []).some((entry) => !entry.closed)
                           ? "Horarios configurados. Tocá una fecha del calendario para cambiar ese día."
-                          : "Configurá los días y horarios de atención."}
+                          : null}
                       </p>
                     </div>
                   </Field>
                   <Field label="Servicios">
-                  <div className="flex flex-wrap gap-3">
-                    <Button type="button" variant="outline" onClick={openNewServiceDialog}>
-                      <Plus className="mr-2 h-4 w-4" /> Agregar servicio
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button type="button" variant="outline" onClick={openNewServiceDialog} className="px-2 text-xs sm:text-sm">
+                      Agregar servicio
                     </Button>
-                    <Button type="button" variant="outline" onClick={() => setServicesListOpen(true)}>
+                    <Button type="button" variant="outline" onClick={() => setServicesListOpen(true)} className="px-2 text-xs sm:text-sm">
                       Ver servicios ({(form.services ?? []).length})
                     </Button>
                   </div>
-                  {(form.services ?? []).length === 0 && (
-                    <p className="mt-2 text-sm text-muted-foreground">No hay servicios guardados todavía.</p>
-                  )}
                   </Field>
                 </div>
                 <div className="flex flex-col gap-3 pt-2">
-                  {!editingId && (
-                    <p className="text-center text-xs text-muted-foreground">
-                      Los servicios y horarios de un profesional nuevo se guardan al tocar este botón.
-                    </p>
-                  )}
                   <div className="flex gap-3">
                     <Button onClick={saveProfessional} className="flex-1 bg-gold text-primary-foreground hover:bg-gold-soft">
                       Guardar profesional
@@ -733,7 +724,7 @@ export function ProfessionalsManager() {
                   <Input autoFocus value={serviceDraft.name} onChange={(event) => setServiceDraft({ ...serviceDraft, name: event.target.value })} placeholder="Corte clásico" />
                 </Field>
                 <Field label="Duración (minutos)">
-                  <Input type="number" min="1" value={serviceDraft.duration} onChange={(event) => setServiceDraft({ ...serviceDraft, duration: Number(event.target.value) })} placeholder="30" />
+                  <Input type="number" min="1" value={serviceDraft.duration || ""} onChange={(event) => setServiceDraft({ ...serviceDraft, duration: Number(event.target.value) })} placeholder="Minutos" />
                 </Field>
                 <Field label="Precio">
                   <Input type="number" min="1" value={serviceDraft.price || ""} onChange={(event) => setServiceDraft({ ...serviceDraft, price: Number(event.target.value) })} placeholder="8000" />
@@ -754,9 +745,7 @@ export function ProfessionalsManager() {
                 <DialogTitle>Servicios</DialogTitle>
                 <DialogDescription>Listado de servicios de este profesional. Podés modificar o eliminar cada uno.</DialogDescription>
               </DialogHeader>
-              {(form.services ?? []).length === 0 ? (
-                <p className="py-6 text-center text-sm text-muted-foreground">No hay servicios guardados todavía.</p>
-              ) : (
+              {(form.services ?? []).length > 0 && (
                 <div className="grid gap-3 sm:grid-cols-2">
                   {(form.services ?? []).map((service) => (
                     <div key={service.id} className="flex min-w-0 items-center justify-between gap-3 rounded-xl border border-border bg-muted p-3">
@@ -765,7 +754,7 @@ export function ProfessionalsManager() {
                         <p className="mt-1 text-sm text-muted-foreground">{service.duration} min · ${service.price.toLocaleString("es-AR")}</p>
                       </div>
                       <div className="flex shrink-0 flex-col gap-2">
-                        <Button type="button" variant="outline" size="sm" onClick={() => void removeService(service.id)} className="border-red-500/30 text-red-300 hover:bg-red-500/10 hover:text-red-300">
+                        <Button type="button" variant="outline" size="sm" onClick={() => void removeService(service.id)} className="border-red-500/40 bg-red-500/10 text-red-300 hover:bg-red-500/20 hover:text-red-200">
                           Eliminar
                         </Button>
                         <Button type="button" size="sm" onClick={() => openEditServiceDialog(service)} className="bg-gold text-primary-foreground hover:bg-gold-soft">
@@ -841,9 +830,7 @@ export function ProfessionalsManager() {
                     ))
                   )
                 ) : (
-                  (form.services ?? []).length === 0 ? (
-                    <p className="text-sm text-muted-foreground">No hay servicios guardados todavía.</p>
-                  ) : (
+                  (form.services ?? []).length > 0 && (
                     (form.services ?? []).map((service, index) => (
                       <div key={service.id} className="rounded-2xl border border-border bg-muted p-4">
                         <div className="flex items-center justify-between gap-2">
@@ -885,7 +872,7 @@ export function ProfessionalsManager() {
           </Dialog>
 
           <Dialog open={detailDialogOpen} onOpenChange={setDetailDialogOpen}>
-            <DialogContent className={viewMode === "schedule" ? "max-h-[90vh] overflow-y-auto sm:max-w-2xl" : "max-h-[90vh] overflow-y-auto"}>
+            <DialogContent className={viewMode === "schedule" ? "w-[calc(100vw-2rem)] max-h-[90vh] overflow-x-hidden overflow-y-auto sm:max-w-2xl" : "max-h-[90vh] overflow-y-auto"}>
               <DialogHeader>
                 <DialogTitle>{viewMode === "schedule" ? "Editar fechas y horarios" : "Editar servicios"}</DialogTitle>
                 <DialogDescription>
@@ -896,7 +883,7 @@ export function ProfessionalsManager() {
               </DialogHeader>
               <div className="space-y-4 py-2">
                 {viewMode === "schedule" ? (
-                  <div className="space-y-6">
+                  <div className="min-w-0 space-y-6">
                     <section className="rounded-2xl border border-border bg-background/60 p-4">
                       <h3 className="font-semibold">Horario semanal</h3>
                       <p className="mt-1 text-sm text-muted-foreground">Elegí qué días atendés y definí el horario de cada uno.</p>
@@ -905,7 +892,7 @@ export function ProfessionalsManager() {
                           const schedule = form.weeklySchedule?.find((entry) => entry.dayOfWeek === day.id);
                           const isClosed = schedule?.closed ?? true;
                           return (
-                            <div key={day.id} className="grid gap-3 rounded-xl border border-border p-3 sm:grid-cols-[110px_110px_150px_150px] sm:items-end">
+                            <div key={day.id} className="grid min-w-0 gap-3 rounded-xl border border-border p-3 sm:grid-cols-[150px_minmax(0,1fr)_minmax(0,1fr)] sm:items-end">
                               <div className="space-y-1">
                                 <span className="block font-medium">{day.label}</span>
                                 <label className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -913,7 +900,6 @@ export function ProfessionalsManager() {
                                   Abierto
                                 </label>
                               </div>
-                              <span />
                               <Field label="Desde">
                                 <Input type="time" className="scheme-dark w-full [&::-webkit-calendar-picker-indicator]:invert" disabled={isClosed} value={schedule?.start ?? "09:00"} onChange={(event) => setWeeklyDay(day.id, { start: event.target.value })} />
                               </Field>
@@ -925,7 +911,7 @@ export function ProfessionalsManager() {
                         })}
                       </div>
                     </section>
-                    <section className="rounded-2xl border border-border bg-background/60 p-4">
+                    <section className="w-fit max-w-full rounded-2xl border border-border bg-background/60 p-4">
                       <h3 className="font-semibold">Excepciones por fecha</h3>
                       <p className="mt-1 text-sm text-muted-foreground">Tocá un día para cambiar su horario o marcarlo como cerrado.</p>
                       <Calendar
@@ -971,7 +957,7 @@ export function ProfessionalsManager() {
                       </div>
                     ))}
                     <Button variant="outline" onClick={addServiceRow} className="h-9 px-3 text-sm w-full">
-                      <Plus className="mr-2 h-4 w-4" /> Agregar servicio
+                      Agregar servicio
                     </Button>
                   </div>
                 )}
