@@ -7,7 +7,7 @@ import {
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
 import logo from "../../logo.png";
@@ -16,7 +16,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { LoadingScreen } from "@/components/loading-screen";
 import { AccountSetup } from "@/components/account-setup";
 import { AuthProvider, useAppAuth } from "@/lib/auth";
-import { bootstrapCloudData, clearCloudSession } from "@/lib/cloud-sync";
+import { bootstrapCloudData, clearCloudSession, saveAccountRole } from "@/lib/cloud-sync";
 
 function NotFoundComponent() {
   return (
@@ -146,6 +146,7 @@ function CloudDataBootstrap({ children }: { children: ReactNode }) {
   const [needsAccountSetup, setNeedsAccountSetup] = useState(false);
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
+  const roleAssignmentInProgress = useRef<Promise<void> | null>(null);
 
   useEffect(() => {
     if (isLoading) return;
@@ -176,7 +177,21 @@ function CloudDataBootstrap({ children }: { children: ReactNode }) {
     let cancelled = false;
     setError("");
     void bootstrapCloudData(email, getIdToken)
-      .then((verifiedRole) => {
+      .then(async (verifiedRole) => {
+        if (cancelled) return;
+        const requestedRole = window.sessionStorage.getItem("kinde-signup-role");
+        if (verifiedRole === "unassigned" && (requestedRole === "admin" || requestedRole === "client")) {
+          const assignment = roleAssignmentInProgress.current ??= saveAccountRole(requestedRole).then(() => undefined);
+          try {
+            await assignment;
+            window.sessionStorage.removeItem("kinde-signup-role");
+            verifiedRole = requestedRole;
+          } finally {
+            if (roleAssignmentInProgress.current === assignment) roleAssignmentInProgress.current = null;
+          }
+        } else {
+          window.sessionStorage.removeItem("kinde-signup-role");
+        }
         if (cancelled) return;
         setNeedsAccountSetup(verifiedRole === "unassigned");
         setVerifiedRole(verifiedRole === "admin" || verifiedRole === "client" ? verifiedRole : null);

@@ -1,9 +1,11 @@
 import { useState } from "react";
+import { useLocation } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
-import { useAppAuth, type AccountRole } from "@/lib/auth";
+import { rememberAuthReturnPath, useAppAuth, type AccountRole } from "@/lib/auth";
 
 export function AuthRequired({ role, title }: { role: AccountRole; title: string }) {
   const { configured, isLoading, login } = useAppAuth();
+  const location = useLocation();
   const [busy, setBusy] = useState(false);
   const description = role === "admin"
     ? "Iniciá sesión con una cuenta administradora autorizada para gestionar profesionales y turnos."
@@ -20,6 +22,7 @@ export function AuthRequired({ role, title }: { role: AccountRole; title: string
         {configured && (
           <Button className="mt-6 bg-gold text-primary-foreground hover:bg-gold-soft" disabled={isLoading || busy} onClick={async () => {
             setBusy(true);
+            rememberAuthReturnPath(location.pathname);
             await login(role);
             setBusy(false);
           }}>

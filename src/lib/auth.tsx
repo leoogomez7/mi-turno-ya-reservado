@@ -39,6 +39,20 @@ const unavailableAuth: AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue>(unavailableAuth);
 
+export function rememberAuthReturnPath(path: string) {
+  if (typeof window === "undefined") return;
+  const allowedPaths = ["/admin", "/profesionales", "/mis-turnos", "/reserva"];
+  if (allowedPaths.includes(path)) {
+    window.sessionStorage.setItem("kinde-auth-return-path", path);
+  }
+}
+
+export function rememberSignupRole(role: AccountRole) {
+  if (typeof window === "undefined") return;
+  window.sessionStorage.setItem("kinde-signup-role", role);
+  window.sessionStorage.setItem("kinde-auth-return-path", role === "admin" ? "/admin" : "/reserva");
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   if (!AUTH_CONFIGURED) return <AuthContext.Provider value={unavailableAuth}>{children}</AuthContext.Provider>;
 
