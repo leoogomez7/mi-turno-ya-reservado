@@ -13,6 +13,8 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as AgendaRouteImport } from './routes/agenda'
 import { Route as BookRouteImport } from './routes/book'
+import { Route as ConfiguracionRouteImport } from './routes/configuracion'
+import { Route as EstadisticasRouteImport } from './routes/estadisticas'
 import { Route as MisTurnosRouteImport } from './routes/mis-turnos'
 import { Route as PlanRouteImport } from './routes/plan'
 import { Route as ProfesionalesRouteImport } from './routes/profesionales'
@@ -41,6 +43,16 @@ const AgendaRoute = AgendaRouteImport.update({
 const BookRoute = BookRouteImport.update({
   id: '/book',
   path: '/book',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ConfiguracionRoute = ConfiguracionRouteImport.update({
+  id: '/configuracion',
+  path: '/configuracion',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const EstadisticasRoute = EstadisticasRouteImport.update({
+  id: '/estadisticas',
+  path: '/estadisticas',
   getParentRoute: () => rootRouteImport,
 } as any)
 const MisTurnosRoute = MisTurnosRouteImport.update({
@@ -94,6 +106,8 @@ export interface FileRoutesByFullPath {
   '/admin': typeof AdminRoute
   '/agenda': typeof AgendaRoute
   '/book': typeof BookRouteWithChildren
+  '/configuracion': typeof ConfiguracionRoute
+  '/estadisticas': typeof EstadisticasRoute
   '/mis-turnos': typeof MisTurnosRoute
   '/plan': typeof PlanRoute
   '/profesionales': typeof ProfesionalesRoute
@@ -109,6 +123,8 @@ export interface FileRoutesByTo {
   '/admin': typeof AdminRoute
   '/agenda': typeof AgendaRoute
   '/book': typeof BookRouteWithChildren
+  '/configuracion': typeof ConfiguracionRoute
+  '/estadisticas': typeof EstadisticasRoute
   '/mis-turnos': typeof MisTurnosRoute
   '/plan': typeof PlanRoute
   '/profesionales': typeof ProfesionalesRoute
@@ -125,6 +141,8 @@ export interface FileRoutesById {
   '/admin': typeof AdminRoute
   '/agenda': typeof AgendaRoute
   '/book': typeof BookRouteWithChildren
+  '/configuracion': typeof ConfiguracionRoute
+  '/estadisticas': typeof EstadisticasRoute
   '/mis-turnos': typeof MisTurnosRoute
   '/plan': typeof PlanRoute
   '/profesionales': typeof ProfesionalesRoute
@@ -142,6 +160,8 @@ export interface FileRouteTypes {
     | '/admin'
     | '/agenda'
     | '/book'
+    | '/configuracion'
+    | '/estadisticas'
     | '/mis-turnos'
     | '/plan'
     | '/profesionales'
@@ -157,6 +177,8 @@ export interface FileRouteTypes {
     | '/admin'
     | '/agenda'
     | '/book'
+    | '/configuracion'
+    | '/estadisticas'
     | '/mis-turnos'
     | '/plan'
     | '/profesionales'
@@ -172,6 +194,8 @@ export interface FileRouteTypes {
     | '/admin'
     | '/agenda'
     | '/book'
+    | '/configuracion'
+    | '/estadisticas'
     | '/mis-turnos'
     | '/plan'
     | '/profesionales'
@@ -188,6 +212,8 @@ export interface RootRouteChildren {
   AdminRoute: typeof AdminRoute
   AgendaRoute: typeof AgendaRoute
   BookRoute: typeof BookRouteWithChildren
+  ConfiguracionRoute: typeof ConfiguracionRoute
+  EstadisticasRoute: typeof EstadisticasRoute
   MisTurnosRoute: typeof MisTurnosRoute
   PlanRoute: typeof PlanRoute
   ProfesionalesRoute: typeof ProfesionalesRoute
@@ -222,6 +248,20 @@ declare module '@tanstack/react-router' {
       path: '/book'
       fullPath: '/book'
       preLoaderRoute: typeof BookRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/configuracion': {
+      id: '/configuracion'
+      path: '/configuracion'
+      fullPath: '/configuracion'
+      preLoaderRoute: typeof ConfiguracionRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/estadisticas': {
+      id: '/estadisticas'
+      path: '/estadisticas'
+      fullPath: '/estadisticas'
+      preLoaderRoute: typeof EstadisticasRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/mis-turnos': {
@@ -322,6 +362,8 @@ const rootRouteChildren: RootRouteChildren = {
   AdminRoute: AdminRoute,
   AgendaRoute: AgendaRoute,
   BookRoute: BookRouteWithChildren,
+  ConfiguracionRoute: ConfiguracionRoute,
+  EstadisticasRoute: EstadisticasRoute,
   MisTurnosRoute: MisTurnosRoute,
   PlanRoute: PlanRoute,
   ProfesionalesRoute: ProfesionalesRoute,

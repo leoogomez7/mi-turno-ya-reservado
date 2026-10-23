@@ -150,15 +150,6 @@ function PlanPage() {
     <div className="min-h-screen bg-gradient-dark">
       <SiteHeader />
       <main className="mx-auto max-w-6xl px-6 py-10">
-        <div className="mb-8">
-          <p className="text-xs uppercase tracking-widest text-gold">Administración</p>
-          <h1 className="font-display text-4xl font-semibold">Plan</h1>
-          <div className="mt-2 space-y-1 text-sm text-muted-foreground">
-            <p>Nombre sucursal: <span className="font-semibold text-gold">{storeInfo?.name || "Sin nombre"}</span></p>
-            <p>Código sucursal: <span className="font-semibold text-gold">{getCurrentStoreCode() || "—"}</span></p>
-          </div>
-        </div>
-
         <section className="mb-8 rounded-3xl border border-gold/30 bg-card p-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div>

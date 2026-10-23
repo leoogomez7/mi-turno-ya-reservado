@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { Menu, X } from "lucide-react";
 import logo from "../../logo.png";
@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { AUTH_CONFIGURED } from "@/lib/env";
 import { rememberAuthReturnPath, rememberSignupRole, useAppAuth, type AccountRole } from "@/lib/auth";
 import { useLocation } from "@tanstack/react-router";
+import { getAvailableStores, getCurrentStoreCode } from "@/lib/cloud-sync";
 
 export function SiteHeader() {
   const [open, setOpen] = useState(false);
@@ -14,6 +15,25 @@ export function SiteHeader() {
   const [registrationDialogOpen, setRegistrationDialogOpen] = useState(false);
   const { isAuthenticated, user, role, login, register, logout } = useAppAuth();
   const location = useLocation();
+  const [branchInfo, setBranchInfo] = useState(() => ({
+    name: getAvailableStores().find((store) => store.code === getCurrentStoreCode())?.name ?? "Cargando...",
+    code: getCurrentStoreCode(),
+  }));
+
+  useEffect(() => {
+    const updateBranchInfo = () => {
+      const code = getCurrentStoreCode();
+      const store = getAvailableStores().find((item) => item.code === code);
+      setBranchInfo({ name: store?.name ?? "Sin nombre", code });
+    };
+    updateBranchInfo();
+    window.addEventListener("mi-turno-ya:cloud-ready", updateBranchInfo);
+    window.addEventListener("mi-turno-ya:store-changed", updateBranchInfo);
+    return () => {
+      window.removeEventListener("mi-turno-ya:cloud-ready", updateBranchInfo);
+      window.removeEventListener("mi-turno-ya:store-changed", updateBranchInfo);
+    };
+  }, []);
 
   async function startLogin() {
     rememberAuthReturnPath(location.pathname);
@@ -37,6 +57,12 @@ export function SiteHeader() {
         </Link>
 
         <nav className="hidden items-center justify-end gap-1 text-sm md:flex">
+          {role === "admin" && (
+            <div className="mr-2 rounded-lg border border-border/60 bg-background/50 px-3 py-1.5 text-xs leading-4">
+              <p className="text-muted-foreground">Sucursal: <span className="font-semibold text-gold">{branchInfo.name}</span></p>
+              <p className="text-muted-foreground">Código: <span className="font-semibold text-gold">{branchInfo.code || "—"}</span></p>
+            </div>
+          )}
           <Link to="/reserva" className="px-3 py-2 text-muted-foreground hover:text-foreground [&.active]:text-gold">Reservar</Link>
           {role === "admin" && <Link to="/configuracion" className="px-3 py-2 text-muted-foreground hover:text-foreground [&.active]:text-foreground">Configuración</Link>}
           {role === "admin" && <Link to="/agenda" className="px-3 py-2 text-muted-foreground hover:text-foreground [&.active]:text-foreground">Agenda</Link>}
@@ -70,6 +96,12 @@ export function SiteHeader() {
         {open && (
           <div className="absolute left-1/2 top-full z-50 mt-2 w-[calc(100vw-2rem)] max-w-xs -translate-x-1/2 rounded-3xl border border-border/60 bg-black p-3 shadow-2xl md:hidden">
             <nav className="flex flex-col gap-2 text-sm">
+              {role === "admin" && (
+                <div className="rounded-2xl border border-border/60 bg-background/50 px-4 py-3 text-xs leading-5">
+                  <p className="text-muted-foreground">Sucursal: <span className="font-semibold text-gold">{branchInfo.name}</span></p>
+                  <p className="text-muted-foreground">Código: <span className="font-semibold text-gold">{branchInfo.code || "—"}</span></p>
+                </div>
+              )}
               <Link
                 to="/reserva"
                 onClick={() => setOpen(false)}
