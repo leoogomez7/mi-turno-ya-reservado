@@ -69,6 +69,7 @@ export function ProfessionalsManager() {
   const [viewMode, setViewMode] = useState<"schedule" | "services">("schedule");
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
   const [serviceDialogOpen, setServiceDialogOpen] = useState(false);
+  const [servicesListOpen, setServicesListOpen] = useState(false);
   const [editingServiceId, setEditingServiceId] = useState<string | null>(null);
   const [serviceDraft, setServiceDraft] = useState<ProfessionalService>({ id: "", name: "", duration: 30, price: 0 });
   const [scheduleDateDialogOpen, setScheduleDateDialogOpen] = useState(false);
@@ -598,12 +599,14 @@ export function ProfessionalsManager() {
                 <DialogDescription>Completá los datos y configurá sus horarios y servicios.</DialogDescription>
               </DialogHeader>
               <div className="grid gap-4">
-                <Field label="Nombre del profesional">
-                  <Input value={form.name ?? ""} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Nombre completo" />
-                </Field>
-                <Field label="Rubro">
-                  <Input value={form.specialty ?? ""} onChange={(e) => setForm({ ...form, specialty: e.target.value })} placeholder="Especialidad o rubro" />
-                </Field>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Field label="Nombre del profesional">
+                    <Input value={form.name ?? ""} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Nombre completo" />
+                  </Field>
+                  <Field label="Rubro">
+                    <Input value={form.specialty ?? ""} onChange={(e) => setForm({ ...form, specialty: e.target.value })} placeholder="Especialidad o rubro" />
+                  </Field>
+                </div>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <Field label="Fechas disponibles">
                     <div className="space-y-3">
@@ -617,49 +620,34 @@ export function ProfessionalsManager() {
                       </p>
                     </div>
                   </Field>
-                </div>
-                <section className="space-y-3 rounded-2xl border border-border p-4">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <h3 className="font-semibold">Servicios</h3>
-                      <p className="text-sm text-muted-foreground">Agregá y configurá los servicios de este profesional.</p>
-                    </div>
+                  <Field label="Servicios">
+                  <div className="flex flex-wrap gap-3">
                     <Button type="button" variant="outline" onClick={openNewServiceDialog}>
                       <Plus className="mr-2 h-4 w-4" /> Agregar servicio
                     </Button>
+                    <Button type="button" variant="outline" onClick={() => setServicesListOpen(true)}>
+                      Ver servicios ({(form.services ?? []).length})
+                    </Button>
                   </div>
-                  {(form.services ?? []).length === 0 ? (
-                    <p className="py-2 text-sm text-muted-foreground">No hay servicios guardados todavía.</p>
-                  ) : (
-                    <div className="space-y-3">
-                      {(form.services ?? []).map((service) => (
-                        <div key={service.id} className="flex flex-col gap-4 rounded-xl border border-border bg-muted p-4 sm:flex-row sm:items-center sm:justify-between">
-                          <div className="min-w-0">
-                            <p className="truncate font-semibold">{service.name}</p>
-                            <p className="mt-1 text-sm text-muted-foreground">{service.duration} min · ${service.price.toLocaleString("es-AR")}</p>
-                          </div>
-                          <div className="flex shrink-0 flex-col gap-2 sm:w-32">
-                            <Button type="button" variant="outline" size="sm" onClick={() => removeService(service.id)} className="border-red-500/30 text-red-300 hover:bg-red-500/10 hover:text-red-300">
-                              Eliminar
-                            </Button>
-                            <Button type="button" size="sm" onClick={() => openEditServiceDialog(service)} className="bg-gold text-primary-foreground hover:bg-gold-soft">
-                              Modificar
-                            </Button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                  {(form.services ?? []).length === 0 && (
+                    <p className="mt-2 text-sm text-muted-foreground">No hay servicios guardados todavía.</p>
                   )}
-                </section>
+                  </Field>
+                </div>
                 <div className="flex flex-col gap-3 pt-2">
                   {!editingId && (
                     <p className="text-center text-xs text-muted-foreground">
                       Los servicios y horarios de un profesional nuevo se guardan al tocar este botón.
                     </p>
                   )}
-                  <Button onClick={saveProfessional} className="w-full bg-gold text-primary-foreground hover:bg-gold-soft">
-                    Guardar profesional
-                  </Button>
+                  <div className="flex gap-3">
+                    <Button onClick={saveProfessional} className="flex-1 bg-gold text-primary-foreground hover:bg-gold-soft">
+                      Guardar profesional
+                    </Button>
+                    <Button variant="outline" onClick={() => setShowForm(false)} className="flex-1">
+                      Cancelar
+                    </Button>
+                  </div>
                   {editingId && selectedProfessional?.isTest ? (
                     <Button variant="outline" disabled className="w-full cursor-not-allowed opacity-50 text-muted-foreground">
                       Profesional de prueba
@@ -669,9 +657,6 @@ export function ProfessionalsManager() {
                       Eliminar profesional
                     </Button>
                   ) : null}
-                  <Button variant="outline" onClick={() => setShowForm(false)} className="w-full">
-                    Cancelar
-                  </Button>
                 </div>
               </div>
             </DialogContent>
@@ -699,6 +684,40 @@ export function ProfessionalsManager() {
                 <Button type="button" onClick={saveServiceDraft} className="bg-gold text-primary-foreground hover:bg-gold-soft">
                   {editingServiceId ? "Guardar cambios" : "Agregar servicio"}
                 </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog open={servicesListOpen} onOpenChange={setServicesListOpen}>
+            <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-3xl">
+              <DialogHeader>
+                <DialogTitle>Servicios</DialogTitle>
+                <DialogDescription>Listado de servicios de este profesional. Podés modificar o eliminar cada uno.</DialogDescription>
+              </DialogHeader>
+              {(form.services ?? []).length === 0 ? (
+                <p className="py-6 text-center text-sm text-muted-foreground">No hay servicios guardados todavía.</p>
+              ) : (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {(form.services ?? []).map((service) => (
+                    <div key={service.id} className="flex min-w-0 items-center justify-between gap-3 rounded-xl border border-border bg-muted p-3">
+                      <div className="min-w-0">
+                        <p className="truncate font-semibold">{service.name}</p>
+                        <p className="mt-1 text-sm text-muted-foreground">{service.duration} min · ${service.price.toLocaleString("es-AR")}</p>
+                      </div>
+                      <div className="flex shrink-0 flex-col gap-2">
+                        <Button type="button" variant="outline" size="sm" onClick={() => void removeService(service.id)} className="border-red-500/30 text-red-300 hover:bg-red-500/10 hover:text-red-300">
+                          Eliminar
+                        </Button>
+                        <Button type="button" size="sm" onClick={() => openEditServiceDialog(service)} className="bg-gold text-primary-foreground hover:bg-gold-soft">
+                          Modificar
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setServicesListOpen(false)}>Cerrar</Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>
@@ -852,7 +871,7 @@ export function ProfessionalsManager() {
                       <Calendar
                         mode="single"
                         locale={es}
-                        selected={activeScheduleDate}
+                        selected={undefined}
                         onSelect={(date) => { if (date) openScheduleDate(date); }}
                         disabled={{ before: startOfToday() }}
                         modifiers={{ closedDay: isDateClosed, customHours: isDateCustomSchedule }}
@@ -862,7 +881,7 @@ export function ProfessionalsManager() {
                         }}
                         className="mt-2"
                       />
-                      <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
+                      <div className="mt-2 flex flex-wrap items-center justify-start gap-x-4 gap-y-2 text-xs text-muted-foreground">
                         <span className="h-2 w-2 rounded-full bg-muted-foreground" /> Día cerrado
                         <span className="ml-4 h-2 w-2 rounded-full bg-gold" /> Horario distinto
                       </div>
