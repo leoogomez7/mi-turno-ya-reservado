@@ -483,26 +483,7 @@ export function ProfessionalsManager() {
   return (
     <div className="min-h-screen bg-gradient-dark">
       <SiteHeader />
-        <main className="mx-auto max-w-6xl px-6 py-10">
-        <div className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <p className="text-xs uppercase tracking-widest text-gold">Editar</p>
-            <h1 className="font-display text-4xl font-semibold">Configuración</h1>
-          </div>
-          <div className="flex flex-wrap gap-3">
-            <Button
-              onClick={() => {
-                setEditingId(null);
-                setShowForm(true);
-                setForm(defaultFormState);
-              }}
-              className="bg-gold text-primary-foreground hover:bg-gold-soft"
-            >
-              <Plus className="mr-2 h-4 w-4" /> Nuevo profesional
-            </Button>
-          </div>
-        </div>
-
+      <main className="mx-auto max-w-6xl px-6 py-10">
         <div className="space-y-6">
           <section className="rounded-3xl border border-gold/30 bg-card p-6">
             <div className="flex flex-wrap items-start justify-between gap-4">
@@ -520,6 +501,85 @@ export function ProfessionalsManager() {
               </Button>
             </div>
               <p className="mt-3 text-xs text-muted-foreground">El código debe tener entre 3 y 20 caracteres (letras, números, guion o guion bajo). El código es único, compartilo con tus clientes para que encuentren tu sucursal al reservar.</p>
+          </section>
+
+          <section className="rounded-3xl border border-gold/30 bg-card p-6">
+            <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
+              <div>
+                <p className="text-xs uppercase tracking-widest text-gold">Lista</p>
+                <h2 className="font-display text-2xl font-semibold">Profesionales existentes</h2>
+                {professionals.length > 0 && (
+                  <p className="mt-2 text-sm text-muted-foreground">Seleccioná un profesional para modificarlo o eliminarlo.</p>
+                )}
+              </div>
+              <Button
+                onClick={() => {
+                  setEditingId(null);
+                  setShowForm(true);
+                  setForm(defaultFormState);
+                }}
+                className="bg-gold text-primary-foreground hover:bg-gold-soft"
+              >
+                <Plus className="mr-2 h-4 w-4" /> Nuevo profesional
+              </Button>
+            </div>
+            <div className="space-y-4">
+              {professionals.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No hay profesionales cargados.</p>
+              ) : professionals.map((professional) => (
+                <div
+                  key={professional.id}
+                  className="rounded-2xl border border-border bg-background/80 p-4 hover:border-gold/30"
+                >
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">{professional.name}</span>
+                        {professional.isTest && (
+                          <span className="rounded-full bg-yellow-500/10 px-2 py-1 text-[11px] font-semibold uppercase tracking-[.2em] text-yellow-700">
+                            Prueba
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-sm text-muted-foreground">{professional.specialty}</div>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {professional.isTest ? (
+                        <Button variant="outline" size="sm" disabled className="cursor-not-allowed opacity-50">
+                          No se puede modificar
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setViewDialogOpen(false);
+                            setDetailDialogOpen(false);
+                            setEditingId(professional.id);
+                            setShowForm(true);
+                          }}
+                        >
+                          Modificar
+                        </Button>
+                      )}
+                      {professional.isTest ? (
+                        <Button variant="outline" size="sm" disabled className="cursor-not-allowed opacity-50">
+                          No se puede borrar
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => requestDeleteProfessional(professional.id)}
+                        >
+                          Eliminar
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
           </section>
 
           <section className="rounded-3xl border border-gold/30 bg-card p-6">
@@ -958,74 +1018,6 @@ export function ProfessionalsManager() {
             </DialogContent>
           </Dialog>
 
-          <div className="rounded-3xl border border-gold/30 bg-card p-6">
-            <div className="mb-6">
-              <div>
-                <p className="text-xs uppercase tracking-widest text-gold">Lista</p>
-                <h2 className="font-display text-2xl font-semibold">Profesionales existentes</h2>
-                {professionals.length > 0 && (
-                  <p className="mt-2 text-sm text-muted-foreground">Seleccioná un profesional para modificarlo o eliminarlo.</p>
-                )}
-              </div>
-            </div>
-            <div className="space-y-4">
-              {professionals.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No hay profesionales cargados.</p>
-              ) : professionals.map((professional) => (
-                <div
-                  key={professional.id}
-                  className="rounded-2xl border border-border bg-background/80 p-4 hover:border-gold/30"
-                >
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium">{professional.name}</span>
-                        {professional.isTest && (
-                          <span className="rounded-full bg-yellow-500/10 px-2 py-1 text-[11px] font-semibold uppercase tracking-[.2em] text-yellow-700">
-                            Prueba
-                          </span>
-                        )}
-                      </div>
-                      <div className="text-sm text-muted-foreground">{professional.specialty}</div>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {professional.isTest ? (
-                        <Button variant="outline" size="sm" disabled className="cursor-not-allowed opacity-50">
-                          No se puede modificar
-                        </Button>
-                      ) : (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            setViewDialogOpen(false);
-                            setDetailDialogOpen(false);
-                            setEditingId(professional.id);
-                            setShowForm(true);
-                          }}
-                        >
-                          Modificar
-                        </Button>
-                      )}
-                      {professional.isTest ? (
-                        <Button variant="outline" size="sm" disabled className="cursor-not-allowed opacity-50">
-                          No se puede borrar
-                        </Button>
-                      ) : (
-                        <Button
-                          variant="destructive"
-                          size="sm"
-                          onClick={() => requestDeleteProfessional(professional.id)}
-                        >
-                          Eliminar
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
         </div>
 
       </main>

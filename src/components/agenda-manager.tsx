@@ -11,13 +11,11 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { bookingStore, getBarber, type Booking } from "@/lib/booking-store";
 import { useAppAuth } from "@/lib/auth";
-import { getCurrentStoreCode, getAvailableStores, type Store } from "@/lib/cloud-sync";
 import { getAvailableSlotsForDate, getProfessionalService, professionalStore } from "@/lib/professional-store";
 
 export function AgendaManager() {
   const { isAuthenticated, isLoading, role } = useAppAuth();
   const [bookings, setBookings] = useState<Booking[]>([]);
-  const [storeInfo, setStoreInfo] = useState<Store | undefined>(() => getAvailableStores().find((store) => store.code === getCurrentStoreCode()));
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
   const [editMode, setEditMode] = useState<"attendance" | "confirmation" | "turno" | null>(null);
@@ -31,17 +29,6 @@ export function AgendaManager() {
     reload();
     window.addEventListener("bookings:changed", reload);
     return () => window.removeEventListener("bookings:changed", reload);
-  }, []);
-
-  useEffect(() => {
-    const updateStore = () => setStoreInfo(getAvailableStores().find((store) => store.code === getCurrentStoreCode()));
-    updateStore();
-    window.addEventListener("mi-turno-ya:cloud-ready", updateStore);
-    window.addEventListener("mi-turno-ya:store-changed", updateStore);
-    return () => {
-      window.removeEventListener("mi-turno-ya:cloud-ready", updateStore);
-      window.removeEventListener("mi-turno-ya:store-changed", updateStore);
-    };
   }, []);
 
   useEffect(() => {
@@ -131,10 +118,6 @@ export function AgendaManager() {
         <div className="mb-8">
           <p className="text-xs uppercase tracking-widest text-gold">Control</p>
           <h1 className="font-display text-4xl font-semibold">Agenda</h1>
-          <div className="mt-2 space-y-1 text-sm text-muted-foreground">
-            <p>Nombre sucursal: <span className="font-semibold text-gold">{storeInfo?.name || "Sin nombre"}</span></p>
-            <p>Código sucursal: <span className="font-semibold text-gold">{getCurrentStoreCode() || "—"}</span></p>
-          </div>
         </div>
 
         {!visibleBookings.length ? (

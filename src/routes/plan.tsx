@@ -153,7 +153,6 @@ function PlanPage() {
         <section className="mb-8 rounded-3xl border border-gold/30 bg-card p-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div>
-              <p className="text-xs uppercase tracking-widest text-gold">Suscripción del sistema de turnos</p>
               <h2 className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 font-display text-2xl font-semibold">
                 {subscriptionIsActive ? (
                   <span className="inline-flex items-center gap-2 rounded-xl border border-emerald-400/50 bg-emerald-400/10 px-3 py-1 text-emerald-300 shadow-sm shadow-emerald-500/10">

@@ -10,7 +10,6 @@ import { bookingStore, type Booking } from "@/lib/booking-store";
 import { professionalStore, getProfessional, getProfessionalService } from "@/lib/professional-store";
 import { AuthRequired } from "@/components/auth-required";
 import { useAppAuth } from "@/lib/auth";
-import { getAvailableStores, getCurrentStoreCode, type Store } from "@/lib/cloud-sync";
 import { LoadingScreen } from "@/components/loading-screen";
 
 export const Route = createFileRoute("/admin")({
@@ -21,24 +20,12 @@ export const Route = createFileRoute("/admin")({
 export function AdminPage() {
   const { isAuthenticated, isLoading, role } = useAppAuth();
   const [bookings, setBookings] = useState<Booking[]>([]);
-  const [storeInfo, setStoreInfo] = useState<Store | undefined>(() => getAvailableStores().find((store) => store.code === getCurrentStoreCode()));
 
   useEffect(() => {
     const reload = () => setBookings(bookingStore.all());
     reload();
     window.addEventListener("bookings:changed", reload);
     return () => window.removeEventListener("bookings:changed", reload);
-  }, []);
-
-  useEffect(() => {
-    const update = () => setStoreInfo(getAvailableStores().find((store) => store.code === getCurrentStoreCode()));
-    update();
-    window.addEventListener("mi-turno-ya:cloud-ready", update);
-    window.addEventListener("mi-turno-ya:store-changed", update);
-    return () => {
-      window.removeEventListener("mi-turno-ya:cloud-ready", update);
-      window.removeEventListener("mi-turno-ya:store-changed", update);
-    };
   }, []);
 
   const stats = useMemo(() => computeStats(bookings), [bookings]);
@@ -54,10 +41,6 @@ export function AdminPage() {
           <div>
             <p className="text-xs uppercase tracking-widest text-gold">Control</p>
             <h1 className="font-display text-4xl font-semibold">Estadísticas</h1>
-            <div className="mt-2 space-y-1 text-sm text-muted-foreground">
-              <p>Nombre sucursal: <span className="font-semibold text-gold">{storeInfo?.name || "Sin nombre"}</span></p>
-              <p>Código sucursal: <span className="font-semibold text-gold">{getCurrentStoreCode() || "—"}</span></p>
-            </div>
           </div>
         </div>
 
