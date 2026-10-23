@@ -315,7 +315,7 @@ Notas: ${customer.notes || "Ninguna"}`;
       <main className="mx-auto flex w-full max-w-7xl flex-col px-4 py-10 sm:px-6">
         <section
           className={cn(
-            "mb-4 rounded-2xl border border-gold/30 bg-card/70 p-4 sm:p-5",
+            "mb-4 rounded-2xl border border-gold/30 bg-card p-4 sm:p-5",
             !selectedStoreCode && "cursor-pointer transition-colors hover:bg-gold/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold",
           )}
           role={!selectedStoreCode ? "button" : undefined}
@@ -409,7 +409,7 @@ Notas: ${customer.notes || "Ninguna"}`;
         )}
         <Stepper step={step} />
 
-        <div className="mt-4 rounded-2xl border border-gold/30 bg-card/60 p-5 sm:p-6">
+        <div className="mt-4 rounded-2xl border border-gold/30 bg-card p-5 sm:p-6">
           {step === 0 && <StepCustomer customer={customer} setCustomer={setCustomer} />}
           {step === 1 && <StepBarber value={barberId} onChange={setBarberId} />}
           {step === 2 && <StepServices value={serviceIds} onChange={setServiceIds} hairType={customer.hairType} setHairType={(v) => setCustomer({ ...customer, hairType: v })} barberId={barberId} />}
@@ -494,7 +494,7 @@ function TransferDetail({ label, value, onCopy }: { label: string; value: string
 
 function Stepper({ step }: { step: number }) {
   return (
-    <div className="flex w-full items-center gap-2 rounded-2xl border border-gold/30 bg-card/50 p-3 sm:gap-3 sm:p-4">
+    <div className="flex w-full items-center gap-2 rounded-2xl border border-gold/30 bg-card p-3 sm:gap-3 sm:p-4">
       {STEPS.map((label, i) => {
         const done = i < step;
         const active = i === step;

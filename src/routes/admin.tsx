@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { isToday, isThisWeek, isThisMonth, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
-import { Calendar, TrendingUp, Users } from "lucide-react";
+import { Calendar, TrendingDown, TrendingUp, Users } from "lucide-react";
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip, TooltipProps } from "recharts";
 
 import { SiteHeader } from "@/components/site-header";
@@ -39,12 +39,12 @@ export function AdminPage() {
       <main className="mx-auto w-full max-w-7xl px-4 py-10 sm:px-6">
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Stat icon={TrendingUp} label="Profesional con más atención" value={`${stats.topBarber.name} · ${stats.topBarber.count}`} />
-          <Stat icon={TrendingUp} label="Profesional con menos atención" value={`${stats.lowBarber.name} · ${stats.lowBarber.count}`} />
+          <Stat icon={TrendingDown} label="Profesional con menos atención" value={`${stats.lowBarber.name} · ${stats.lowBarber.count}`} />
           <Stat icon={Users} label="Último cliente" value={stats.lastClient} />
           <Stat icon={Calendar} label="Último profesional" value={stats.lastBarber} />
         </div>
 
-        <div className="mt-10 grid gap-6 md:grid-cols-2">
+        <div className="mt-10 grid items-start gap-6 md:grid-cols-2">
           <ChartCard title="Servicios más solicitados" data={stats.servicesChart} />
           <ChartCard title="Turnos por profesionales" data={stats.barbersChart} />
         </div>
@@ -83,14 +83,33 @@ function ChartTooltip({ active, payload, label }: TooltipProps<number, string>) 
 
 function ChartCard({ title, data }: { title: string; data: { name: string; value: number }[] }) {
   const colors = ["#F59E0B", "#60A5FA", "#34D399", "#A855F7", "#F97316", "#22C55E"];
+  const isProfessionalChart = title.includes("profesionales");
+
+  const dataList = (
+    <div className="grid gap-3 sm:grid-cols-2">
+      {data.map((entry, index) => (
+        <div key={entry.name} className="flex items-center justify-between rounded-2xl border border-border/80 bg-muted p-3">
+          <div className="flex items-center gap-3">
+            <span className="h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: colors[index % colors.length] }} />
+            <div>
+              <div className="text-sm font-medium text-foreground">{entry.name}</div>
+              <div className="text-xs text-muted-foreground">{isProfessionalChart ? "Profesional" : "Servicio"}</div>
+            </div>
+          </div>
+          <div className="text-sm font-semibold text-foreground">{entry.value}</div>
+        </div>
+      ))}
+    </div>
+  );
 
   return (
-    <div className="rounded-2xl border border-gold/30 bg-card p-6">
+    <div className="h-fit rounded-2xl border border-gold/30 bg-card p-6">
       <h3 className="mb-4 font-display text-lg font-semibold">{title}</h3>
       {data.length === 0 ? (
         <p className="py-10 text-center text-sm text-muted-foreground">Sin datos aún.</p>
       ) : (
         <>
+          {isProfessionalChart && <div className="mb-6">{dataList}</div>}
           <ResponsiveContainer width="100%" height={260}>
             <PieChart>
               <Pie
@@ -113,20 +132,7 @@ function ChartCard({ title, data }: { title: string; data: { name: string; value
             </PieChart>
           </ResponsiveContainer>
 
-          <div className="mt-6 grid gap-3 sm:grid-cols-2">
-            {data.map((entry, index) => (
-              <div key={entry.name} className="flex items-center justify-between rounded-2xl border border-border/80 bg-muted p-3">
-                <div className="flex items-center gap-3">
-                  <span className="h-3 w-3 rounded-full" style={{ backgroundColor: colors[index % colors.length] }} />
-                  <div>
-                    <div className="text-sm font-medium text-foreground">{entry.name}</div>
-                    <div className="text-xs text-muted-foreground">{title.includes("Servicios") ? "Servicio" : "Profesional"}</div>
-                  </div>
-                </div>
-                <div className="text-sm font-semibold text-foreground">{entry.value}</div>
-              </div>
-            ))}
-          </div>
+          {!isProfessionalChart && <div className="mt-6">{dataList}</div>}
         </>
       )}
     </div>
