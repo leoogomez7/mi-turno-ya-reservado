@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Check, Plus, Trash2 } from "lucide-react";
+import { format, getDay, startOfToday } from "date-fns";
+import { es } from "date-fns/locale";
 import { SiteHeader } from "@/components/site-header";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -11,6 +13,7 @@ import { AuthRequired } from "@/components/auth-required";
 import { useAppAuth } from "@/lib/auth";
 import { createStore, getAvailableStores, getCurrentStoreCode, isCloudInitialized, updateStoreContact, updateStoreSettings, type StoreSettings } from "@/lib/cloud-sync";
 import { LoadingScreen } from "@/components/loading-screen";
+import { Calendar } from "@/components/ui/calendar";
 
 const defaultFormState: Partial<Professional> = {
   name: "",
@@ -19,7 +22,18 @@ const defaultFormState: Partial<Professional> = {
   availableSlots: [],
   services: [],
   scheduleDates: [],
+  weeklySchedule: [],
 };
+
+const WEEKDAYS = [
+  { id: 1, label: "Lunes" },
+  { id: 2, label: "Martes" },
+  { id: 3, label: "Miércoles" },
+  { id: 4, label: "Jueves" },
+  { id: 5, label: "Viernes" },
+  { id: 6, label: "Sábado" },
+  { id: 0, label: "Domingo" },
+];
 
 const emptyStoreSettings: StoreSettings = {
   address: "",
@@ -54,6 +68,14 @@ export function ProfessionalsManager() {
   const [viewDialogOpen, setViewDialogOpen] = useState(false);
   const [viewMode, setViewMode] = useState<"schedule" | "services">("schedule");
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
+  const [serviceDialogOpen, setServiceDialogOpen] = useState(false);
+  const [editingServiceId, setEditingServiceId] = useState<string | null>(null);
+  const [serviceDraft, setServiceDraft] = useState<ProfessionalService>({ id: "", name: "", duration: 30, price: 0 });
+  const [scheduleDateDialogOpen, setScheduleDateDialogOpen] = useState(false);
+  const [activeScheduleDate, setActiveScheduleDate] = useState<Date | undefined>();
+  const [scheduleDateClosed, setScheduleDateClosed] = useState(false);
+  const [scheduleDateStart, setScheduleDateStart] = useState("09:00");
+  const [scheduleDateEnd, setScheduleDateEnd] = useState("18:00");
 
   useEffect(() => {
     const load = () => setProfessionals(professionalStore.all());
@@ -150,11 +172,17 @@ export function ProfessionalsManager() {
         availableSlots: selectedProfessional.availableSlots,
         services: selectedProfessional.services,
         scheduleDates: selectedProfessional.scheduleDates ?? [],
+        weeklySchedule: selectedProfessional.weeklySchedule ?? [],
       });
     } else {
       setForm(defaultFormState);
     }
   }, [selectedProfessional]);
+
+  function openScheduleDialog() {
+    setViewMode("schedule");
+    setDetailDialogOpen(true);
+  }
 
   function openViewDialog(mode: "schedule" | "services") {
     setViewMode(mode);
@@ -164,6 +192,41 @@ export function ProfessionalsManager() {
   function openDetailDialog(mode: "schedule" | "services") {
     setViewMode(mode);
     setDetailDialogOpen(true);
+  }
+
+  function openNewServiceDialog() {
+    setEditingServiceId(null);
+    setServiceDraft({ id: crypto.randomUUID(), name: "", duration: 30, price: 0 });
+    setServiceDialogOpen(true);
+  }
+
+  function openEditServiceDialog(service: ProfessionalService) {
+    setEditingServiceId(service.id);
+    setServiceDraft({ ...service });
+    setServiceDialogOpen(true);
+  }
+
+  function saveServiceDraft() {
+    const name = serviceDraft.name.trim();
+    if (!name || serviceDraft.duration <= 0 || serviceDraft.price <= 0) {
+      toast.error("Completá el nombre, la duración y un precio mayor a cero.");
+      return;
+    }
+    const nextService = { ...serviceDraft, name };
+    setForm((current) => ({
+      ...current,
+      services: editingServiceId
+        ? (current.services ?? []).map((service) => service.id === editingServiceId ? nextService : service)
+        : [...(current.services ?? []), nextService],
+    }));
+    setServiceDialogOpen(false);
+  }
+
+  function removeService(id: string) {
+    setForm((current) => ({
+      ...current,
+      services: (current.services ?? []).filter((service) => service.id !== id),
+    }));
   }
 
   async function performSaveProfessional() {
@@ -176,6 +239,12 @@ export function ProfessionalsManager() {
       toast.error("Agregá al menos un servicio válido.");
       return;
     }
+    const invalidWeeklySchedule = (form.weeklySchedule ?? []).some((entry) => !entry.closed && entry.start >= entry.end);
+    const invalidDateSchedule = (form.scheduleDates ?? []).some((entry) => !entry.closed && entry.start >= entry.end);
+    if (invalidWeeklySchedule || invalidDateSchedule) {
+      toast.error("En cada día abierto, la hora de fin debe ser posterior a la hora de inicio.");
+      return;
+    }
     const availableSlots = Array.from(new Set((form.availableSlots ?? []).map((slot) => slot.trim()).filter(Boolean))).sort();
     const nextProfessional: Omit<Professional, "id"> = {
       name: form.name.trim(),
@@ -184,6 +253,7 @@ export function ProfessionalsManager() {
       availableSlots,
       services,
       scheduleDates: form.scheduleDates ?? [],
+      weeklySchedule: form.weeklySchedule ?? [],
     };
     if (editingId) {
       await professionalStore.update(editingId, nextProfessional);
@@ -247,6 +317,59 @@ export function ProfessionalsManager() {
     const scheduleDates = [...(form.scheduleDates ?? [])];
     scheduleDates[index] = { ...scheduleDates[index], ...data };
     setForm({ ...form, scheduleDates });
+  }
+
+  function setWeeklyDay(dayOfWeek: number, changes: Partial<{ closed: boolean; start: string; end: string }>) {
+    const current = form.weeklySchedule ?? [];
+    const existing = current.find((entry) => entry.dayOfWeek === dayOfWeek);
+    const next = existing
+      ? current.map((entry) => entry.dayOfWeek === dayOfWeek ? { ...entry, ...changes } : entry)
+      : [...current, { dayOfWeek, closed: true, start: "09:00", end: "18:00", ...changes }];
+    setForm({ ...form, weeklySchedule: next });
+  }
+
+  function openScheduleDate(date: Date) {
+    const dateKey = format(date, "yyyy-MM-dd");
+    const override = form.scheduleDates?.find((entry) => entry.date === dateKey);
+    const weekly = form.weeklySchedule?.find((entry) => entry.dayOfWeek === getDay(date));
+    setActiveScheduleDate(date);
+    setScheduleDateClosed(override ? Boolean(override.closed) : weekly ? weekly.closed : true);
+    setScheduleDateStart(override?.start || weekly?.start || "09:00");
+    setScheduleDateEnd(override?.end || weekly?.end || "18:00");
+    setScheduleDateDialogOpen(true);
+  }
+
+  function saveScheduleDate() {
+    if (!activeScheduleDate) return;
+    if (!scheduleDateClosed && scheduleDateStart >= scheduleDateEnd) {
+      toast.error("La hora de fin debe ser posterior a la hora de inicio.");
+      return;
+    }
+    const dateKey = format(activeScheduleDate, "yyyy-MM-dd");
+    const nextEntry = {
+      date: dateKey,
+      start: scheduleDateStart,
+      end: scheduleDateEnd,
+      closed: scheduleDateClosed,
+    };
+    setForm({
+      ...form,
+      scheduleDates: [
+        ...(form.scheduleDates ?? []).filter((entry) => entry.date !== dateKey),
+        nextEntry,
+      ].sort((a, b) => a.date.localeCompare(b.date)),
+    });
+    setScheduleDateDialogOpen(false);
+  }
+
+  function isDateScheduled(date: Date) {
+    const dateKey = format(date, "yyyy-MM-dd");
+    const override = form.scheduleDates?.find((entry) => entry.date === dateKey);
+    if (override) return !override.closed;
+    const weekly = form.weeklySchedule?.find((entry) => entry.dayOfWeek === getDay(date));
+    if (weekly) return !weekly.closed;
+    if (form.weeklySchedule?.length) return false;
+    return Boolean(form.scheduleDates?.some((entry) => entry.date === dateKey));
   }
 
   function addScheduleDate() {
@@ -412,29 +535,50 @@ export function ProfessionalsManager() {
                 <div className="grid gap-4 sm:grid-cols-2">
                   <Field label="Fechas disponibles">
                     <div className="space-y-3">
-                      <Button variant="outline" onClick={() => openViewDialog("schedule")} className="w-full">
-                        Ver fechas y horarios
+                      <Button variant="outline" onClick={openScheduleDialog} className="w-full">
+                        Configurar calendario y horarios
                       </Button>
                       <p className="text-sm text-muted-foreground">
-                        {(form.scheduleDates ?? []).length > 0
-                          ? `${(form.scheduleDates ?? []).length} fechas guardadas`
-                          : "No hay fechas guardadas todavía."}
-                      </p>
-                    </div>
-                  </Field>
-                  <Field label="Servicios">
-                    <div className="space-y-3">
-                      <Button variant="outline" onClick={() => openViewDialog("services")} className="w-full">
-                        Ver servicios
-                      </Button>
-                      <p className="text-sm text-muted-foreground">
-                        {(form.services ?? []).length > 0
-                          ? `${(form.services ?? []).length} servicios guardados`
-                          : "No hay servicios guardados todavía."}
+                        {(form.weeklySchedule ?? []).some((entry) => !entry.closed) || (form.scheduleDates ?? []).some((entry) => !entry.closed)
+                          ? "Horarios configurados. Tocá una fecha del calendario para cambiar ese día."
+                          : "Configurá los días y horarios de atención."}
                       </p>
                     </div>
                   </Field>
                 </div>
+                <section className="space-y-3 rounded-2xl border border-border p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <h3 className="font-semibold">Servicios</h3>
+                      <p className="text-sm text-muted-foreground">Agregá y configurá los servicios de este profesional.</p>
+                    </div>
+                    <Button type="button" variant="outline" onClick={openNewServiceDialog}>
+                      <Plus className="mr-2 h-4 w-4" /> Agregar servicio
+                    </Button>
+                  </div>
+                  {(form.services ?? []).length === 0 ? (
+                    <p className="py-2 text-sm text-muted-foreground">No hay servicios guardados todavía.</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {(form.services ?? []).map((service) => (
+                        <div key={service.id} className="flex flex-col gap-4 rounded-xl border border-border bg-muted p-4 sm:flex-row sm:items-center sm:justify-between">
+                          <div className="min-w-0">
+                            <p className="truncate font-semibold">{service.name}</p>
+                            <p className="mt-1 text-sm text-muted-foreground">{service.duration} min · ${service.price.toLocaleString("es-AR")}</p>
+                          </div>
+                          <div className="flex shrink-0 flex-col gap-2 sm:w-32">
+                            <Button type="button" variant="outline" size="sm" onClick={() => removeService(service.id)} className="border-red-500/30 text-red-300 hover:bg-red-500/10 hover:text-red-300">
+                              Eliminar
+                            </Button>
+                            <Button type="button" size="sm" onClick={() => openEditServiceDialog(service)} className="bg-gold text-primary-foreground hover:bg-gold-soft">
+                              Modificar
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </section>
                 <div className="flex flex-col gap-3 pt-2">
                   <Button onClick={saveProfessional} className="w-full bg-gold text-primary-foreground hover:bg-gold-soft">
                     Guardar profesional
@@ -453,6 +597,32 @@ export function ProfessionalsManager() {
                   </Button>
                 </div>
               </div>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog open={serviceDialogOpen} onOpenChange={setServiceDialogOpen}>
+            <DialogContent className="sm:max-w-lg">
+              <DialogHeader>
+                <DialogTitle>{editingServiceId ? "Modificar servicio" : "Agregar servicio"}</DialogTitle>
+                <DialogDescription>Ingresá el nombre, la duración y el precio del servicio.</DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-4 sm:grid-cols-3">
+                <Field label="Nombre">
+                  <Input autoFocus value={serviceDraft.name} onChange={(event) => setServiceDraft({ ...serviceDraft, name: event.target.value })} placeholder="Corte clásico" />
+                </Field>
+                <Field label="Duración (minutos)">
+                  <Input type="number" min="1" value={serviceDraft.duration} onChange={(event) => setServiceDraft({ ...serviceDraft, duration: Number(event.target.value) })} placeholder="30" />
+                </Field>
+                <Field label="Precio">
+                  <Input type="number" min="1" value={serviceDraft.price || ""} onChange={(event) => setServiceDraft({ ...serviceDraft, price: Number(event.target.value) })} placeholder="8000" />
+                </Field>
+              </div>
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setServiceDialogOpen(false)}>Cancelar</Button>
+                <Button type="button" onClick={saveServiceDraft} className="bg-gold text-primary-foreground hover:bg-gold-soft">
+                  {editingServiceId ? "Guardar cambios" : "Agregar servicio"}
+                </Button>
+              </DialogFooter>
             </DialogContent>
           </Dialog>
 
@@ -559,7 +729,7 @@ export function ProfessionalsManager() {
           </Dialog>
 
           <Dialog open={detailDialogOpen} onOpenChange={setDetailDialogOpen}>
-            <DialogContent>
+            <DialogContent className={viewMode === "schedule" ? "max-h-[90vh] overflow-y-auto sm:max-w-4xl" : "max-h-[90vh] overflow-y-auto"}>
               <DialogHeader>
                 <DialogTitle>{viewMode === "schedule" ? "Editar fechas y horarios" : "Editar servicios"}</DialogTitle>
                 <DialogDescription>
@@ -570,44 +740,50 @@ export function ProfessionalsManager() {
               </DialogHeader>
               <div className="space-y-4 py-2">
                 {viewMode === "schedule" ? (
-                  <div className="space-y-4">
-                    {(form.scheduleDates ?? []).map((entry, index) => (
-                      <div key={`${entry.date}-${index}`} className="space-y-3 rounded-2xl border border-border bg-muted p-4">
-                        <div className="grid gap-2">
-                          <Label className="text-xs uppercase tracking-widest text-muted-foreground">Fecha</Label>
-                          <Input
-                            type="date"
-                            value={entry.date}
-                            onChange={(e) => updateScheduleDate(index, { date: e.target.value })}
-                            className="relative z-10"
-                          />
-                        </div>
-                        <div className="grid gap-3 sm:grid-cols-[120px_120px_auto]">
-                          <div className="grid gap-2">
-                            <Label className="text-xs uppercase tracking-widest text-muted-foreground">Desde</Label>
-                            <Input
-                              type="time"
-                              value={entry.start}
-                              onChange={(e) => updateScheduleDate(index, { start: e.target.value })}
-                            />
-                          </div>
-                          <div className="grid gap-2">
-                            <Label className="text-xs uppercase tracking-widest text-muted-foreground">Hasta</Label>
-                            <Input
-                              type="time"
-                              value={entry.end}
-                              onChange={(e) => updateScheduleDate(index, { end: e.target.value })}
-                            />
-                          </div>
-                          <Button variant="outline" size="sm" onClick={() => removeScheduleDate(index)} className="self-end h-9">
-                            Eliminar
-                          </Button>
-                        </div>
+                  <div className="space-y-6">
+                    <section className="rounded-2xl border border-border bg-background/60 p-4">
+                      <h3 className="font-semibold">Horario semanal</h3>
+                      <p className="mt-1 text-sm text-muted-foreground">Elegí qué días atendés y definí el horario de cada uno.</p>
+                      <div className="mt-4 space-y-3">
+                        {WEEKDAYS.map((day) => {
+                          const schedule = form.weeklySchedule?.find((entry) => entry.dayOfWeek === day.id);
+                          const isClosed = schedule?.closed ?? true;
+                          return (
+                            <div key={day.id} className="grid gap-3 rounded-xl border border-border p-3 sm:grid-cols-[130px_90px_1fr_1fr] sm:items-center">
+                              <span className="font-medium">{day.label}</span>
+                              <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                                <input type="checkbox" checked={!isClosed} onChange={(event) => setWeeklyDay(day.id, { closed: !event.target.checked })} />
+                                Abierto
+                              </label>
+                              <Field label="Desde">
+                                <Input type="time" disabled={isClosed} value={schedule?.start ?? "09:00"} onChange={(event) => setWeeklyDay(day.id, { start: event.target.value })} />
+                              </Field>
+                              <Field label="Hasta">
+                                <Input type="time" disabled={isClosed} value={schedule?.end ?? "18:00"} onChange={(event) => setWeeklyDay(day.id, { end: event.target.value })} />
+                              </Field>
+                            </div>
+                          );
+                        })}
                       </div>
-                    ))}
-                    <Button variant="outline" onClick={addScheduleDate} className="h-9 px-3 text-sm w-full">
-                      <Plus className="mr-2 h-4 w-4" /> Agregar fecha
-                    </Button>
+                    </section>
+                    <section className="rounded-2xl border border-border bg-background/60 p-4">
+                      <h3 className="font-semibold">Excepciones por fecha</h3>
+                      <p className="mt-1 text-sm text-muted-foreground">Tocá un día para cambiar su horario o marcarlo como cerrado.</p>
+                      <Calendar
+                        mode="single"
+                        locale={es}
+                        selected={activeScheduleDate}
+                        onSelect={(date) => { if (date) openScheduleDate(date); }}
+                        disabled={{ before: startOfToday() }}
+                        modifiers={{ scheduled: isDateScheduled }}
+                        modifiersClassNames={{ scheduled: "font-bold text-gold" }}
+                        className="mx-auto mt-2"
+                      />
+                      <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
+                        <span className="h-2 w-2 rounded-full bg-gold" /> Día configurado
+                        <span className="ml-3">Los cambios se aplican al guardar el profesional.</span>
+                      </div>
+                    </section>
                   </div>
                 ) : (
                   <div className="space-y-4">
@@ -642,6 +818,33 @@ export function ProfessionalsManager() {
                 <Button variant="outline" onClick={() => setDetailDialogOpen(false)}>
                   Cerrar
                 </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog open={scheduleDateDialogOpen} onOpenChange={setScheduleDateDialogOpen}>
+            <DialogContent className="sm:max-w-md">
+              <DialogHeader>
+                <DialogTitle>{activeScheduleDate ? format(activeScheduleDate, "EEEE d 'de' MMMM", { locale: es }) : "Horario de la fecha"}</DialogTitle>
+                <DialogDescription>Configurá una excepción para este día. Si no cambiás nada, se usa el horario semanal.</DialogDescription>
+              </DialogHeader>
+              <label className="flex items-center gap-3 rounded-xl border border-border p-3">
+                <input type="checkbox" checked={scheduleDateClosed} onChange={(event) => setScheduleDateClosed(event.target.checked)} />
+                <span className="font-medium">Este día estará cerrado</span>
+              </label>
+              {!scheduleDateClosed && (
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="Desde">
+                    <Input type="time" value={scheduleDateStart} onChange={(event) => setScheduleDateStart(event.target.value)} />
+                  </Field>
+                  <Field label="Hasta">
+                    <Input type="time" value={scheduleDateEnd} onChange={(event) => setScheduleDateEnd(event.target.value)} />
+                  </Field>
+                </div>
+              )}
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setScheduleDateDialogOpen(false)}>Cancelar</Button>
+                <Button onClick={saveScheduleDate} className="bg-gold text-primary-foreground hover:bg-gold-soft">Guardar fecha</Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>

@@ -14,7 +14,7 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
 import { bookingStore, getBarber, sumDuration, sumPrice, type Customer } from "@/lib/booking-store";
-import { professionalStore, getProfessionalServiceList, getScheduleForDate, generateSlotsFromSchedule } from "@/lib/professional-store";
+import { professionalStore, getProfessionalServiceList, getScheduleForDate, generateSlotsFromSchedule, isProfessionalAvailableOnDate } from "@/lib/professional-store";
 import { useAppAuth } from "@/lib/auth";
 import { getAvailableStores, getCurrentStoreCode, selectStore, type Store } from "@/lib/cloud-sync";
 
@@ -702,11 +702,14 @@ function StepDateTime({
   const professional = barberId ? professionalStore.all().find((p) => p.id === barberId) : undefined;
   const scheduledDates = professional?.scheduleDates
     ?.map((entry) => ({ ...entry, parsed: parseISO(entry.date) }))
-    .filter((entry) => !Number.isNaN(entry.parsed.getTime()) && entry.parsed >= today)
+    .filter((entry) => !Number.isNaN(entry.parsed.getTime()) && entry.parsed >= today && !entry.closed)
     .sort((a, b) => a.parsed.getTime() - b.parsed.getTime());
+  const hasWeeklySchedule = (professional?.weeklySchedule?.length ?? 0) > 0;
   const hasSpecificSchedule = (professional?.scheduleDates?.length ?? 0) > 0;
-  const days = hasSpecificSchedule
-    ? scheduledDates?.map((entry) => entry.parsed) ?? []
+  const days = hasWeeklySchedule
+    ? Array.from({ length: 60 }, (_, i) => addDays(today, i)).filter((day) => professional && isProfessionalAvailableOnDate(professional, day))
+    : hasSpecificSchedule
+      ? scheduledDates?.map((entry) => entry.parsed) ?? []
     : professional?.availableSlots.length
       ? Array.from({ length: 21 }, (_, i) => addDays(today, i))
       : [];
@@ -715,7 +718,9 @@ function StepDateTime({
   const occupied = date && barberId ? bookingStore.occupiedSlots(dateKey, barberId) : new Set<string>();
   const slotsNeeded = Math.max(1, Math.ceil(duration / 30));
   const scheduleDay = date && professional ? getScheduleForDate(professional, date) : undefined;
-  const slots = scheduleDay ? generateSlotsFromSchedule(scheduleDay) : professionalSlots;
+  const slots = scheduleDay
+    ? scheduleDay.closed ? [] : generateSlotsFromSchedule(scheduleDay)
+    : professionalSlots;
 
   function isSlotAvailable(slot: string): boolean {
     const [h, m] = slot.split(":").map(Number);
@@ -737,7 +742,9 @@ function StepDateTime({
       <div className="-mx-1 flex gap-2 overflow-x-auto pb-3">
         {days.map((d) => {
           const scheduleForDay = professional ? getScheduleForDate(professional, d) : undefined;
-          const closed = hasSpecificSchedule ? !scheduleForDay : professionalSlots.length === 0;
+          const closed = scheduleForDay
+            ? scheduleForDay.closed || generateSlotsFromSchedule(scheduleForDay).length === 0
+            : hasSpecificSchedule && !hasWeeklySchedule || professionalSlots.length === 0;
           const selected = date && isSameDay(d, date);
           const past = isBefore(d, today);
           const disabled = closed || past;

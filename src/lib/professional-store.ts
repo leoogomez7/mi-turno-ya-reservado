@@ -1,4 +1,4 @@
-import { parseISO } from "date-fns";
+import { format, getDay, parseISO } from "date-fns";
 import { getCloudRecords, getCurrentStoreCode, isCloudInitialized, persistCloudCollection } from "./cloud-sync";
 
 export interface ProfessionalService {
@@ -12,11 +12,41 @@ export interface ProfessionalScheduleDate {
   date: string; // yyyy-MM-dd
   start: string;
   end: string;
+  closed?: boolean;
+}
+
+export interface ProfessionalWeeklySchedule {
+  dayOfWeek: number; // 0 = Sunday, 6 = Saturday
+  closed: boolean;
+  start: string;
+  end: string;
 }
 
 export function getScheduleForDate(professional: Professional, date: Date) {
-  const target = date.toISOString().slice(0, 10);
-  return professional.scheduleDates?.find((entry) => entry.date === target);
+  const target = format(date, "yyyy-MM-dd");
+  const override = professional.scheduleDates?.find((entry) => entry.date === target);
+  if (override) return override;
+  if (professional.weeklySchedule?.length) {
+    const weekly = professional.weeklySchedule.find((entry) => entry.dayOfWeek === getDay(date));
+    return {
+      date: target,
+      start: weekly?.start ?? "",
+      end: weekly?.end ?? "",
+      closed: !weekly || weekly.closed,
+    };
+  }
+  return undefined;
+}
+
+export function hasScheduleConfiguration(professional: Professional) {
+  return Boolean(professional.weeklySchedule?.length || professional.scheduleDates?.length);
+}
+
+export function isProfessionalAvailableOnDate(professional: Professional, date: Date) {
+  const schedule = getScheduleForDate(professional, date);
+  if (schedule) return !schedule.closed && generateSlotsFromSchedule(schedule).length > 0;
+  if (hasScheduleConfiguration(professional)) return false;
+  return professional.availableSlots.length > 0;
 }
 
 export function getUpcomingScheduleDates(professional: Professional) {
@@ -50,7 +80,7 @@ export function generateSlotsFromSchedule(scheduleDay: ProfessionalScheduleDate)
 export function getAvailableSlotsForDate(professional: Professional, date: Date) {
   const scheduleDay = getScheduleForDate(professional, date);
   if (scheduleDay) {
-    return generateSlotsFromSchedule(scheduleDay);
+    return scheduleDay.closed ? [] : generateSlotsFromSchedule(scheduleDay);
   }
   return professional.availableSlots;
 }
@@ -64,6 +94,7 @@ export interface Professional {
   availableSlots: string[];
   services: ProfessionalService[];
   scheduleDates?: ProfessionalScheduleDate[];
+  weeklySchedule?: ProfessionalWeeklySchedule[];
   isTest?: boolean;
 }
 
