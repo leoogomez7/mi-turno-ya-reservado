@@ -608,7 +608,9 @@ export function ProfessionalsManager() {
               <div>
                 <p className="text-xs uppercase tracking-widest text-gold">Lista</p>
                 <h2 className="font-display text-2xl font-semibold">Profesionales existentes</h2>
-                <p className="mt-2 text-sm text-muted-foreground">Seleccioná un profesional para modificarlo o eliminarlo.</p>
+                {professionals.length > 0 && (
+                  <p className="mt-2 text-sm text-muted-foreground">Seleccioná un profesional para modificarlo o eliminarlo.</p>
+                )}
               </div>
             </div>
             <div className="space-y-4">
