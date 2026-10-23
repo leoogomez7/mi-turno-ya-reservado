@@ -355,24 +355,38 @@ Notas: ${customer.notes || "Ninguna"}`;
               <DialogDescription>Buscá por nombre o código.</DialogDescription>
             </DialogHeader>
             <div className="space-y-3">
-              <Input
-                autoFocus
-                value={storeSearch}
-                onChange={(event) => {
-                  setStoreSearch(event.target.value);
-                  setStoreNotFound(false);
-                  setStoreSearchSubmitted(false);
-                }}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    event.preventDefault();
-                    setStoreSearchSubmitted(true);
-                    setStoreNotFound(matchingStores.length === 0);
-                    if (matchingStores.length === 1) void chooseStore(matchingStores[0]);
-                  }
-                }}
-                placeholder="Nombre o código de sucursal"
-              />
+              <div className="relative">
+                <Input
+                  autoFocus
+                  value={storeSearch}
+                  onChange={(event) => {
+                    setStoreSearch(event.target.value);
+                    setStoreNotFound(false);
+                    setStoreSearchSubmitted(false);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      setStoreSearchSubmitted(true);
+                      setStoreNotFound(matchingStores.length === 0);
+                      if (matchingStores.length === 1) void chooseStore(matchingStores[0]);
+                    }
+                  }}
+                  placeholder="Nombre o código de sucursal"
+                  aria-controls="store-search-results"
+                  aria-expanded={Boolean(storeSearch.trim() && matchingStores.length)}
+                />
+                {storeSearch.trim() && matchingStores.length > 0 && (
+                  <div id="store-search-results" role="listbox" aria-label="Sucursales encontradas" className="absolute inset-x-0 top-full z-50 mt-1 max-h-64 overflow-y-auto rounded-xl border border-gold/40 bg-background p-1 shadow-xl">
+                    {matchingStores.map((store) => (
+                      <button key={store.code} type="button" role="option" aria-selected={store.code === selectedStoreCode} disabled={storeLoading} onClick={() => void chooseStore(store)} className="flex w-full items-center justify-between gap-4 rounded-lg px-3 py-2.5 text-left transition hover:bg-gold/10 focus-visible:bg-gold/10 focus-visible:outline-none disabled:opacity-60">
+                        <span className="min-w-0 truncate font-medium">{store.name}</span>
+                        <span className="shrink-0 text-sm text-muted-foreground">{store.code}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
               <Button type="button" disabled={storeLoading || !storeSearch.trim()} className="w-full bg-gold text-primary-foreground hover:bg-gold-soft" onClick={() => {
                 setStoreSearchSubmitted(true);
                 setStoreNotFound(matchingStores.length === 0);
@@ -380,16 +394,6 @@ Notas: ${customer.notes || "Ninguna"}`;
               }}>
                 {storeLoading ? "Cargando sucursal…" : "Buscar sucursal"}
               </Button>
-              {storeSearchSubmitted && matchingStores.length > 0 && (
-                <div className="max-h-64 space-y-2 overflow-y-auto">
-                  {matchingStores.map((store) => (
-                    <button key={store.code} type="button" disabled={storeLoading} onClick={() => void chooseStore(store)} className="flex w-full items-center justify-between rounded-xl border border-border bg-card px-4 py-3 text-left transition hover:border-gold/60 hover:bg-gold/5">
-                      <span className="font-medium">{store.name}</span>
-                      <span className="text-sm text-muted-foreground">{store.code}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
               {storeSearchSubmitted && storeNotFound && <p role="status" className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">No encontramos sucursales con ese nombre o código.</p>}
             </div>
           </DialogContent>

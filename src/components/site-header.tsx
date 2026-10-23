@@ -53,7 +53,7 @@ export function SiteHeader() {
           ) : isAuthenticated ? (
             <Button size="sm" variant="outline" disabled>{user?.email || "Cuenta"}</Button>
           ) : (
-            <Button size="sm" variant="outline" onClick={() => setAuthDialogOpen(true)}>Ingresar</Button>
+            <Button size="sm" variant="ghost" className="px-3 py-2 text-muted-foreground hover:bg-transparent hover:text-foreground [&.active]:text-gold" onClick={() => setAuthDialogOpen(true)}>Ingresar</Button>
           )}
         </nav>
 
