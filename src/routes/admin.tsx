@@ -2,7 +2,7 @@ import { createFileRoute, useLocation } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { format, isToday, isThisWeek, isThisMonth, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
-import { BarChart3, Calendar, Check, Clock, CreditCard, Scissors, Trash2, TrendingUp, Users, X } from "lucide-react";
+import { AlertTriangle, BarChart3, Calendar, Check, Clock, CreditCard, Scissors, Trash2, TrendingUp, Users, X } from "lucide-react";
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip, TooltipProps } from "recharts";
 
 import { SiteHeader } from "@/components/site-header";
@@ -281,17 +281,25 @@ function AdminPage() {
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <p className="text-xs uppercase tracking-widest text-gold">Suscripción del sistema de turnos</p>
-              <h2 className="mt-1 font-display text-2xl font-semibold">{subscriptionIsActive ? "Plan activo" : "Plan inactivo"}</h2>
+              <h2 className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 font-display text-2xl font-semibold">
+                {subscriptionIsActive ? "Plan activo" : "Plan inactivo"}
+                {subscriptionIsActive && subscriptionDaysRemaining !== null && subscriptionDaysRemaining > 0 && subscriptionDaysRemaining <= 4 && (
+                  <span role="status" className="inline-flex items-center gap-1.5 font-sans text-sm font-semibold text-red-400">
+                    <AlertTriangle aria-hidden="true" className="h-4 w-4" />
+                    Plan por vencer
+                  </span>
+                )}
+              </h2>
               <p className="mt-1 text-sm text-muted-foreground">
                 {subscriptionIsActive && storeInfo?.subscriptionExpiresAt
                   ? `Activo hasta ${format(new Date(storeInfo.subscriptionExpiresAt), "d 'de' MMMM yyyy", { locale: es })}.` 
                   : "La sucursal no aparece en las búsquedas y no acepta reservas hasta activar un plan."}
               </p>
               {storeInfo?.subscriptionPlanType === "trial" && subscriptionIsActive && (
-                <p className="mt-2 text-sm font-medium text-gold">Estás usando tu prueba gratuita de 4 días. Elegí un paquete antes de que venza para continuar.</p>
+                <p className="mt-2 text-sm font-medium text-gold">Estás usando tu prueba gratuita de 4 días. Elegí un paquete antes de que termine tu prueba gratuita.</p>
               )}
-              {storeInfo?.subscriptionExpiresAt && subscriptionDaysRemaining !== null && subscriptionDaysRemaining > 0 && subscriptionDaysRemaining <= 3 && (
-                <p role="alert" className="mt-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-200">
+              {storeInfo?.subscriptionExpiresAt && subscriptionDaysRemaining !== null && subscriptionDaysRemaining > 0 && subscriptionDaysRemaining <= 4 && (
+                <p role="alert" className="mt-3 rounded-lg border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-300">
                   Tu plan vence {subscriptionDaysRemaining === 1 ? "dentro de 1 día" : `dentro de ${subscriptionDaysRemaining} días`}. Recordá elegir y pagar un plan manualmente para mantener activa la sucursal.
                 </p>
               )}
@@ -300,7 +308,7 @@ function AdminPage() {
                   Tu plan venció el {format(new Date(storeInfo.subscriptionExpiresAt), "d 'de' MMMM yyyy", { locale: es })}. La sucursal dejó de aparecer en las búsquedas y no puede recibir reservas hasta que pagues un nuevo plan.
                 </p>
               )}
-              <p className="mt-2 text-xs text-muted-foreground">El plan es prepago y no se renueva ni cobra automáticamente. El sistema te avisa aquí cuando falten 3 días para el vencimiento.</p>
+              <p className="mt-2 text-xs text-muted-foreground">El plan es prepago y no se renueva ni cobra automáticamente. El sistema te avisa aquí cuando falten 4 días para el vencimiento.</p>
             </div>
             <CreditCard className="h-7 w-7 text-gold" />
           </div>
