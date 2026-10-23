@@ -302,7 +302,7 @@ export function ProfessionalsManager() {
               <div>
                   <p className="text-xs uppercase tracking-widest text-gold">Sucursal</p>
                   <h2 className="mt-1 font-display text-2xl font-semibold">Tu sucursal y código de reserva</h2>
-                  <p className="mt-2 text-sm text-muted-foreground">Sucursal actual: <strong className="text-gold">{currentStoreName || "Cargando..."}</strong> · Código: <strong className="text-gold">{currentStoreCode || "—"}</strong>. Los turnos y profesionales quedan separados por sucursal.</p>
+                  <p className="mt-2 text-sm text-muted-foreground">Sucursal actual: <strong className="text-gold">{currentStoreName || "Cargando..."}</strong> · Código: <strong className="text-gold">{currentStoreCode || "—"}</strong>. </p>
               </div>
             </div>
             <div className="mt-5 grid gap-3 sm:grid-cols-[1fr_220px_auto]">
@@ -312,14 +312,14 @@ export function ProfessionalsManager() {
                   {savingStore ? "Guardando…" : "Guardar sucursal"}
               </Button>
             </div>
-              <p className="mt-3 text-xs text-muted-foreground">El código debe tener entre 3 y 20 caracteres (letras, números, guion o guion bajo) y no puede repetirse. Compartilo con tus clientes para que encuentren tu sucursal al reservar.</p>
+              <p className="mt-3 text-xs text-muted-foreground">El código debe tener entre 3 y 20 caracteres (letras, números, guion o guion bajo). El código es único, compartilo con tus clientes para que encuentren tu sucursal al reservar.</p>
           </section>
 
           <section className="rounded-3xl border border-gold/30 bg-card p-6">
             <div className="mb-5">
-              <p className="text-xs uppercase tracking-widest text-gold">Datos</p>
-              <h2 className="mt-1 font-display text-2xl font-semibold">Contacto y transferencia</h2>
-                <p className="mt-2 text-sm text-muted-foreground">Estos datos pertenecen a la sucursal seleccionada y se cargan desde la base de datos.</p>
+              <p className="text-xs uppercase tracking-widest text-gold">Datos de la sucursal</p>
+              <h2 className="mt-1 font-display text-2xl font-semibold">Contacto</h2>
+                <p className="mt-2 text-sm text-muted-foreground">Información de la sucursal.</p>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Dirección">
@@ -328,6 +328,16 @@ export function ProfessionalsManager() {
               <Field label="WhatsApp">
                 <Input disabled={loadingStoreSettings} value={storeSettings.whatsapp} onChange={(event) => setStoreSettings({ ...storeSettings, whatsapp: event.target.value })} maxLength={25} placeholder={loadingStoreSettings ? "Cargando..." : "5491112345678"} />
               </Field>
+            </div>
+          </section>
+
+          <section className="rounded-3xl border border-gold/30 bg-card p-6">
+            <div className="mb-5">
+              <p className="text-xs uppercase tracking-widest text-gold">Datos de la sucursal</p>
+              <h2 className="mt-1 font-display text-2xl font-semibold">Datos para transferir</h2>
+              <p className="mt-2 text-sm text-muted-foreground">Información bancaria para recibir transferencias.</p>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Titular de la cuenta">
                 <Input disabled={loadingStoreSettings} value={storeSettings.transferHolder} onChange={(event) => setStoreSettings({ ...storeSettings, transferHolder: event.target.value })} maxLength={200} placeholder={loadingStoreSettings ? "Cargando..." : ""} />
               </Field>
