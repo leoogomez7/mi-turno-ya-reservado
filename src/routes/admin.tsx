@@ -107,9 +107,23 @@ function ChartCard({ title, data }: { title: string; data: { name: string; value
       <h3 className="mb-4 font-display text-lg font-semibold">{title}</h3>
       {data.length === 0 ? (
         <p className="py-10 text-center text-sm text-muted-foreground">Sin datos aún.</p>
+      ) : isProfessionalChart ? (
+        <div className="grid gap-3 sm:grid-cols-2">
+          {data.map((entry, index) => (
+            <div key={entry.name} className="flex items-center justify-between rounded-2xl border border-border/80 bg-muted p-3">
+              <div className="flex items-center gap-3">
+                <span className="h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: colors[index % colors.length] }} />
+                <div>
+                  <div className="text-sm font-medium text-foreground">{entry.name}</div>
+                  <div className="text-xs text-muted-foreground">Profesional</div>
+                </div>
+              </div>
+              <div className="text-sm font-semibold text-foreground">{entry.value}</div>
+            </div>
+          ))}
+        </div>
       ) : (
         <>
-          {isProfessionalChart && <div className="mb-6">{dataList}</div>}
           <ResponsiveContainer width="100%" height={260}>
             <PieChart>
               <Pie
@@ -132,7 +146,7 @@ function ChartCard({ title, data }: { title: string; data: { name: string; value
             </PieChart>
           </ResponsiveContainer>
 
-          {!isProfessionalChart && <div className="mt-6">{dataList}</div>}
+          <div className="mt-6">{dataList}</div>
         </>
       )}
     </div>

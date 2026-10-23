@@ -558,6 +558,7 @@ export function ProfessionalsManager() {
                         <Button
                           variant="outline"
                           size="sm"
+                          className="border-gold/40 hover:border-gold"
                           onClick={() => {
                             setViewDialogOpen(false);
                             setDetailDialogOpen(false);
@@ -874,7 +875,7 @@ export function ProfessionalsManager() {
           </Dialog>
 
           <Dialog open={detailDialogOpen} onOpenChange={setDetailDialogOpen}>
-            <DialogContent className={viewMode === "schedule" ? "w-[calc(100vw-2rem)] max-h-[90vh] overflow-x-hidden overflow-y-auto sm:max-w-2xl" : "max-h-[90vh] overflow-y-auto"}>
+            <DialogContent className={viewMode === "schedule" ? schedulePanel === "exceptions" ? "w-fit max-w-[calc(100vw-2rem)] max-h-[90vh] overflow-x-hidden overflow-y-auto sm:max-w-md" : "w-[calc(100vw-2rem)] max-h-[90vh] overflow-x-hidden overflow-y-auto sm:max-w-2xl" : "max-h-[90vh] overflow-y-auto"}>
               {(viewMode !== "schedule" || schedulePanel !== "weekly") && (
                 <DialogHeader>
                   <DialogTitle>{viewMode === "schedule" ? "Excepciones" : "Editar servicios"}</DialogTitle>
@@ -918,9 +919,7 @@ export function ProfessionalsManager() {
                     </section>
                     )}
                     {schedulePanel === "exceptions" && (
-                    <section className="w-fit max-w-full rounded-2xl border border-border bg-background/60 p-4">
-                      <h3 className="font-semibold">Excepciones por fecha</h3>
-                      <p className="mt-1 text-sm text-muted-foreground">Tocá un día para cambiar su horario o marcarlo como cerrado.</p>
+                    <section className="mx-auto w-fit max-w-full rounded-2xl border border-border bg-background/60 p-4">
                       <Calendar
                         mode="single"
                         locale={es}
