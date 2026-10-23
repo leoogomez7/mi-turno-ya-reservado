@@ -39,12 +39,13 @@ export function SiteHeader() {
         <nav className="hidden items-center justify-end gap-1 text-sm md:flex">
           <Link to="/reserva" className="px-3 py-2 text-muted-foreground hover:text-foreground [&.active]:text-gold">Reservar</Link>
           {role === "admin" && <Link to="/configuracion" className="px-3 py-2 text-muted-foreground hover:text-foreground [&.active]:text-foreground">Configuración</Link>}
-          {role === "admin" && <Link to="/admin" className="px-3 py-2 text-muted-foreground hover:text-foreground [&.active]:text-foreground">Administración</Link>}
+          {role === "admin" && <Link to="/agenda" className="px-3 py-2 text-muted-foreground hover:text-foreground [&.active]:text-foreground">Agenda</Link>}
+          {role === "admin" && <Link to="/estadisticas" className="px-3 py-2 text-muted-foreground hover:text-foreground [&.active]:text-foreground">Estadísticas</Link>}
           {role === "admin" && <Link to="/plan" className="px-3 py-2 text-muted-foreground hover:text-foreground [&.active]:text-foreground">Plan</Link>}
           {isAuthenticated && role === "client" && <Link to="/mis-turnos" className="px-3 py-2 text-muted-foreground hover:text-foreground [&.active]:text-foreground">Mis turnos</Link>}
           {isAuthenticated && role === "admin" ? (
-            <Link to="/admin" className="inline-flex h-9 items-center rounded-md border border-input bg-background px-3 text-xs font-medium text-foreground transition-colors hover:bg-accent hover:text-accent-foreground">
-              {user?.email || "Administración"}
+            <Link to="/estadisticas" className="inline-flex h-9 items-center rounded-md border border-input bg-background px-3 text-xs font-medium text-foreground transition-colors hover:bg-accent hover:text-accent-foreground">
+              {user?.email || "Estadísticas"}
             </Link>
           ) : isAuthenticated && role === "client" ? (
             <Link to="/mis-turnos" className="inline-flex h-9 items-center rounded-md border border-input bg-background px-3 text-xs font-medium text-foreground transition-colors hover:bg-accent hover:text-accent-foreground">
@@ -77,7 +78,8 @@ export function SiteHeader() {
                 Reservar
               </Link>
               {role === "admin" && <Link to="/configuracion" onClick={() => setOpen(false)} className="block rounded-2xl px-4 py-3 text-foreground hover:bg-border/10">Configuración</Link>}
-              {role === "admin" && <Link to="/admin" onClick={() => setOpen(false)} className="block rounded-2xl px-4 py-3 text-foreground hover:bg-border/10">Administración</Link>}
+              {role === "admin" && <Link to="/agenda" onClick={() => setOpen(false)} className="block rounded-2xl px-4 py-3 text-foreground hover:bg-border/10">Agenda</Link>}
+              {role === "admin" && <Link to="/estadisticas" onClick={() => setOpen(false)} className="block rounded-2xl px-4 py-3 text-foreground hover:bg-border/10">Estadísticas</Link>}
               {role === "admin" && <Link to="/plan" onClick={() => setOpen(false)} className="block rounded-2xl px-4 py-3 text-foreground hover:bg-border/10">Plan</Link>}
               {isAuthenticated && role === "client" && (
                 <Link to="/mis-turnos" onClick={() => setOpen(false)} className="block rounded-2xl px-4 py-3 text-foreground hover:bg-border/10">

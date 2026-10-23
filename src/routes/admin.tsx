@@ -1,39 +1,27 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import { format, isToday, isThisWeek, isThisMonth, parseISO } from "date-fns";
+import { isToday, isThisWeek, isThisMonth, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
-import { BarChart3, Calendar, Clock, Scissors, Trash2, TrendingUp, Users, X } from "lucide-react";
+import { Calendar, TrendingUp, Users } from "lucide-react";
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip, TooltipProps } from "recharts";
 
 import { SiteHeader } from "@/components/site-header";
-import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Badge } from "@/components/ui/badge";
-import { bookingStore, getBarber, type Booking } from "@/lib/booking-store";
-import { professionalStore, getProfessional, getProfessionalService, getAvailableSlotsForDate, type Professional } from "@/lib/professional-store";
-import { toast } from "sonner";
+import { bookingStore, type Booking } from "@/lib/booking-store";
+import { professionalStore, getProfessional, getProfessionalService } from "@/lib/professional-store";
 import { AuthRequired } from "@/components/auth-required";
 import { useAppAuth } from "@/lib/auth";
 import { getAvailableStores, getCurrentStoreCode, type Store } from "@/lib/cloud-sync";
 import { LoadingScreen } from "@/components/loading-screen";
 
 export const Route = createFileRoute("/admin")({
-  head: () => ({ meta: [{ title: "Panel" }] }),
+  head: () => ({ meta: [{ title: "Estadísticas" }] }),
   component: AdminPage,
 });
 
 function AdminPage() {
-  const { isAuthenticated, isLoading, role, getIdToken, user } = useAppAuth();
+  const { isAuthenticated, isLoading, role } = useAppAuth();
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [storeInfo, setStoreInfo] = useState<Store | undefined>(() => getAvailableStores().find((store) => store.code === getCurrentStoreCode()));
-  const [bookingEditDialogOpen, setBookingEditDialogOpen] = useState(false);
-  const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
-  const [editMode, setEditMode] = useState<"attendance" | "confirmation" | "turno" | null>(null);
-  const [editedDate, setEditedDate] = useState("");
-  const [editedTime, setEditedTime] = useState("");
-  const [editedProfessionalId, setEditedProfessionalId] = useState("");
-  const [editedServiceId, setEditedServiceId] = useState("");
 
   useEffect(() => {
     const reload = () => setBookings(bookingStore.all());
@@ -53,107 +41,10 @@ function AdminPage() {
     };
   }, []);
 
-  useEffect(() => {
-    if (!selectedBooking) return;
-    setEditedDate(selectedBooking.date);
-    setEditedTime(selectedBooking.time);
-    setEditedProfessionalId(selectedBooking.barberId);
-    setEditedServiceId(selectedBooking.serviceIds[0] ?? "");
-  }, [selectedBooking]);
-
   const stats = useMemo(() => computeStats(bookings), [bookings]);
-  const professionals = professionalStore.all();
-  const editedProfessional = professionals.find((p) => p.id === editedProfessionalId) ?? professionals[0];
-  const availableSlotsForDate = useMemo(() => {
-    if (!editedProfessional || !editedDate) return [];
-    return getAvailableSlotsForDate(editedProfessional, new Date(editedDate));
-  }, [editedProfessional, editedDate]);
 
   if (isLoading) return <LoadingScreen message="Preparando tu agenda" />;
   if (!isAuthenticated || role !== "admin") return <><SiteHeader /><AuthRequired role="admin" title="Administración" /></>;
-
-  function openBookingDialog(booking: Booking, mode: "attendance" | "confirmation" | "turno") {
-    setSelectedBooking(booking);
-    setEditMode(mode);
-    setBookingEditDialogOpen(true);
-  }
-
-  function closeBookingDialog() {
-    setBookingEditDialogOpen(false);
-    setSelectedBooking(null);
-    setEditMode(null);
-  }
-
-  async function saveBookingEdit() {
-    if (!selectedBooking || !editMode) return;
-    if (editMode === "turno") {
-      const professional = professionalStore.get(editedProfessionalId);
-      if (!professional) {
-        toast.error("No se encontró profesional válido");
-        return;
-      }
-      const service = professional.services.find((svc) => svc.id === editedServiceId) ?? professional.services[0];
-      if (!service) {
-        toast.error("No hay servicios disponibles para este profesional");
-        return;
-      }
-      try {
-        await bookingStore.update(selectedBooking.id, {
-          barberId: professional.id,
-          serviceIds: [service.id],
-          duration: service.duration,
-          totalPrice: service.price,
-          date: editedDate,
-          time: editedTime,
-        });
-        toast.success("Turno modificado y guardado en la base.");
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : "No se pudo guardar el cambio en la base.");
-        return;
-      }
-    }
-    closeBookingDialog();
-  }
-
-  async function confirmAttendance(choice: "completed" | "no-show") {
-    if (!selectedBooking) return;
-    try {
-      await bookingStore.update(selectedBooking.id, { status: choice });
-      toast.success(choice === "completed" ? "Asistencia registrada" : "Turno indicado como no asistió");
-      closeBookingDialog();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "No se pudo guardar la asistencia en la base.");
-    }
-  }
-
-  async function setAppointmentConfirmation(choice: "confirmed" | "pending") {
-    if (!selectedBooking) return;
-    try {
-      await bookingStore.update(selectedBooking.id, { appointmentConfirmation: choice });
-      toast.success(choice === "confirmed" ? "Turno confirmado por el cliente" : "El cliente todavía no confirmó el turno");
-      closeBookingDialog();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "No se pudo actualizar la confirmación.");
-    }
-  }
-
-  async function deleteBooking(id: string) {
-    try {
-      await bookingStore.remove(id);
-      toast("Turno eliminado.");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "No se pudo eliminar el turno.");
-    }
-  }
-
-  async function confirmPayment(id: string) {
-    try {
-      await bookingStore.update(id, { status: "confirmed" });
-      toast.success("Pago verificado y turno confirmado");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "No se pudo guardar el pago verificado.");
-    }
-  }
 
   return (
     <div className="min-h-screen bg-gradient-dark">
@@ -161,8 +52,8 @@ function AdminPage() {
       <main className="mx-auto max-w-6xl px-6 py-10">
         <div className="mb-8 flex items-end justify-between">
           <div>
-            <p className="text-xs uppercase tracking-widest text-gold">Panel administrador</p>
-            <h1 className="font-display text-4xl font-semibold">Agenda & Estadísticas</h1>
+            <p className="text-xs uppercase tracking-widest text-gold">Control</p>
+            <h1 className="font-display text-4xl font-semibold">Estadísticas</h1>
             <div className="mt-2 space-y-1 text-sm text-muted-foreground">
               <p>Nombre sucursal: <span className="font-semibold text-gold">{storeInfo?.name || "Sin nombre"}</span></p>
               <p>Código sucursal: <span className="font-semibold text-gold">{getCurrentStoreCode() || "—"}</span></p>
@@ -177,127 +68,10 @@ function AdminPage() {
           <Stat icon={Calendar} label="Último profesional" value={stats.lastBarber} />
         </div>
 
-        <Tabs defaultValue="agenda" className="mt-10">
-          <TabsList>
-            <TabsTrigger value="agenda">Agenda</TabsTrigger>
-            <TabsTrigger value="stats">Estadísticas</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="agenda" className="mt-6">
-            <AgendaList bookings={bookings} onOpenBookingDialog={openBookingDialog} onDeleteBooking={deleteBooking} onConfirmPayment={confirmPayment} />
-          </TabsContent>
-
-          <TabsContent value="stats" className="mt-6 grid gap-6 md:grid-cols-2">
-            <ChartCard title="Servicios más solicitados" data={stats.servicesChart} />
-            <ChartCard title="Turnos por profesionales" data={stats.barbersChart} />
-          </TabsContent>
-        </Tabs>
-
-        <Dialog open={bookingEditDialogOpen} onOpenChange={setBookingEditDialogOpen}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>
-                {editMode === "attendance" && "Asistencia"}
-                {editMode === "confirmation" && "Confirmación de turno"}
-                {editMode === "turno" && "Modificar turno"}
-              </DialogTitle>
-              <DialogDescription>
-                {editMode === "attendance" && "Selecciona si el cliente asistió o no al turno."}
-                {editMode === "confirmation" && "¿El cliente confirmó el turno?"}
-                {editMode === "turno" && "Modifica profesional, servicio y horario en un solo paso."}
-              </DialogDescription>
-            </DialogHeader>
-
-            <div className="space-y-4 py-4">
-              {editMode === "attendance" && (
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <Button className="bg-emerald-500 text-white" onClick={() => confirmAttendance("completed")}>Sí asistió</Button>
-                  <Button className="border border-red-500/30 bg-red-500/10 text-red-300 hover:bg-red-500/20" onClick={() => confirmAttendance("no-show")}>No asistió</Button>
-                </div>
-              )}
-
-              {editMode === "confirmation" && (
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <Button className="bg-emerald-500 text-white" onClick={() => setAppointmentConfirmation("confirmed")}>Confirmó turno</Button>
-                  <Button className="bg-amber-500 text-white hover:bg-amber-600" onClick={() => setAppointmentConfirmation("pending")}>No confirmó todavía</Button>
-                </div>
-              )}
-
-              {editMode === "turno" && (
-                <div className="grid gap-4">
-                  <label className="text-sm text-muted-foreground block">
-                    Profesional
-                    <select
-                      className="mt-2 block w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-gold focus:ring-2 focus:ring-gold/20"
-                      value={editedProfessionalId}
-                      onChange={(e) => {
-                        setEditedProfessionalId(e.target.value);
-                        const newProfessional = professionals.find((professional) => professional.id === e.target.value);
-                        setEditedServiceId(newProfessional?.services[0]?.id ?? "");
-                      }}
-                    >
-                      {professionals.map((professional) => (
-                        <option key={professional.id} value={professional.id}>
-                          {professional.name} — {professional.specialty}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-
-                  <label className="text-sm text-muted-foreground block">
-                    Servicio
-                    <select
-                      className="mt-2 block w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-gold focus:ring-2 focus:ring-gold/20"
-                      value={editedServiceId}
-                      onChange={(e) => setEditedServiceId(e.target.value)}
-                    >
-                      {(editedProfessional?.services ?? []).map((service) => (
-                        <option key={service.id} value={service.id}>
-                          {service.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-
-                  <label className="text-sm text-muted-foreground">
-                    Fecha
-                    <input
-                      type="date"
-                      className="mt-2 block w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-gold focus:ring-2 focus:ring-gold/20"
-                      value={editedDate}
-                      onChange={(e) => setEditedDate(e.target.value)}
-                    />
-                  </label>
-
-                  <label className="text-sm text-muted-foreground">
-                    Hora
-                    <select
-                      className="mt-2 block w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-gold focus:ring-2 focus:ring-gold/20"
-                      value={editedTime}
-                      onChange={(e) => setEditedTime(e.target.value)}
-                    >
-                      <option value="">Seleccionar hora</option>
-                      {availableSlotsForDate.map((slot) => (
-                        <option key={slot} value={slot}>{slot}</option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-              )}
-            </div>
-
-            {editMode === "turno" ? (
-              <DialogFooter>
-                <Button className="bg-gold text-primary-foreground hover:bg-gold-soft" onClick={saveBookingEdit}>
-                  Guardar cambios
-                </Button>
-                <Button variant="outline" onClick={closeBookingDialog}>
-                  Cancelar
-                </Button>
-              </DialogFooter>
-            ) : null}
-          </DialogContent>
-        </Dialog>
+        <div className="mt-10 grid gap-6 md:grid-cols-2">
+          <ChartCard title="Servicios más solicitados" data={stats.servicesChart} />
+          <ChartCard title="Turnos por profesionales" data={stats.barbersChart} />
+        </div>
       </main>
     </div>
   );
@@ -311,81 +85,6 @@ function Stat({ icon: Icon, label, value }: { icon: any; label: string; value: s
       </div>
       <div className="font-display text-3xl font-semibold">{value}</div>
       <div className="mt-1 text-xs uppercase tracking-wider text-muted-foreground">{label}</div>
-    </div>
-  );
-}
-
-function AgendaList({
-  bookings,
-  onOpenBookingDialog,
-  onDeleteBooking,
-  onConfirmPayment,
-}: {
-  bookings: Booking[];
-  onOpenBookingDialog: (booking: Booking, mode: "attendance" | "confirmation" | "turno") => void;
-  onDeleteBooking: (id: string) => void;
-  onConfirmPayment: (id: string) => void;
-}) {
-  const upcoming = bookings
-    .filter((b) => b.status !== "cancelled")
-    .sort((a, b) => {
-      if (!!a.isTest === !!b.isTest) {
-        return (a.date + a.time).localeCompare(b.date + b.time);
-      }
-      return a.isTest ? 1 : -1;
-    });
-  if (!upcoming.length) {
-    return <p className="rounded-xl border border-dashed border-border p-10 text-center text-muted-foreground">No hay turnos confirmados todavía.</p>;
-  }
-  return (
-    <div className="space-y-2">
-      {upcoming.map((b) => {
-        const barber = getBarber(b.barberId);
-        const services = b.serviceIds.map((id) => getProfessionalService(b.barberId, id)?.name).filter(Boolean).join(", ");
-        const date = parseISO(`${b.date}T${b.time}`);
-        return (
-          <div key={b.id} className="flex flex-wrap items-center gap-4 rounded-xl border border-border bg-card p-4">
-            <div className="flex w-20 shrink-0 flex-col items-center rounded-lg bg-gold/10 px-2 py-2 text-gold">
-              <span className="text-[10px] uppercase tracking-widest">{format(date, "EEE", { locale: es })}</span>
-              <span className="font-display text-2xl font-semibold">{format(date, "d")}</span>
-              <span className="text-[10px]">{b.time}</span>
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="font-medium">{b.customer.fullName}</div>
-              <div className="truncate text-sm text-muted-foreground">{services} · {b.duration} min</div>
-              <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                <Badge variant="outline" className="border-gold/30 text-gold">{barber?.name}</Badge>
-                {b.isTest && <Badge variant="outline" className="border-emerald-300 text-emerald-400">Turno de prueba</Badge>}
-                {b.status === "pending-payment" && <Badge variant="outline" className="border-amber-300 text-amber-300">Pago pendiente · {b.customer.paymentMethod}</Badge>}
-                {b.status === "completed" && <Badge variant="outline" className="border-emerald-300 text-emerald-400">Asistió</Badge>}
-                {b.status === "no-show" && <Badge variant="outline" className="border-red-500/30 bg-red-500/10 text-red-300">No asistió</Badge>}
-                {b.status !== "pending-payment" && b.status !== "cancelled" && (
-                  <Badge variant="outline" className={b.appointmentConfirmation === "confirmed" ? "border-emerald-300 text-emerald-400" : "border-amber-300 text-amber-300"}>
-                    {b.appointmentConfirmation === "confirmed" ? "Turno confirmado" : "No confirmó todavía"}
-                  </Badge>
-                )}
-                <span>{b.customer.phone}</span>
-              </div>
-            </div>
-            <div className="font-display text-lg font-semibold text-gold">${b.totalPrice.toLocaleString("es-AR")}</div>
-            <div className="flex flex-wrap gap-2">
-              {b.status === "pending-payment" && (
-                <Button size="sm" variant="outline" onClick={() => onConfirmPayment(b.id)}>Confirmar pago</Button>
-              )}
-              {b.status === "confirmed" && (
-                <Button size="sm" variant="outline" onClick={() => onOpenBookingDialog(b, "attendance")}>Indicar asistencia</Button>
-              )}
-              {b.status !== "pending-payment" && b.status !== "cancelled" && (
-                <Button size="sm" variant="outline" onClick={() => onOpenBookingDialog(b, "confirmation")}>Confirmar turno</Button>
-              )}
-              <Button size="sm" variant="outline" onClick={() => onOpenBookingDialog(b, "turno")}>Modificar turno</Button>
-              <Button size="sm" variant="destructive" disabled={b.isTest} onClick={() => onDeleteBooking(b.id)}>
-                Borrar turno
-              </Button>
-            </div>
-          </div>
-        );
-      })}
     </div>
   );
 }

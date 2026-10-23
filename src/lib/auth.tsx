@@ -41,7 +41,7 @@ const AuthContext = createContext<AuthContextValue>(unavailableAuth);
 
 export function rememberAuthReturnPath(path: string) {
   if (typeof window === "undefined") return;
-  const allowedPaths = ["/admin", "/plan", "/configuracion", "/profesionales", "/mis-turnos", "/reserva"];
+  const allowedPaths = ["/admin", "/agenda", "/estadisticas", "/plan", "/configuracion", "/profesionales", "/mis-turnos", "/reserva"];
   if (allowedPaths.includes(path)) {
     window.sessionStorage.setItem("kinde-auth-return-path", path);
   }
@@ -50,7 +50,7 @@ export function rememberAuthReturnPath(path: string) {
 export function rememberSignupRole(role: AccountRole) {
   if (typeof window === "undefined") return;
   window.sessionStorage.setItem("kinde-signup-role", role);
-  window.sessionStorage.setItem("kinde-auth-return-path", role === "admin" ? "/admin" : "/reserva");
+  window.sessionStorage.setItem("kinde-auth-return-path", role === "admin" ? "/estadisticas" : "/reserva");
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {

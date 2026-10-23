@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AdminRouteImport } from './routes/admin'
+import { Route as AgendaRouteImport } from './routes/agenda'
 import { Route as BookRouteImport } from './routes/book'
 import { Route as MisTurnosRouteImport } from './routes/mis-turnos'
 import { Route as PlanRouteImport } from './routes/plan'
@@ -30,6 +31,11 @@ const IndexRoute = IndexRouteImport.update({
 const AdminRoute = AdminRouteImport.update({
   id: '/admin',
   path: '/admin',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AgendaRoute = AgendaRouteImport.update({
+  id: '/agenda',
+  path: '/agenda',
   getParentRoute: () => rootRouteImport,
 } as any)
 const BookRoute = BookRouteImport.update({
@@ -86,6 +92,7 @@ const ReservaServiciosRoute = ReservaServiciosRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
+  '/agenda': typeof AgendaRoute
   '/book': typeof BookRouteWithChildren
   '/mis-turnos': typeof MisTurnosRoute
   '/plan': typeof PlanRoute
@@ -100,6 +107,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
+  '/agenda': typeof AgendaRoute
   '/book': typeof BookRouteWithChildren
   '/mis-turnos': typeof MisTurnosRoute
   '/plan': typeof PlanRoute
@@ -115,6 +123,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
+  '/agenda': typeof AgendaRoute
   '/book': typeof BookRouteWithChildren
   '/mis-turnos': typeof MisTurnosRoute
   '/plan': typeof PlanRoute
@@ -131,6 +140,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/admin'
+    | '/agenda'
     | '/book'
     | '/mis-turnos'
     | '/plan'
@@ -145,6 +155,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/admin'
+    | '/agenda'
     | '/book'
     | '/mis-turnos'
     | '/plan'
@@ -159,6 +170,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/admin'
+    | '/agenda'
     | '/book'
     | '/mis-turnos'
     | '/plan'
@@ -174,6 +186,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AdminRoute: typeof AdminRoute
+  AgendaRoute: typeof AgendaRoute
   BookRoute: typeof BookRouteWithChildren
   MisTurnosRoute: typeof MisTurnosRoute
   PlanRoute: typeof PlanRoute
@@ -195,6 +208,13 @@ declare module '@tanstack/react-router' {
       path: '/admin'
       fullPath: '/admin'
       preLoaderRoute: typeof AdminRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/agenda': {
+      id: '/agenda'
+      path: '/agenda'
+      fullPath: '/agenda'
+      preLoaderRoute: typeof AgendaRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/book': {
@@ -300,6 +320,7 @@ const ReservaRouteWithChildren =
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AdminRoute: AdminRoute,
+  AgendaRoute: AgendaRoute,
   BookRoute: BookRouteWithChildren,
   MisTurnosRoute: MisTurnosRoute,
   PlanRoute: PlanRoute,

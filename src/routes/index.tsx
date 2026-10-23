@@ -17,9 +17,10 @@ function RootRedirect() {
     const returnPath = window.sessionStorage.getItem("kinde-auth-return-path");
     window.sessionStorage.removeItem("kinde-auth-return-path");
 
-    if (isAuthenticated && role === "admin") void navigate({ to: "/admin", replace: true });
+    if (isAuthenticated && role === "admin") void navigate({ to: "/estadisticas", replace: true });
     else if (isAuthenticated && role === "client") void navigate({ to: "/reserva", replace: true });
-    else if (returnPath === "/admin") void navigate({ to: "/admin", replace: true });
+    else if (returnPath === "/admin" || returnPath === "/estadisticas") void navigate({ to: "/estadisticas", replace: true });
+    else if (returnPath === "/agenda") void navigate({ to: "/agenda", replace: true });
     else if (returnPath === "/configuracion" || returnPath === "/profesionales") void navigate({ to: "/configuracion", replace: true });
     else if (returnPath === "/mis-turnos") void navigate({ to: "/mis-turnos", replace: true });
     else void navigate({ to: "/reserva", replace: true });
