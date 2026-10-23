@@ -430,9 +430,10 @@ export default async function handler(request, response) {
           return response.status(404).json({ error: "Esta sucursal no está disponible para reservas en este momento." });
         }
       }
-      const [bookingRows, professionalRows] = await Promise.all([
+      const [bookingRows, professionalRows, storesResult] = await Promise.all([
         db.execute("SELECT id, value FROM bookings ORDER BY updated_at DESC"),
         db.execute("SELECT id, value FROM professionals ORDER BY updated_at DESC"),
+        db.execute("SELECT code, name, settings, subscription_expires_at, subscription_plan_type FROM stores ORDER BY name COLLATE NOCASE"),
       ]);
       const allBookings = bookingRows.rows.map((row) => JSON.parse(String(row.value)));
       const storeBookings = userStoreCode
@@ -457,7 +458,6 @@ export default async function handler(request, response) {
       const professionals = userStoreCode ? professionalRows.rows
         .filter((row) => String(row.id).startsWith(`${userStoreCode}:`))
         .map((row) => ({ ...JSON.parse(String(row.value)), id: String(row.id).slice(userStoreCode.length + 1) })) : [];
-      const storesResult = await db.execute("SELECT code, name, settings, subscription_expires_at, subscription_plan_type FROM stores ORDER BY name COLLATE NOCASE");
       const stores = storesResult.rows
         .filter((row) => isSubscriptionActive(row.subscription_expires_at) || (role === "admin" && String(row.code) === userStoreCode))
         .map((row) => ({
@@ -520,9 +520,9 @@ export default async function handler(request, response) {
             external_reference: orderId,
             notification_url: `${appUrl}/api/mercadopago/webhook`,
             back_urls: {
-              success: `${appUrl}/admin?subscription_payment=success&purchase_id=${orderId}`,
-              failure: `${appUrl}/admin?subscription_payment=failure&purchase_id=${orderId}`,
-              pending: `${appUrl}/admin?subscription_payment=pending&purchase_id=${orderId}`,
+              success: `${appUrl}/plan?subscription_payment=success&purchase_id=${orderId}`,
+              failure: `${appUrl}/plan?subscription_payment=failure&purchase_id=${orderId}`,
+              pending: `${appUrl}/plan?subscription_payment=pending&purchase_id=${orderId}`,
             },
             auto_return: "approved",
           }),

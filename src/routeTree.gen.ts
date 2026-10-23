@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as BookRouteImport } from './routes/book'
 import { Route as MisTurnosRouteImport } from './routes/mis-turnos'
+import { Route as PlanRouteImport } from './routes/plan'
 import { Route as ProfesionalesRouteImport } from './routes/profesionales'
 import { Route as ReservaRouteImport } from './routes/reserva'
 import { Route as BookSuccessRouteImport } from './routes/book.success'
@@ -39,6 +40,11 @@ const BookRoute = BookRouteImport.update({
 const MisTurnosRoute = MisTurnosRouteImport.update({
   id: '/mis-turnos',
   path: '/mis-turnos',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PlanRoute = PlanRouteImport.update({
+  id: '/plan',
+  path: '/plan',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ProfesionalesRoute = ProfesionalesRouteImport.update({
@@ -82,6 +88,7 @@ export interface FileRoutesByFullPath {
   '/admin': typeof AdminRoute
   '/book': typeof BookRouteWithChildren
   '/mis-turnos': typeof MisTurnosRoute
+  '/plan': typeof PlanRoute
   '/profesionales': typeof ProfesionalesRoute
   '/reserva': typeof ReservaRouteWithChildren
   '/book/success': typeof BookSuccessRoute
@@ -95,6 +102,7 @@ export interface FileRoutesByTo {
   '/admin': typeof AdminRoute
   '/book': typeof BookRouteWithChildren
   '/mis-turnos': typeof MisTurnosRoute
+  '/plan': typeof PlanRoute
   '/profesionales': typeof ProfesionalesRoute
   '/reserva': typeof ReservaRouteWithChildren
   '/book/success': typeof BookSuccessRoute
@@ -109,6 +117,7 @@ export interface FileRoutesById {
   '/admin': typeof AdminRoute
   '/book': typeof BookRouteWithChildren
   '/mis-turnos': typeof MisTurnosRoute
+  '/plan': typeof PlanRoute
   '/profesionales': typeof ProfesionalesRoute
   '/reserva': typeof ReservaRouteWithChildren
   '/book/success': typeof BookSuccessRoute
@@ -124,6 +133,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/book'
     | '/mis-turnos'
+    | '/plan'
     | '/profesionales'
     | '/reserva'
     | '/book/success'
@@ -137,6 +147,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/book'
     | '/mis-turnos'
+    | '/plan'
     | '/profesionales'
     | '/reserva'
     | '/book/success'
@@ -150,6 +161,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/book'
     | '/mis-turnos'
+    | '/plan'
     | '/profesionales'
     | '/reserva'
     | '/book/success'
@@ -164,6 +176,7 @@ export interface RootRouteChildren {
   AdminRoute: typeof AdminRoute
   BookRoute: typeof BookRouteWithChildren
   MisTurnosRoute: typeof MisTurnosRoute
+  PlanRoute: typeof PlanRoute
   ProfesionalesRoute: typeof ProfesionalesRoute
   ReservaRoute: typeof ReservaRouteWithChildren
 }
@@ -196,6 +209,13 @@ declare module '@tanstack/react-router' {
       path: '/mis-turnos'
       fullPath: '/mis-turnos'
       preLoaderRoute: typeof MisTurnosRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/plan': {
+      id: '/plan'
+      path: '/plan'
+      fullPath: '/plan'
+      preLoaderRoute: typeof PlanRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/profesionales': {
@@ -282,6 +302,7 @@ const rootRouteChildren: RootRouteChildren = {
   AdminRoute: AdminRoute,
   BookRoute: BookRouteWithChildren,
   MisTurnosRoute: MisTurnosRoute,
+  PlanRoute: PlanRoute,
   ProfesionalesRoute: ProfesionalesRoute,
   ReservaRoute: ReservaRouteWithChildren,
 }

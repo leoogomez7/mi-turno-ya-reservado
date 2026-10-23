@@ -9,7 +9,7 @@ import { toast } from "sonner";
 import { professionalStore, type Professional, type ProfessionalService } from "@/lib/professional-store";
 import { AuthRequired } from "@/components/auth-required";
 import { useAppAuth } from "@/lib/auth";
-import { createStore, getAvailableStores, getCurrentStoreCode, updateStoreSettings, type StoreSettings } from "@/lib/cloud-sync";
+import { createStore, getAvailableStores, getCurrentStoreCode, isCloudInitialized, updateStoreSettings, type StoreSettings } from "@/lib/cloud-sync";
 import { LoadingScreen } from "@/components/loading-screen";
 
 const defaultFormState: Partial<Professional> = {
@@ -29,6 +29,7 @@ const emptyStoreSettings: StoreSettings = {
   transferCbu: "",
   transferAlias: "",
 };
+const storeCreationDraftKey = "mi-turno-ya:store-creation-draft";
 
 export function ProfessionalsManager() {
   const { isAuthenticated, isLoading, role } = useAppAuth();
@@ -39,13 +40,34 @@ export function ProfessionalsManager() {
   const [form, setForm] = useState<Partial<Professional>>(defaultFormState);
   const [storeName, setStoreName] = useState("");
   const [storeCode, setStoreCode] = useState("");
+  const [storeDraftLoaded, setStoreDraftLoaded] = useState(false);
   const [savingStore, setSavingStore] = useState(false);
   const [currentStoreCode, setCurrentStoreCode] = useState(getCurrentStoreCode());
   const [storeSettings, setStoreSettings] = useState<StoreSettings>(emptyStoreSettings);
+  const [loadingStoreSettings, setLoadingStoreSettings] = useState(true);
   const [savingSettings, setSavingSettings] = useState(false);
   const [viewDialogOpen, setViewDialogOpen] = useState(false);
   const [viewMode, setViewMode] = useState<"schedule" | "services">("schedule");
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
+
+  useEffect(() => {
+    try {
+      const draft = sessionStorage.getItem(storeCreationDraftKey);
+      if (draft) {
+        const parsed = JSON.parse(draft) as { name?: unknown; code?: unknown };
+        if (typeof parsed.name === "string") setStoreName(parsed.name);
+        if (typeof parsed.code === "string") setStoreCode(parsed.code);
+      }
+    } catch {
+      sessionStorage.removeItem(storeCreationDraftKey);
+    }
+    setStoreDraftLoaded(true);
+  }, []);
+
+  useEffect(() => {
+    if (!storeDraftLoaded) return;
+    sessionStorage.setItem(storeCreationDraftKey, JSON.stringify({ name: storeName, code: storeCode }));
+  }, [storeCode, storeDraftLoaded, storeName]);
 
   useEffect(() => {
     const load = () => setProfessionals(professionalStore.all());
@@ -55,16 +77,26 @@ export function ProfessionalsManager() {
   }, []);
 
   useEffect(() => {
-    const updateStore = () => {
+    const updateStore = (cloudReady = false) => {
       const code = getCurrentStoreCode();
       setCurrentStoreCode(code);
-      setStoreSettings(getAvailableStores().find((store) => store.code === code)?.settings ?? emptyStoreSettings);
+      const store = getAvailableStores().find((item) => item.code === code);
+      if (store) {
+        setStoreSettings(store.settings ?? emptyStoreSettings);
+        setLoadingStoreSettings(false);
+      } else if (cloudReady || isCloudInitialized()) {
+        setStoreSettings(emptyStoreSettings);
+        setLoadingStoreSettings(false);
+      }
     };
-    window.addEventListener("mi-turno-ya:store-changed", updateStore);
-    window.addEventListener("mi-turno-ya:cloud-ready", updateStore);
+    const updateOnStoreChange = () => updateStore(true);
+    const updateOnCloudReady = () => updateStore(true);
+    updateStore();
+    window.addEventListener("mi-turno-ya:store-changed", updateOnStoreChange);
+    window.addEventListener("mi-turno-ya:cloud-ready", updateOnCloudReady);
     return () => {
-      window.removeEventListener("mi-turno-ya:store-changed", updateStore);
-      window.removeEventListener("mi-turno-ya:cloud-ready", updateStore);
+      window.removeEventListener("mi-turno-ya:store-changed", updateOnStoreChange);
+      window.removeEventListener("mi-turno-ya:cloud-ready", updateOnCloudReady);
     };
   }, []);
 
@@ -164,6 +196,7 @@ export function ProfessionalsManager() {
       setCurrentStoreCode(created.code);
       setStoreName("");
       setStoreCode("");
+      sessionStorage.removeItem(storeCreationDraftKey);
       setProfessionals(professionalStore.all());
       toast.success(`Sucursal ${created.name} creada con el código ${created.code}.`);
     } catch (error) {
@@ -269,8 +302,8 @@ export function ProfessionalsManager() {
               </div>
             </div>
             <div className="mt-5 grid gap-3 sm:grid-cols-[1fr_220px_auto]">
-                <Input value={storeName} onChange={(event) => setStoreName(event.target.value)} placeholder="Nombre de la sucursal" maxLength={100} />
-              <Input value={storeCode} onChange={(event) => setStoreCode(event.target.value.toUpperCase().replace(/[^A-Z0-9_-]/g, ""))} placeholder="Código único (ej. BARBER01)" maxLength={20} />
+                <Input disabled={!storeDraftLoaded} value={storeName} onChange={(event) => setStoreName(event.target.value)} placeholder={storeDraftLoaded ? "Nombre de la sucursal" : "Cargando..."} maxLength={100} />
+              <Input disabled={!storeDraftLoaded} value={storeCode} onChange={(event) => setStoreCode(event.target.value.toUpperCase().replace(/[^A-Z0-9_-]/g, ""))} placeholder={storeDraftLoaded ? "Código único (ej. BARBER01)" : "Cargando..."} maxLength={20} />
               <Button disabled={savingStore || storeName.trim().length < 2 || storeCode.trim().length < 3} className="bg-gold text-primary-foreground hover:bg-gold-soft" onClick={() => void saveStore()}>
                   {savingStore ? "Guardando…" : "Crear sucursal"}
               </Button>
@@ -278,33 +311,33 @@ export function ProfessionalsManager() {
               <p className="mt-3 text-xs text-muted-foreground">El código debe tener entre 3 y 20 caracteres (letras, números, guion o guion bajo) y no puede repetirse. Compartilo con tus clientes para que encuentren tu sucursal al reservar.</p>
           </section>
 
-          <section className="rounded-3xl border border-border bg-card p-6">
+          <section className="rounded-3xl border border-gold/30 bg-card p-6">
             <div className="mb-5">
-              <p className="text-xs uppercase tracking-widest text-gold">Datos guardados en Turso</p>
+              <p className="text-xs uppercase tracking-widest text-gold">Datos</p>
               <h2 className="mt-1 font-display text-2xl font-semibold">Contacto y transferencia</h2>
                 <p className="mt-2 text-sm text-muted-foreground">Estos datos pertenecen a la sucursal seleccionada y se cargan desde la base de datos.</p>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Dirección">
-                <Input value={storeSettings.address} onChange={(event) => setStoreSettings({ ...storeSettings, address: event.target.value })} maxLength={200} placeholder="Dirección del local" />
+                <Input disabled={loadingStoreSettings} value={storeSettings.address} onChange={(event) => setStoreSettings({ ...storeSettings, address: event.target.value })} maxLength={200} placeholder={loadingStoreSettings ? "Cargando..." : "Dirección del local"} />
               </Field>
-              <Field label="WhatsApp con código de país">
-                <Input value={storeSettings.whatsapp} onChange={(event) => setStoreSettings({ ...storeSettings, whatsapp: event.target.value })} maxLength={25} placeholder="5491112345678" />
+              <Field label="WhatsApp">
+                <Input disabled={loadingStoreSettings} value={storeSettings.whatsapp} onChange={(event) => setStoreSettings({ ...storeSettings, whatsapp: event.target.value })} maxLength={25} placeholder={loadingStoreSettings ? "Cargando..." : "5491112345678"} />
               </Field>
               <Field label="Titular de la cuenta">
-                <Input value={storeSettings.transferHolder} onChange={(event) => setStoreSettings({ ...storeSettings, transferHolder: event.target.value })} maxLength={200} />
+                <Input disabled={loadingStoreSettings} value={storeSettings.transferHolder} onChange={(event) => setStoreSettings({ ...storeSettings, transferHolder: event.target.value })} maxLength={200} placeholder={loadingStoreSettings ? "Cargando..." : ""} />
               </Field>
               <Field label="Banco">
-                <Input value={storeSettings.transferBank} onChange={(event) => setStoreSettings({ ...storeSettings, transferBank: event.target.value })} maxLength={200} />
+                <Input disabled={loadingStoreSettings} value={storeSettings.transferBank} onChange={(event) => setStoreSettings({ ...storeSettings, transferBank: event.target.value })} maxLength={200} placeholder={loadingStoreSettings ? "Cargando..." : ""} />
               </Field>
               <Field label="CBU">
-                <Input value={storeSettings.transferCbu} onChange={(event) => setStoreSettings({ ...storeSettings, transferCbu: event.target.value })} maxLength={200} />
+                <Input disabled={loadingStoreSettings} value={storeSettings.transferCbu} onChange={(event) => setStoreSettings({ ...storeSettings, transferCbu: event.target.value })} maxLength={200} placeholder={loadingStoreSettings ? "Cargando..." : ""} />
               </Field>
               <Field label="Alias">
-                <Input value={storeSettings.transferAlias} onChange={(event) => setStoreSettings({ ...storeSettings, transferAlias: event.target.value })} maxLength={200} />
+                <Input disabled={loadingStoreSettings} value={storeSettings.transferAlias} onChange={(event) => setStoreSettings({ ...storeSettings, transferAlias: event.target.value })} maxLength={200} placeholder={loadingStoreSettings ? "Cargando..." : ""} />
               </Field>
             </div>
-            <Button type="button" disabled={savingSettings || !currentStoreCode} onClick={() => void saveSettings()} className="mt-5 bg-gold text-primary-foreground hover:bg-gold-soft">
+            <Button type="button" disabled={loadingStoreSettings || savingSettings || !currentStoreCode} onClick={() => void saveSettings()} className="mt-5 bg-gold text-primary-foreground hover:bg-gold-soft">
               {savingSettings ? "Guardando…" : "Guardar datos de la sucursal"}
             </Button>
           </section>
@@ -570,13 +603,13 @@ export function ProfessionalsManager() {
             </DialogContent>
           </Dialog>
 
-          <div className="rounded-3xl border border-border bg-card p-6">
-            <div className="mb-6 flex items-center justify-between gap-3">
+          <div className="rounded-3xl border border-gold/30 bg-card p-6">
+            <div className="mb-6">
               <div>
-                <p className="text-xs uppercase tracking-widest text-muted-foreground">Lista</p>
+                <p className="text-xs uppercase tracking-widest text-gold">Lista</p>
                 <h2 className="font-display text-2xl font-semibold">Profesionales existentes</h2>
+                <p className="mt-2 text-sm text-muted-foreground">Seleccioná un profesional para modificarlo o eliminarlo.</p>
               </div>
-              <p className="text-sm text-muted-foreground">Seleccioná un profesional para modificarlo o eliminarlo.</p>
             </div>
             <div className="space-y-4">
               {professionals.length === 0 ? (
@@ -638,9 +671,6 @@ export function ProfessionalsManager() {
           </div>
         </div>
 
-        <div className="mt-8 rounded-3xl border border-border bg-card p-6">
-          <p className="text-sm text-muted-foreground">Para agregar o modificar un profesional se solicitara iniciar sesión.</p>
-        </div>
       </main>
     </div>
   );
