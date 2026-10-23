@@ -157,15 +157,20 @@ export async function selectStore(code: string, account: string, getToken?: () =
 }
 
 export async function createStore(name: string, code: string) {
-  if (!tokenGetter) throw new Error("Iniciá sesión como administrador para crear una sucursal.");
-  const response = await request<{ store: Store }>("POST", { action: "create-store", store: { name, code: code.trim().toUpperCase() } });
-  availableStores = [...availableStores.filter((store) => store.code !== response.store.code), response.store].sort((a, b) => a.name.localeCompare(b.name, "es"));
+  if (!tokenGetter) throw new Error("Iniciá sesión como administrador para guardar una sucursal.");
+  const previousCode = storeCode;
+  const response = await request<{ store: Store; previousCode: string }>("POST", { action: "create-store", store: { name, code: code.trim().toUpperCase() } });
+  availableStores = [...availableStores.filter((store) => store.code !== response.previousCode && store.code !== response.store.code), response.store].sort((a, b) => a.name.localeCompare(b.name, "es"));
   storeCode = response.store.code;
-  const adminAccount = activeAccount;
-  const getToken = tokenGetter;
-  if (adminAccount && getToken) {
-    await bootstrapCloudData(adminAccount, getToken, storeCode);
+  if (previousCode && previousCode !== storeCode) {
+    snapshot = {
+      bookings: snapshot.bookings.map((booking) => ({ ...booking, storeCode })),
+      professionals: snapshot.professionals.map((professional) => ({ ...professional, storeCode })),
+    };
   }
+  initialized = true;
+  window.dispatchEvent(new Event("bookings:changed"));
+  window.dispatchEvent(new Event("professionals:changed"));
   window.dispatchEvent(new Event("mi-turno-ya:store-changed"));
   return response.store;
 }

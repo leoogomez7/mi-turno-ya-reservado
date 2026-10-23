@@ -658,21 +658,87 @@ export default async function handler(request, response) {
       }
     }
     if (user && body?.action === "create-store") {
+      let transaction;
       try {
-        const roleResult = await db.execute({ sql: "SELECT role, store_code FROM account_roles WHERE user_id = ?", args: [user.id] });
-        if (roleResult.rows[0]?.role !== "admin" || !user.emailVerified) return response.status(403).json({ error: "Solo una cuenta administradora verificada puede crear una sucursal." });
+        if (!user.emailVerified) return response.status(403).json({ error: "Solo una cuenta administradora verificada puede guardar una sucursal." });
         const code = normalizeStoreCode(body.store?.code);
         const name = typeof body.store?.name === "string" ? body.store.name.trim() : "";
         if (!/^[A-Z0-9][A-Z0-9_-]{2,19}$/.test(code) || name.length < 2 || name.length > 100) {
           return response.status(400).json({ error: "El nombre debe tener de 2 a 100 caracteres y el código de 3 a 20 letras o números." });
         }
-        await db.execute({ sql: "INSERT INTO stores (code, name, owner_id) VALUES (?, ?, ?)", args: [code, name, user.id] });
-        await db.execute({ sql: "UPDATE account_roles SET store_code = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?", args: [code, user.id] });
-        return response.status(201).json({ ok: true, store: { code, name, settings: {} } });
+
+        transaction = await db.transaction("write");
+        const roleResult = await transaction.execute({ sql: "SELECT role, store_code FROM account_roles WHERE user_id = ?", args: [user.id] });
+        if (roleResult.rows[0]?.role !== "admin") {
+          await transaction.rollback();
+          return response.status(403).json({ error: "Solo una cuenta administradora verificada puede guardar una sucursal." });
+        }
+
+        const assignedCode = normalizeStoreCode(roleResult.rows[0]?.store_code);
+        let existingStore = assignedCode
+          ? await transaction.execute({
+            sql: "SELECT code, settings, subscription_expires_at, subscription_plan_type FROM stores WHERE code = ? AND owner_id = ?",
+            args: [assignedCode, user.id],
+          })
+          : { rows: [] };
+        if (!existingStore.rows[0]) {
+          existingStore = await transaction.execute({
+            sql: "SELECT code, settings, subscription_expires_at, subscription_plan_type FROM stores WHERE owner_id = ? ORDER BY created_at LIMIT 1",
+            args: [user.id],
+          });
+        }
+        const currentStore = existingStore.rows[0];
+        const previousCode = currentStore ? normalizeStoreCode(currentStore.code) : "";
+
+        if (!currentStore) {
+          await transaction.execute({ sql: "INSERT INTO stores (code, name, owner_id) VALUES (?, ?, ?)", args: [code, name, user.id] });
+        } else {
+          if (previousCode !== code) {
+            const professionalPrefix = `${previousCode}:`;
+            const professionalRows = await transaction.execute({
+              sql: "SELECT id, value FROM professionals WHERE substr(id, 1, ?) = ?",
+              args: [professionalPrefix.length, professionalPrefix],
+            });
+            for (const row of professionalRows.rows) {
+              const oldId = String(row.id);
+              const professional = JSON.parse(String(row.value));
+              professional.storeCode = code;
+              await transaction.execute({
+                sql: "UPDATE professionals SET id = ?, value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                args: [`${code}:${oldId.slice(professionalPrefix.length)}`, JSON.stringify(professional), oldId],
+              });
+            }
+
+            const bookingRows = await transaction.execute({ sql: "SELECT id, value FROM bookings" });
+            for (const row of bookingRows.rows) {
+              const booking = JSON.parse(String(row.value));
+              if (normalizeStoreCode(booking.storeCode || DEFAULT_STORE_CODE) !== previousCode) continue;
+              booking.storeCode = code;
+              await transaction.execute({ sql: "UPDATE bookings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", args: [JSON.stringify(booking), String(row.id)] });
+            }
+            await transaction.execute({ sql: "UPDATE subscription_orders SET store_code = ? WHERE store_code = ?", args: [code, previousCode] });
+          }
+          await transaction.execute({ sql: "UPDATE stores SET code = ?, name = ? WHERE code = ? AND owner_id = ?", args: [code, name, previousCode, user.id] });
+        }
+        await transaction.execute({ sql: "UPDATE account_roles SET store_code = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?", args: [code, user.id] });
+        await transaction.commit();
+        return response.status(currentStore ? 200 : 201).json({
+          ok: true,
+          previousCode,
+          store: {
+            code,
+            name,
+            settings: currentStore ? parseStoreSettings(currentStore.settings) : parseStoreSettings("{}"),
+            subscriptionExpiresAt: currentStore?.subscription_expires_at ? String(currentStore.subscription_expires_at) : null,
+            subscriptionActive: isSubscriptionActive(currentStore?.subscription_expires_at),
+            subscriptionPlanType: String(currentStore?.subscription_plan_type ?? ""),
+          },
+        });
       } catch (error) {
+        if (transaction) await transaction.rollback().catch(() => undefined);
         if (String(error?.message || "").toLowerCase().includes("unique")) return response.status(409).json({ error: "Ese código ya está utilizado. Elegí otro." });
-        console.error("No se pudo crear la sucursal", error);
-        return response.status(500).json({ error: "No se pudo crear la sucursal." });
+        console.error("No se pudo guardar la sucursal", error);
+        return response.status(500).json({ error: "No se pudo guardar la sucursal." });
       }
     }
     if (user && body?.action === "update-store-settings") {

@@ -43,6 +43,7 @@ export function ProfessionalsManager() {
   const [storeDraftLoaded, setStoreDraftLoaded] = useState(false);
   const [savingStore, setSavingStore] = useState(false);
   const [currentStoreCode, setCurrentStoreCode] = useState(getCurrentStoreCode());
+  const [currentStoreName, setCurrentStoreName] = useState(() => getAvailableStores().find((store) => store.code === getCurrentStoreCode())?.name ?? "");
   const [storeSettings, setStoreSettings] = useState<StoreSettings>(emptyStoreSettings);
   const [loadingStoreSettings, setLoadingStoreSettings] = useState(true);
   const [savingSettings, setSavingSettings] = useState(false);
@@ -82,9 +83,11 @@ export function ProfessionalsManager() {
       setCurrentStoreCode(code);
       const store = getAvailableStores().find((item) => item.code === code);
       if (store) {
+        setCurrentStoreName(store.name);
         setStoreSettings(store.settings ?? emptyStoreSettings);
         setLoadingStoreSettings(false);
       } else if (cloudReady || isCloudInitialized()) {
+        setCurrentStoreName("");
         setStoreSettings(emptyStoreSettings);
         setLoadingStoreSettings(false);
       }
@@ -194,11 +197,12 @@ export function ProfessionalsManager() {
     try {
       const created = await createStore(storeName, storeCode);
       setCurrentStoreCode(created.code);
+      setCurrentStoreName(created.name);
       setStoreName("");
       setStoreCode("");
       sessionStorage.removeItem(storeCreationDraftKey);
       setProfessionals(professionalStore.all());
-      toast.success(`Sucursal ${created.name} creada con el código ${created.code}.`);
+      toast.success(`Sucursal ${created.name} guardada con el código ${created.code}.`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "No se pudo crear la sucursal.");
     } finally {
@@ -298,14 +302,14 @@ export function ProfessionalsManager() {
               <div>
                   <p className="text-xs uppercase tracking-widest text-gold">Sucursal</p>
                   <h2 className="mt-1 font-display text-2xl font-semibold">Tu sucursal y código de reserva</h2>
-                  <p className="mt-2 text-sm text-muted-foreground">Código actual: <strong className="text-gold">{currentStoreCode}</strong>. Los turnos y profesionales quedan separados por sucursal.</p>
+                  <p className="mt-2 text-sm text-muted-foreground">Sucursal actual: <strong className="text-gold">{currentStoreName || "Cargando..."}</strong> · Código: <strong className="text-gold">{currentStoreCode || "—"}</strong>. Los turnos y profesionales quedan separados por sucursal.</p>
               </div>
             </div>
             <div className="mt-5 grid gap-3 sm:grid-cols-[1fr_220px_auto]">
                 <Input disabled={!storeDraftLoaded} value={storeName} onChange={(event) => setStoreName(event.target.value)} placeholder={storeDraftLoaded ? "Nombre de la sucursal" : "Cargando..."} maxLength={100} />
               <Input disabled={!storeDraftLoaded} value={storeCode} onChange={(event) => setStoreCode(event.target.value.toUpperCase().replace(/[^A-Z0-9_-]/g, ""))} placeholder={storeDraftLoaded ? "Código único (ej. BARBER01)" : "Cargando..."} maxLength={20} />
-              <Button disabled={savingStore || storeName.trim().length < 2 || storeCode.trim().length < 3} className="bg-gold text-primary-foreground hover:bg-gold-soft" onClick={() => void saveStore()}>
-                  {savingStore ? "Guardando…" : "Crear sucursal"}
+                <Button disabled={!storeDraftLoaded || savingStore || storeName.trim().length < 2 || storeCode.trim().length < 3} className="bg-gold text-primary-foreground hover:bg-gold-soft" onClick={() => void saveStore()}>
+                  {savingStore ? "Guardando…" : "Guardar sucursal"}
               </Button>
             </div>
               <p className="mt-3 text-xs text-muted-foreground">El código debe tener entre 3 y 20 caracteres (letras, números, guion o guion bajo) y no puede repetirse. Compartilo con tus clientes para que encuentren tu sucursal al reservar.</p>
