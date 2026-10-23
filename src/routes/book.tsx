@@ -342,7 +342,7 @@ Notas: ${customer.notes || "Ninguna"}`;
             </div>
             <div className="flex items-center gap-3">
               {selectedStoreCode && <p className="text-xs text-muted-foreground">Código: {selectedStoreCode}</p>}
-              {selectedStoreCode && <Button type="button" size="sm" variant="outline" className="border-gold/40 hover:border-gold" onClick={() => setStorePickerOpen(true)}>Cambiar sucursal</Button>}
+              {selectedStoreCode && <Button type="button" size="sm" className="bg-gold text-primary-foreground hover:bg-gold-soft" onClick={() => setStorePickerOpen(true)}>Cambiar sucursal</Button>}
             </div>
           </div>
         </section>
@@ -494,7 +494,7 @@ function TransferDetail({ label, value, onCopy }: { label: string; value: string
 
 function Stepper({ step }: { step: number }) {
   return (
-    <div className="mx-auto flex w-full max-w-5xl items-center justify-center gap-2 rounded-2xl border border-gold/30 bg-card p-3 sm:gap-3 sm:p-4">
+    <div className="mx-auto flex w-full items-center justify-center gap-2 rounded-2xl border border-gold/30 bg-card p-3 sm:gap-3 sm:p-4">
       {STEPS.map((label, i) => {
         const done = i < step;
         const active = i === step;

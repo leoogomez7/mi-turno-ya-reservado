@@ -556,9 +556,9 @@ export function ProfessionalsManager() {
                         </Button>
                       ) : (
                         <Button
-                          variant="outline"
+                          variant="default"
                           size="sm"
-                          className="border-gold/40 hover:border-gold"
+                          className="bg-gold text-primary-foreground hover:bg-gold-soft"
                           onClick={() => {
                             setViewDialogOpen(false);
                             setDetailDialogOpen(false);
@@ -575,8 +575,9 @@ export function ProfessionalsManager() {
                         </Button>
                       ) : (
                         <Button
-                          variant="destructive"
+                          variant="outline"
                           size="sm"
+                          className="border-red-500/40 bg-red-500/10 text-red-300 hover:bg-red-500/20 hover:text-red-200"
                           onClick={() => requestDeleteProfessional(professional.id)}
                         >
                           Eliminar
@@ -724,9 +725,9 @@ export function ProfessionalsManager() {
               </DialogHeader>
               <div className="grid gap-4 sm:grid-cols-3">
                 <Field label="Nombre">
-                  <Input autoFocus value={serviceDraft.name} onChange={(event) => setServiceDraft({ ...serviceDraft, name: event.target.value })} placeholder="Corte clásico" />
+                  <Input value={serviceDraft.name} onChange={(event) => setServiceDraft({ ...serviceDraft, name: event.target.value })} placeholder="Corte clásico" />
                 </Field>
-                <Field label="Duración (minutos)">
+                <Field label="Duración (min)">
                   <Input type="number" min="1" value={serviceDraft.duration || ""} onChange={(event) => setServiceDraft({ ...serviceDraft, duration: Number(event.target.value) })} placeholder="Minutos" />
                 </Field>
                 <Field label="Precio ($)">
@@ -875,7 +876,7 @@ export function ProfessionalsManager() {
           </Dialog>
 
           <Dialog open={detailDialogOpen} onOpenChange={setDetailDialogOpen}>
-            <DialogContent className={viewMode === "schedule" ? schedulePanel === "exceptions" ? "w-fit max-w-[calc(100vw-2rem)] max-h-[90vh] overflow-x-hidden overflow-y-auto sm:max-w-md" : "w-[calc(100vw-2rem)] max-h-[90vh] overflow-x-hidden overflow-y-auto sm:max-w-2xl" : "max-h-[90vh] overflow-y-auto"}>
+            <DialogContent className={viewMode === "schedule" ? schedulePanel === "exceptions" ? "w-[calc(100vw-2rem)] max-h-[90vh] overflow-x-hidden overflow-y-auto sm:max-w-2xl" : "w-[calc(100vw-2rem)] max-h-[90vh] overflow-x-hidden overflow-y-auto sm:max-w-2xl" : "max-h-[90vh] overflow-y-auto"}>
               {(viewMode !== "schedule" || schedulePanel !== "weekly") && (
                 <DialogHeader>
                   <DialogTitle>{viewMode === "schedule" ? "Excepciones" : "Editar servicios"}</DialogTitle>
@@ -899,9 +900,9 @@ export function ProfessionalsManager() {
                           const isClosed = schedule?.closed ?? true;
                           return (
                             <div key={day.id} className="grid min-w-0 gap-3 rounded-xl border border-border p-3 sm:grid-cols-[150px_minmax(0,1fr)_minmax(0,1fr)] sm:items-end">
-                              <div className="space-y-1">
+                              <div className="flex flex-col items-center justify-center gap-1 text-center">
                                 <span className="block font-medium">{day.label}</span>
-                                <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                                <label className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
                                   <input type="checkbox" checked={!isClosed} onChange={(event) => setWeeklyDay(day.id, { closed: !event.target.checked })} />
                                   Abierto
                                 </label>
@@ -919,7 +920,7 @@ export function ProfessionalsManager() {
                     </section>
                     )}
                     {schedulePanel === "exceptions" && (
-                    <section className="mx-auto w-fit max-w-full rounded-2xl border border-border bg-background/60 p-4">
+                    <section className="mx-auto w-fit max-w-full rounded-2xl border border-border bg-background/60 p-3">
                       <Calendar
                         mode="single"
                         locale={es}
@@ -931,7 +932,7 @@ export function ProfessionalsManager() {
                           closedDay: "rounded-md bg-muted text-muted-foreground opacity-80",
                           customHours: "rounded-md bg-gold text-primary-foreground font-semibold",
                         }}
-                        className="mt-2"
+                        className=""
                       />
                       <div className="mt-2 flex flex-wrap items-center justify-start gap-x-4 gap-y-2 text-xs text-muted-foreground">
                         <span className="h-2 w-2 rounded-full bg-muted-foreground" /> Día cerrado
