@@ -107,7 +107,7 @@ export function ProfessionalsManager() {
     try {
       const saved = await updateStoreSettings(storeSettings);
       setStoreSettings(saved);
-      toast.success("Datos de la sucursal guardados en la base de datos.");
+      toast.success("Datos de la sucursal guardados.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "No se pudieron guardar los datos de la sucursal.");
     } finally {
@@ -128,7 +128,7 @@ export function ProfessionalsManager() {
         instagram: storeSettings.instagram,
       });
       setStoreSettings(saved);
-      toast.success("Datos de contacto guardados en la base de datos.");
+      toast.success("Datos de contacto guardados.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "No se pudieron guardar los datos de contacto.");
     } finally {
@@ -200,7 +200,7 @@ export function ProfessionalsManager() {
 
   function saveProfessional() {
     void performSaveProfessional().catch((error: unknown) => {
-      toast.error(error instanceof Error ? error.message : "No se pudo guardar el profesional en la base de datos.");
+      toast.error(error instanceof Error ? error.message : "No se pudo guardar el profesional.");
     });
   }
 
@@ -229,7 +229,7 @@ export function ProfessionalsManager() {
       setShowForm(false);
       toast.success("Profesional eliminado.");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "No se pudo eliminar el profesional de la base de datos.");
+      toast.error(error instanceof Error ? error.message : "No se pudo eliminar el profesional.");
     }
   }
 

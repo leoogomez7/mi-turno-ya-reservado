@@ -17,13 +17,13 @@ export function AccountSetup({ onComplete }: { onComplete: (role: AccountRole) =
       await saveAccountRole(role);
       onComplete(role);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "No se pudo guardar tu cuenta en la base de datos.");
+      setError(reason instanceof Error ? reason.message : "No se pudo guardar tu cuenta.");
     } finally {
       setSaving(false);
     }
   }
 
-  if (saving) return <LoadingScreen message="Guardando tu cuenta en la base de datos" />;
+  if (saving) return <LoadingScreen message="Guardando tu cuenta" />;
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-gradient-dark px-4 py-10">

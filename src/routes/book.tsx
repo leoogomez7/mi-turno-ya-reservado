@@ -191,7 +191,7 @@ Notas: ${customer.notes || "Ninguna"}`;
         });
         setPaymentDialog("transfer");
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : "No se pudo guardar el turno en la base de datos.");
+        toast.error(error instanceof Error ? error.message : "No se pudo guardar el turno.");
       }
       return;
     }
@@ -245,10 +245,10 @@ Notas: ${customer.notes || "Ninguna"}`;
         const whatsappUrl = `https://wa.me/${storeSettings.whatsapp.replace(/\D/g, "")}?text=${encodeURIComponent(message)}`;
         window.open(whatsappUrl, "_blank");
       }
-      toast.success("¡Turno guardado en la base de datos!");
+      toast.success("¡Turno guardado!");
       navigate({ to: "/" });
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "No se pudo guardar el turno en la base de datos.");
+      toast.error(error instanceof Error ? error.message : "No se pudo guardar el turno.");
     }
   }
 

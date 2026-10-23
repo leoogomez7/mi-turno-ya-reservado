@@ -44,7 +44,9 @@ function ErrorComponent({ error, reset }: { error: unknown; reset: () => void })
   console.error(error);
   const router = useRouter();
   useEffect(() => {
-    if (error instanceof Error) reportAppError(error, { boundary: "tanstack_root_error_component" });
+    if (error instanceof Error) {
+      reportAppError(error, { boundary: "tanstack_root_error_component" });
+    }
   }, [error]);
 
   return (
@@ -84,12 +86,24 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
       { title: "Mi Turno Ya Reservado" },
-      { name: "description", content: "Sistema de reservas para rubros profesionales. Elegí rubro, servicio y horario en segundos." },
+      {
+        name: "description",
+        content:
+          "Sistema de reservas para rubros profesionales. Elegí rubro, servicio y horario en segundos.",
+      },
       { property: "og:title", content: "Mi Turno Ya Reservado" },
-      { property: "og:description", content: "Sistema de reservas para rubros profesionales. Elegí rubro, servicio y horario en segundos." },
+      {
+        property: "og:description",
+        content:
+          "Sistema de reservas para rubros profesionales. Elegí rubro, servicio y horario en segundos.",
+      },
       { property: "og:type", content: "website" },
       { name: "twitter:title", content: "Mi Turno Ya Reservado" },
-      { name: "twitter:description", content: "Sistema de reservas para rubros profesionales. Elegí rubro, servicio y horario en segundos." },
+      {
+        name: "twitter:description",
+        content:
+          "Sistema de reservas para rubros profesionales. Elegí rubro, servicio y horario en segundos.",
+      },
       { name: "twitter:card", content: "summary_large_image" },
     ],
     links: [
@@ -141,7 +155,8 @@ function RootComponent() {
 }
 
 function CloudDataBootstrap({ children }: { children: ReactNode }) {
-  const { configured, isAuthenticated, isLoading, user, role, getIdToken, setVerifiedRole } = useAppAuth();
+  const { configured, isAuthenticated, isLoading, user, role, getIdToken, setVerifiedRole } =
+    useAppAuth();
   const [readyFor, setReadyFor] = useState<string | null>(null);
   const [needsAccountSetup, setNeedsAccountSetup] = useState(false);
   const [error, setError] = useState("");
@@ -155,7 +170,9 @@ function CloudDataBootstrap({ children }: { children: ReactNode }) {
       setVerifiedRole(null);
       void bootstrapCloudData("guest", async () => undefined)
         .then(() => setReadyFor("guest"))
-        .catch((reason: unknown) => setError(reason instanceof Error ? reason.message : "No se pudieron cargar los datos desde la base de datos."));
+        .catch((reason: unknown) =>
+          setError(reason instanceof Error ? reason.message : "No se pudieron cargar los datos."),
+        );
       return;
     }
     if (!isAuthenticated) {
@@ -164,7 +181,9 @@ function CloudDataBootstrap({ children }: { children: ReactNode }) {
       setError("");
       void bootstrapCloudData("guest", async () => undefined)
         .then(() => setReadyFor("guest"))
-        .catch((reason: unknown) => setError(reason instanceof Error ? reason.message : "No se pudieron cargar los datos desde la base de datos."));
+        .catch((reason: unknown) =>
+          setError(reason instanceof Error ? reason.message : "No se pudieron cargar los datos."),
+        );
       return;
     }
 
@@ -180,38 +199,55 @@ function CloudDataBootstrap({ children }: { children: ReactNode }) {
       .then(async (verifiedRole) => {
         if (cancelled) return;
         const requestedRole = window.sessionStorage.getItem("kinde-signup-role");
-        if (verifiedRole === "unassigned" && (requestedRole === "admin" || requestedRole === "client")) {
-          const assignment = roleAssignmentInProgress.current ??= saveAccountRole(requestedRole).then(() => undefined);
+        if (
+          verifiedRole === "unassigned" &&
+          (requestedRole === "admin" || requestedRole === "client")
+        ) {
+          const assignment =
+            roleAssignmentInProgress.current ??
+            saveAccountRole(requestedRole).then(() => undefined);
           try {
             await assignment;
             window.sessionStorage.removeItem("kinde-signup-role");
             verifiedRole = requestedRole;
           } finally {
-            if (roleAssignmentInProgress.current === assignment) roleAssignmentInProgress.current = null;
+            if (roleAssignmentInProgress.current === assignment) {
+              roleAssignmentInProgress.current = null;
+            }
           }
         } else {
           window.sessionStorage.removeItem("kinde-signup-role");
         }
         if (cancelled) return;
         setNeedsAccountSetup(verifiedRole === "unassigned");
-        setVerifiedRole(verifiedRole === "admin" || verifiedRole === "client" ? verifiedRole : null);
+        setVerifiedRole(
+          verifiedRole === "admin" || verifiedRole === "client" ? verifiedRole : null,
+        );
         setReadyFor(email);
       })
       .catch((reason: unknown) => {
         console.error("No se pudieron cargar los datos de Turso", reason);
-        if (!cancelled) setError(reason instanceof Error ? reason.message : "No se pudieron cargar tus datos.");
+        if (!cancelled) {
+          setError(reason instanceof Error ? reason.message : "No se pudieron cargar tus datos.");
+        }
       });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [configured, getIdToken, isAuthenticated, isLoading, setVerifiedRole, user?.email, attempt]);
 
-  const owner = isAuthenticated ? user?.email?.trim().toLowerCase() ?? "" : "guest";
+  const owner = isAuthenticated ? (user?.email?.trim().toLowerCase() ?? "") : "guest";
   const ready = !isLoading && readyFor === owner;
   if (ready && isAuthenticated && needsAccountSetup) {
-    return <AccountSetup onComplete={(nextRole) => {
-      setVerifiedRole(nextRole);
-      setNeedsAccountSetup(false);
-      setAttempt((value) => value + 1);
-    }} />;
+    return (
+      <AccountSetup
+        onComplete={(nextRole) => {
+          setVerifiedRole(nextRole);
+          setNeedsAccountSetup(false);
+          setAttempt((value) => value + 1);
+        }}
+      />
+    );
   }
   if (ready) return <>{children}</>;
 

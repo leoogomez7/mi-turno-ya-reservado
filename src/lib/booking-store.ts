@@ -53,7 +53,7 @@ export const bookingStore = {
   async update(id: string, patch: Partial<Booking>) {
     const current = read();
     const updated = current.map((booking) => booking.id === id ? { ...booking, ...patch } : booking);
-    if (!updated.some((booking) => booking.id === id)) throw new Error("No encontramos ese turno en la base de datos.");
+    if (!updated.some((booking) => booking.id === id)) throw new Error("No encontramos ese turno.");
     await write(updated);
   },
   async remove(id: string) {

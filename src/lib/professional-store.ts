@@ -114,7 +114,7 @@ export const professionalStore = {
   },
   async update(id: string, patch: Partial<Omit<Professional, "id">>) {
     const list = read();
-    if (!list.some((professional) => professional.id === id)) throw new Error("No encontramos ese profesional en la base de datos.");
+    if (!list.some((professional) => professional.id === id)) throw new Error("No encontramos ese profesional.");
     await write(list.map((p) => (p.id === id ? { ...p, ...patch } : p)));
   },
   async remove(id: string) {

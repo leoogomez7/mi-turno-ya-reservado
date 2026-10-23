@@ -41,7 +41,7 @@ function dispatchCloudReady() {
 
 function setSnapshot(next: CloudSnapshot) {
   if (!next || !Array.isArray(next.bookings) || !Array.isArray(next.professionals)) {
-    throw new Error("La base de datos devolvió una respuesta incompleta. No se cargaron datos locales.");
+    throw new Error("Se devolvió una respuesta incompleta. No se cargaron datos locales.");
   }
   snapshot = next;
   initialized = true;
@@ -87,7 +87,7 @@ export async function bootstrapCloudData(account: string, getToken: () => Promis
   storeCode = requestedStore?.trim().toUpperCase() || "";
 
   const result = await request<{ data: CloudSnapshot; role: "admin" | "client" | "guest" | "unassigned"; storeCode: string | null; stores: Store[] }>("GET");
-  if (!result.data || !Array.isArray(result.stores)) throw new Error("La base de datos devolvió una respuesta incompleta.");
+  if (!result.data || !Array.isArray(result.stores)) throw new Error("Se devolvió una respuesta incompleta.");
   const loadedStoreCode = storeCode || result.storeCode || "";
   storeCode = loadedStoreCode;
   availableStores = result.stores;
@@ -126,12 +126,12 @@ export async function persistCloudCollection(collection: "bookings" | "professio
       if (!booking) return;
       await request("POST", { action: "guest-booking", booking: { ...booking, storeCode } });
       const result = await request<{ data: CloudSnapshot; stores: Store[] }>("GET");
-      if (!result.data || !Array.isArray(result.stores)) throw new Error("La base de datos devolvió una respuesta incompleta.");
+      if (!result.data || !Array.isArray(result.stores)) throw new Error("Se devolvió una respuesta incompleta.");
       availableStores = result.stores;
       setSnapshot(result.data);
       return;
     }
-    throw new Error("Iniciá sesión para guardar cambios en la base de datos.");
+    throw new Error("Iniciá sesión para guardar cambios.");
   }
   const oldIds = new Set(snapshot[collection].map((record) => record.id));
   const nextIds = new Set(records.map((record) => record.id));
@@ -143,7 +143,7 @@ export async function persistCloudCollection(collection: "bookings" | "professio
   await writeRecords(collection, recordsCopy, deleteIds);
   if (activeAccount !== accountAtWrite) throw new Error("Cambió la cuenta activa; vuelve a cargar los datos.");
   const result = await request<{ data: CloudSnapshot; stores: Store[] }>("GET");
-  if (!result.data || !Array.isArray(result.stores)) throw new Error("La base de datos devolvió una respuesta incompleta.");
+  if (!result.data || !Array.isArray(result.stores)) throw new Error("Se devolvión una respuesta incompleta.");
   availableStores = result.stores;
   setSnapshot(result.data);
 }

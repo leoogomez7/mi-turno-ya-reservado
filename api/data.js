@@ -668,7 +668,7 @@ export default async function handler(request, response) {
         }
       } catch (error) {
         console.error("No se pudo guardar el rol de cuenta", error);
-        return response.status(500).json({ error: "No se pudo guardar la cuenta en la base de datos." });
+        return response.status(500).json({ error: "No se pudo guardar la cuenta." });
       }
     }
     if (user && body?.action === "create-store") {

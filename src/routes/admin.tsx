@@ -140,7 +140,7 @@ function AdminPage() {
   async function deleteBooking(id: string) {
     try {
       await bookingStore.remove(id);
-      toast("Turno eliminado de la base de datos.");
+      toast("Turno eliminado.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "No se pudo eliminar el turno.");
     }
