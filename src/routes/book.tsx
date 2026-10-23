@@ -494,7 +494,7 @@ function TransferDetail({ label, value, onCopy }: { label: string; value: string
 
 function Stepper({ step }: { step: number }) {
   return (
-    <div className="flex w-full items-center gap-2 rounded-2xl border border-gold/30 bg-card p-3 sm:gap-3 sm:p-4">
+    <div className="mx-auto flex w-full max-w-5xl items-center justify-center gap-2 rounded-2xl border border-gold/30 bg-card p-3 sm:gap-3 sm:p-4">
       {STEPS.map((label, i) => {
         const done = i < step;
         const active = i === step;
