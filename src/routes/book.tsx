@@ -43,6 +43,7 @@ export function BookPage() {
   const initialStep = stepForPath(location.pathname) ?? 0;
   const [step, setStep] = useState<number>(Number(initialStep));
   const [stepError, setStepError] = useState<string | null>(null);
+  const [confirmingBooking, setConfirmingBooking] = useState(false);
   const [paymentDialog, setPaymentDialog] = useState<"transfer" | "mercadopago" | null>(null);
   const [paymentLoading, setPaymentLoading] = useState(false);
   const [paymentUrl, setPaymentUrl] = useState<string | null>(null);
@@ -122,13 +123,14 @@ export function BookPage() {
   useEffect(() => {
     const pathStep = stepForPath(location.pathname);
     if (pathStep === undefined) return;
-    if (Number(pathStep) > 0 && !selectedStoreCode) {
+    const currentStoreCode = selectedStoreCode || getCurrentStoreCode();
+    if (Number(pathStep) > 0 && !currentStoreCode) {
       const message = "Elegí una sucursal para poder continuar con la reserva.";
-      setStep(0);
       setStepError(message);
       setStorePickerOpen(true);
-      navigate({ to: "/reserva" });
-      return;
+    }
+    if (currentStoreCode && currentStoreCode !== selectedStoreCode) {
+      setSelectedStoreCode(currentStoreCode);
     }
     setStep(Number(pathStep));
   }, [location.pathname, navigate, selectedStoreCode]);
@@ -154,6 +156,7 @@ export function BookPage() {
   }, [step, customer, barberId, serviceIds, date, time]);
 
   async function confirm() {
+    if (confirmingBooking) return;
     if (isAuthenticated && role === "client" && user?.email && customer.email.trim().toLowerCase() !== user.email.trim().toLowerCase()) {
       toast.error("Para ver este turno en tu cuenta, usá el mismo correo con el que iniciaste sesión.");
       return;
@@ -163,6 +166,8 @@ export function BookPage() {
       return;
     }
 
+    setConfirmingBooking(true);
+    try {
     const barber = getBarber(barberId);
     const serviceNames = getProfessionalServiceList(barberId)
       .filter((s) => serviceIds.includes(s.id))
@@ -249,6 +254,9 @@ Notas: ${customer.notes || "Ninguna"}`;
       navigate({ to: "/" });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "No se pudo guardar el turno.");
+    }
+    } finally {
+      setConfirmingBooking(false);
     }
   }
 
@@ -389,12 +397,17 @@ Notas: ${customer.notes || "Ninguna"}`;
                   </div>
                 )}
               </div>
+              {storeLoading && (
+                <p role="status" aria-live="polite" className="rounded-lg border border-gold/30 bg-gold/10 px-3 py-2 text-sm text-gold">
+                  Eligiendo sucursal…
+                </p>
+              )}
               <Button type="button" disabled={storeLoading || !storeSearch.trim()} className="w-full bg-gold text-primary-foreground hover:bg-gold-soft" onClick={() => {
                 setStoreSearchSubmitted(true);
                 setStoreNotFound(matchingStores.length === 0);
                 if (matchingStores.length === 1) void chooseStore(matchingStores[0]);
               }}>
-                {storeLoading ? "Cargando sucursal…" : "Buscar sucursal"}
+                {storeLoading ? "Eligiendo sucursal…" : "Buscar sucursal"}
               </Button>
               {storeSearchSubmitted && storeNotFound && <p role="status" className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">No encontramos sucursales con ese nombre o código.</p>}
             </div>
@@ -440,8 +453,8 @@ Notas: ${customer.notes || "Ninguna"}`;
               Continuar <ChevronRight className="ml-1 h-4 w-4" />
             </Button>
           ) : (
-            <Button type="button" onClick={confirm} className="h-12 bg-gold px-8 text-base font-semibold text-primary-foreground shadow-gold hover:bg-gold-soft">
-              CONFIRMAR TURNO
+            <Button type="button" disabled={confirmingBooking} onClick={() => void confirm()} className="h-12 bg-gold px-8 text-base font-semibold text-primary-foreground shadow-gold hover:bg-gold-soft">
+              {confirmingBooking ? "CONFIRMANDO..." : "CONFIRMAR TURNO"}
             </Button>
           )}
         </div>

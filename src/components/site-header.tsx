@@ -155,7 +155,7 @@ export function SiteHeader() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>¿Qué tipo de cuenta querés crear?</DialogTitle>
-            <DialogDescription>Elegí tu perfil. Después continuarás en Kinde para registrarte y verificar tu correo.</DialogDescription>
+            <DialogDescription>Elegí tu perfil. Después se verifica tu correo.</DialogDescription>
           </DialogHeader>
           <div className="grid gap-3">
             <Button disabled={!AUTH_CONFIGURED} className="h-auto flex-col items-start whitespace-normal bg-gold px-4 py-3 text-left text-primary-foreground hover:bg-gold-soft" onClick={() => void startRegistration("admin")}>

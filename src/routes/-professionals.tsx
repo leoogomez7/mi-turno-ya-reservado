@@ -230,12 +230,16 @@ export function ProfessionalsManager() {
   }
 
   async function saveExistingProfessionalDraft(nextForm: Partial<Professional>, message: string) {
-    if (!editingId) return true;
     if (!nextForm.name?.trim() || !nextForm.specialty?.trim()) {
       toast.error("Completá el nombre y el rubro antes de guardar servicios u horarios.");
       return false;
     }
-    await professionalStore.update(editingId, professionalPayload(nextForm));
+    if (editingId) {
+      await professionalStore.update(editingId, professionalPayload(nextForm));
+    } else {
+      const created = await professionalStore.add(professionalPayload(nextForm));
+      setEditingId(created.id);
+    }
     setProfessionals(professionalStore.all());
     toast.success(message);
     return true;
@@ -287,36 +291,23 @@ export function ProfessionalsManager() {
   }
 
   async function performSaveProfessional() {
-    if (!form.name || !form.specialty) {
+    if (!form.name?.trim() || !form.specialty?.trim()) {
       toast.error("Completá nombre y rubro.");
       return;
     }
-    const services = (form.services ?? []).filter((service) => service.name.trim() && service.duration > 0 && service.price > 0);
-    if (services.length === 0) {
-      toast.error("Agregá al menos un servicio válido.");
-      return;
-    }
-    const invalidWeeklySchedule = (form.weeklySchedule ?? []).some((entry) => !entry.closed && entry.start >= entry.end);
-    const invalidDateSchedule = (form.scheduleDates ?? []).some((entry) => !entry.closed && entry.start >= entry.end);
-    if (invalidWeeklySchedule || invalidDateSchedule) {
-      toast.error("En cada día abierto, la hora de fin debe ser posterior a la hora de inicio.");
-      return;
-    }
-    const availableSlots = Array.from(new Set((form.availableSlots ?? []).map((slot) => slot.trim()).filter(Boolean))).sort();
-    const nextProfessional: Omit<Professional, "id"> = {
-      name: form.name.trim(),
-      specialty: form.specialty.trim(),
-      address: form.address?.trim() ?? "",
-      availableSlots,
-      services,
-      scheduleDates: form.scheduleDates ?? [],
-      weeklySchedule: form.weeklySchedule ?? [],
-    };
+    const identity = { name: form.name.trim(), specialty: form.specialty.trim() };
     if (editingId) {
-      await professionalStore.update(editingId, nextProfessional);
+      await professionalStore.update(editingId, identity);
       toast.success("Profesional actualizado.");
     } else {
-      await professionalStore.add(nextProfessional);
+      await professionalStore.add({
+        ...identity,
+        address: "",
+        availableSlots: [],
+        services: [],
+        scheduleDates: [],
+        weeklySchedule: [],
+      });
       toast.success("Profesional agregado.");
     }
     setProfessionals(professionalStore.all());
@@ -451,12 +442,8 @@ export function ProfessionalsManager() {
     const nextForm = { ...form, weeklySchedule: weeklyScheduleDraft ?? [] };
     setSavingWeeklySchedule(true);
     try {
-      if (editingId) {
-        const saved = await saveExistingProfessionalDraft(nextForm, "Horarios semanales guardados.");
-        if (!saved) return;
-      } else {
-        toast("Los horarios se guardarán junto con el profesional al tocar Guardar profesional.");
-      }
+      const saved = await saveExistingProfessionalDraft(nextForm, "Horarios semanales guardados.");
+      if (!saved) return;
       setForm(nextForm);
       setDetailDialogOpen(false);
     } catch (error) {
@@ -736,20 +723,20 @@ export function ProfessionalsManager() {
                   </div>
                   </Field>
                 </div>
-                <div className="grid grid-cols-1 gap-3 pt-2 sm:grid-cols-3">
+                <div className="flex flex-wrap justify-start gap-3 pt-2">
                   {editingId && selectedProfessional?.isTest ? (
                     <Button variant="outline" disabled className="cursor-not-allowed opacity-50 text-muted-foreground">
                       Profesional de prueba
                     </Button>
                   ) : editingId ? (
-                    <Button variant="outline" disabled={Boolean(deletingProfessionalId) || savingProfessional} className="border-red-500/30 text-red-300 hover:bg-red-500/10 hover:text-red-300" onClick={() => requestDeleteProfessional(editingId)}>
+                    <Button variant="outline" disabled={Boolean(deletingProfessionalId) || savingProfessional} className="w-full max-w-[13rem] border-red-500/30 text-red-300 hover:bg-red-500/10 hover:text-red-300" onClick={() => requestDeleteProfessional(editingId)}>
                       {deletingProfessionalId === editingId ? "Eliminando..." : "Eliminar profesional"}
                     </Button>
                   ) : null}
-                  <Button disabled={savingProfessional || Boolean(deletingProfessionalId)} onClick={() => void saveProfessional()} className="bg-gold text-primary-foreground hover:bg-gold-soft">
+                  <Button disabled={savingProfessional || Boolean(deletingProfessionalId)} onClick={() => void saveProfessional()} className="w-full max-w-[13rem] bg-gold text-primary-foreground hover:bg-gold-soft">
                     {savingProfessional ? "Guardando…" : "Guardar profesional"}
                   </Button>
-                  <Button variant="outline" disabled={savingProfessional || Boolean(deletingProfessionalId)} onClick={() => setShowForm(false)}>
+                  <Button variant="outline" disabled={savingProfessional || Boolean(deletingProfessionalId)} onClick={() => setShowForm(false)} className="w-full max-w-[13rem]">
                     Cancelar
                   </Button>
                 </div>
