@@ -69,7 +69,10 @@ export function ProfessionalsManager() {
   const [viewMode, setViewMode] = useState<"schedule" | "services">("schedule");
   const [schedulePanel, setSchedulePanel] = useState<"weekly" | "exceptions">("weekly");
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
+  const [weeklyScheduleDraft, setWeeklyScheduleDraft] = useState<Professional["weeklySchedule"]>([]);
+  const [savingWeeklySchedule, setSavingWeeklySchedule] = useState(false);
   const [serviceDialogOpen, setServiceDialogOpen] = useState(false);
+  const [savingService, setSavingService] = useState(false);
   const [servicesListOpen, setServicesListOpen] = useState(false);
   const [editingServiceId, setEditingServiceId] = useState<string | null>(null);
   const [serviceDraft, setServiceDraft] = useState<ProfessionalService>({ id: "", name: "", duration: 0, price: 0 });
@@ -185,6 +188,7 @@ export function ProfessionalsManager() {
   function openScheduleDialog(panel: "weekly" | "exceptions") {
     setViewMode("schedule");
     setSchedulePanel(panel);
+    if (panel === "weekly") setWeeklyScheduleDraft(form.weeklySchedule ?? []);
     setDetailDialogOpen(true);
   }
 
@@ -195,6 +199,7 @@ export function ProfessionalsManager() {
 
   function openDetailDialog(mode: "schedule" | "services") {
     setViewMode(mode);
+    if (mode === "schedule" && schedulePanel === "weekly") setWeeklyScheduleDraft(form.weeklySchedule ?? []);
     setDetailDialogOpen(true);
   }
 
@@ -235,6 +240,7 @@ export function ProfessionalsManager() {
   }
 
   async function saveServiceDraft() {
+    if (savingService) return;
     const name = serviceDraft.name.trim();
     if (!name || serviceDraft.duration <= 0 || serviceDraft.price <= 0) {
       toast.error("Completá el nombre, la duración y un precio mayor a cero.");
@@ -247,15 +253,22 @@ export function ProfessionalsManager() {
         ? (form.services ?? []).map((service) => service.id === editingServiceId ? nextService : service)
         : [...(form.services ?? []), nextService],
     };
-    setForm(nextForm);
+    setSavingService(true);
     try {
-      const saved = await saveExistingProfessionalDraft(nextForm, "Servicio guardado en la base de datos.");
+      const saved = await saveExistingProfessionalDraft(nextForm, "Servicio guardado.");
       if (!saved) return;
+      setForm(nextForm);
+      setServiceDialogOpen(false);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "No se pudo guardar el servicio en la base de datos.");
-      return;
+      toast.error(error instanceof Error ? error.message : "No se pudo guardar el servicio.");
+    } finally {
+      setSavingService(false);
     }
-    setServiceDialogOpen(false);
+  }
+
+  function handleServiceDialogChange(open: boolean) {
+    if (!open && savingService) return;
+    setServiceDialogOpen(open);
   }
 
   async function removeService(id: string) {
@@ -359,12 +372,12 @@ export function ProfessionalsManager() {
   }
 
   function setWeeklyDay(dayOfWeek: number, changes: Partial<{ closed: boolean; start: string; end: string }>) {
-    const current = form.weeklySchedule ?? [];
+    const current = weeklyScheduleDraft ?? [];
     const existing = current.find((entry) => entry.dayOfWeek === dayOfWeek);
     const next = existing
       ? current.map((entry) => entry.dayOfWeek === dayOfWeek ? { ...entry, ...changes } : entry)
       : [...current, { dayOfWeek, closed: true, start: "09:00", end: "18:00", ...changes }];
-    setForm({ ...form, weeklySchedule: next });
+    setWeeklyScheduleDraft(next);
   }
 
   function openScheduleDate(date: Date) {
@@ -412,24 +425,41 @@ export function ProfessionalsManager() {
     setScheduleDateDialogOpen(false);
   }
 
+  function handleScheduleDateDialogChange(open: boolean) {
+    if (!open && savingScheduleDate) return;
+    setScheduleDateDialogOpen(open);
+  }
+
   async function saveWeeklySchedule() {
-    if (!editingId) {
-      setDetailDialogOpen(false);
-      toast("Los horarios se guardarán junto con el profesional al tocar Guardar profesional.");
-      return;
-    }
-    const hasInvalidHours = (form.weeklySchedule ?? []).some((entry) => !entry.closed && entry.start >= entry.end);
+    const hasInvalidHours = (weeklyScheduleDraft ?? []).some((entry) => !entry.closed && entry.start >= entry.end);
     if (hasInvalidHours) {
       toast.error("En cada día abierto, la hora de fin debe ser posterior a la hora de inicio.");
       return;
     }
+    const nextForm = { ...form, weeklySchedule: weeklyScheduleDraft ?? [] };
+    setSavingWeeklySchedule(true);
     try {
-      const saved = await saveExistingProfessionalDraft(form, "Horarios semanales guardados.");
-      if (!saved) return;
+      if (editingId) {
+        const saved = await saveExistingProfessionalDraft(nextForm, "Horarios semanales guardados.");
+        if (!saved) return;
+      } else {
+        toast("Los horarios se guardarán junto con el profesional al tocar Guardar profesional.");
+      }
+      setForm(nextForm);
       setDetailDialogOpen(false);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "No se pudieron guardar los horarios.");
+    } finally {
+      setSavingWeeklySchedule(false);
     }
+  }
+
+  function closeDetailDialog(open: boolean) {
+    if (!open && savingWeeklySchedule) return;
+    if (!open && viewMode === "schedule" && schedulePanel === "weekly") {
+      setWeeklyScheduleDraft(form.weeklySchedule ?? []);
+    }
+    setDetailDialogOpen(open);
   }
 
   function isDateClosed(date: Date) {
@@ -714,7 +744,7 @@ export function ProfessionalsManager() {
             </DialogContent>
           </Dialog>
 
-          <Dialog open={serviceDialogOpen} onOpenChange={setServiceDialogOpen}>
+          <Dialog open={serviceDialogOpen} onOpenChange={handleServiceDialogChange}>
             <DialogContent className="sm:max-w-lg">
               <DialogHeader>
                 <DialogTitle>{editingServiceId ? "Modificar servicio" : "Agregar servicio"}</DialogTitle>
@@ -732,9 +762,9 @@ export function ProfessionalsManager() {
                 </Field>
               </div>
               <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setServiceDialogOpen(false)}>Cancelar</Button>
-                <Button type="button" onClick={saveServiceDraft} className="bg-gold text-primary-foreground hover:bg-gold-soft">
-                  {editingServiceId ? "Guardar cambios" : "Agregar servicio"}
+                <Button type="button" variant="outline" disabled={savingService} onClick={() => handleServiceDialogChange(false)}>Cancelar</Button>
+                <Button type="button" disabled={savingService} onClick={() => void saveServiceDraft()} className="bg-gold text-primary-foreground hover:bg-gold-soft">
+                  {savingService ? (editingServiceId ? "Guardando…" : "Agregando…") : editingServiceId ? "Guardar cambios" : "Agregar servicio"}
                 </Button>
               </DialogFooter>
             </DialogContent>
@@ -872,7 +902,7 @@ export function ProfessionalsManager() {
             </DialogContent>
           </Dialog>
 
-          <Dialog open={detailDialogOpen} onOpenChange={setDetailDialogOpen}>
+          <Dialog open={detailDialogOpen} onOpenChange={closeDetailDialog}>
             <DialogContent className={viewMode === "schedule" ? "w-[calc(100vw-2rem)] max-h-[90vh] overflow-x-hidden overflow-y-auto sm:max-w-lg" : "max-h-[90vh] overflow-y-auto"}>
               {(viewMode !== "schedule" || schedulePanel !== "weekly") && (
                 <DialogHeader>
@@ -893,7 +923,7 @@ export function ProfessionalsManager() {
                       <p className="mt-1 text-sm text-muted-foreground">Configurá el horario semanal del profesional.</p>
                       <div className="mt-4 space-y-3">
                         {WEEKDAYS.map((day) => {
-                          const schedule = form.weeklySchedule?.find((entry) => entry.dayOfWeek === day.id);
+                          const schedule = weeklyScheduleDraft?.find((entry) => entry.dayOfWeek === day.id);
                           const isClosed = schedule?.closed ?? true;
                           return (
                             <div key={day.id} className="grid min-w-0 gap-3 rounded-xl border border-border p-3 sm:grid-cols-[150px_minmax(0,1fr)_minmax(0,1fr)] sm:items-end">
@@ -970,10 +1000,10 @@ export function ProfessionalsManager() {
               <DialogFooter>
                 {viewMode === "schedule" && schedulePanel === "weekly" ? (
                   <>
-                    <Button onClick={() => void saveWeeklySchedule()} className="bg-gold text-primary-foreground hover:bg-gold-soft">
-                      Guardar
+                    <Button disabled={savingWeeklySchedule} onClick={() => void saveWeeklySchedule()} className="bg-gold text-primary-foreground hover:bg-gold-soft">
+                      {savingWeeklySchedule ? "Guardando…" : "Guardar"}
                     </Button>
-                    <Button variant="outline" onClick={() => setDetailDialogOpen(false)}>Cerrar</Button>
+                    <Button variant="outline" disabled={savingWeeklySchedule} onClick={() => closeDetailDialog(false)}>Cancelar</Button>
                   </>
                 ) : (
                   <Button variant="outline" onClick={() => setDetailDialogOpen(false)}>Cerrar</Button>
@@ -982,7 +1012,7 @@ export function ProfessionalsManager() {
             </DialogContent>
           </Dialog>
 
-          <Dialog open={scheduleDateDialogOpen} onOpenChange={setScheduleDateDialogOpen}>
+          <Dialog open={scheduleDateDialogOpen} onOpenChange={handleScheduleDateDialogChange}>
             <DialogContent className="sm:max-w-md">
               <DialogHeader>
                 <DialogTitle>{activeScheduleDate ? format(activeScheduleDate, "EEEE d 'de' MMMM", { locale: es }) : "Horario de la fecha"}</DialogTitle>
@@ -1003,9 +1033,9 @@ export function ProfessionalsManager() {
                 </div>
               )}
               <DialogFooter>
-                <Button variant="outline" disabled={savingScheduleDate} onClick={() => setScheduleDateDialogOpen(false)}>Cancelar</Button>
+                <Button variant="outline" disabled={savingScheduleDate} onClick={() => handleScheduleDateDialogChange(false)}>Cancelar</Button>
                 <Button disabled={savingScheduleDate} onClick={() => void saveScheduleDate()} className="bg-gold text-primary-foreground hover:bg-gold-soft">
-                  {savingScheduleDate ? "Guardando…" : "Guardar fecha"}
+                  {savingScheduleDate ? "Guardando…" : "Guardar"}
                 </Button>
               </DialogFooter>
             </DialogContent>
