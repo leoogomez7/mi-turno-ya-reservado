@@ -305,9 +305,7 @@ export function ProfessionalsManager() {
       toast.success("Profesional agregado.");
     }
     setProfessionals(professionalStore.all());
-    setEditingId(null);
     setShowForm(false);
-    setForm(defaultFormState);
   }
 
   function saveProfessional() {
@@ -337,7 +335,6 @@ export function ProfessionalsManager() {
     try {
       await professionalStore.remove(id);
       setProfessionals(professionalStore.all());
-      setEditingId(null);
       setShowForm(false);
       toast.success("Profesional eliminado.");
     } catch (error) {
@@ -427,7 +424,7 @@ export function ProfessionalsManager() {
       return;
     }
     try {
-      const saved = await saveExistingProfessionalDraft(form, "Horarios semanales guardados en la base de datos.");
+      const saved = await saveExistingProfessionalDraft(form, "Horarios semanales guardados.");
       if (!saved) return;
       setDetailDialogOpen(false);
     } catch (error) {
@@ -649,14 +646,14 @@ export function ProfessionalsManager() {
             </Button>
           </section>
 
-          <Dialog open={showForm} onOpenChange={(open) => {
-            setShowForm(open);
-            if (!open) {
-              setEditingId(null);
-              setForm(defaultFormState);
-            }
-          }}>
-            <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+          <Dialog open={showForm} onOpenChange={setShowForm}>
+            <DialogContent
+              className="max-h-[90vh] overflow-y-auto sm:max-w-2xl"
+              onCloseAutoFocus={() => {
+                setEditingId(null);
+                setForm(defaultFormState);
+              }}
+            >
               <DialogHeader className="mb-2">
                 <div>
                   <DialogTitle className="font-display text-2xl font-semibold">
@@ -697,12 +694,6 @@ export function ProfessionalsManager() {
                   </Field>
                 </div>
                 <div className="grid grid-cols-1 gap-3 pt-2 sm:grid-cols-3">
-                  <Button onClick={saveProfessional} className="bg-gold text-primary-foreground hover:bg-gold-soft">
-                    Guardar profesional
-                  </Button>
-                  <Button variant="outline" onClick={() => setShowForm(false)}>
-                    Cancelar
-                  </Button>
                   {editingId && selectedProfessional?.isTest ? (
                     <Button variant="outline" disabled className="cursor-not-allowed opacity-50 text-muted-foreground">
                       Profesional de prueba
@@ -712,6 +703,12 @@ export function ProfessionalsManager() {
                       Eliminar profesional
                     </Button>
                   ) : null}
+                  <Button onClick={saveProfessional} className="bg-gold text-primary-foreground hover:bg-gold-soft">
+                    Guardar profesional
+                  </Button>
+                  <Button variant="outline" onClick={() => setShowForm(false)}>
+                    Cancelar
+                  </Button>
                 </div>
               </div>
             </DialogContent>
@@ -876,11 +873,11 @@ export function ProfessionalsManager() {
           </Dialog>
 
           <Dialog open={detailDialogOpen} onOpenChange={setDetailDialogOpen}>
-            <DialogContent className={viewMode === "schedule" ? schedulePanel === "exceptions" ? "w-[calc(100vw-2rem)] max-h-[90vh] overflow-x-hidden overflow-y-auto sm:max-w-2xl" : "w-[calc(100vw-2rem)] max-h-[90vh] overflow-x-hidden overflow-y-auto sm:max-w-2xl" : "max-h-[90vh] overflow-y-auto"}>
+            <DialogContent className={viewMode === "schedule" ? "w-[calc(100vw-2rem)] max-h-[90vh] overflow-x-hidden overflow-y-auto sm:max-w-lg" : "max-h-[90vh] overflow-y-auto"}>
               {(viewMode !== "schedule" || schedulePanel !== "weekly") && (
                 <DialogHeader>
                   <DialogTitle>{viewMode === "schedule" ? "Excepciones" : "Editar servicios"}</DialogTitle>
-                  <DialogDescription>
+                  <DialogDescription className={viewMode === "schedule" && schedulePanel === "exceptions" ? "whitespace-nowrap text-xs sm:text-sm" : undefined}>
                     {viewMode === "schedule"
                       ? "Elegí fechas para cambiar el horario o marcar el día como cerrado."
                       : "Modificá la lista de servicios disponibles para el profesional."}
@@ -900,10 +897,10 @@ export function ProfessionalsManager() {
                           const isClosed = schedule?.closed ?? true;
                           return (
                             <div key={day.id} className="grid min-w-0 gap-3 rounded-xl border border-border p-3 sm:grid-cols-[150px_minmax(0,1fr)_minmax(0,1fr)] sm:items-end">
-                              <div className="flex flex-col items-center justify-center gap-1 text-center">
+                              <div className="flex flex-col items-center gap-1 text-center sm:items-start sm:justify-start sm:pt-0.5 sm:text-left">
                                 <span className="block font-medium">{day.label}</span>
-                                <label className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
-                                  <input type="checkbox" checked={!isClosed} onChange={(event) => setWeeklyDay(day.id, { closed: !event.target.checked })} />
+                                <label className="flex items-center justify-center gap-2 text-sm leading-5 text-muted-foreground sm:mt-0.5">
+                                  <input className="m-0" type="checkbox" checked={!isClosed} onChange={(event) => setWeeklyDay(day.id, { closed: !event.target.checked })} />
                                   Abierto
                                 </label>
                               </div>

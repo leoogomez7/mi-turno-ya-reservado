@@ -125,6 +125,11 @@
   }
 }
 
+input[type="time"]::-webkit-calendar-picker-indicator {
+  filter: brightness(0) invert(1);
+  opacity: 1;
+}
+
 @utility text-gradient-gold {
   background: linear-gradient(135deg, var(--gold-soft), var(--gold));
   -webkit-background-clip: text;

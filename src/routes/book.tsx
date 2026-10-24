@@ -58,7 +58,7 @@ export function BookPage() {
   const paymentReturn = new URLSearchParams(location.searchStr).get("payment");
 
   const [customer, setCustomer] = useState<Customer>({
-    fullName: "", phone: "", email: "", birthday: "", paymentMethod: undefined, notes: "", hairType: undefined,
+    fullName: "", phone: "", email: "", birthday: "", paymentMethod: undefined, notes: "",
   });
   const [barberId, setBarberId] = useState("");
   const [serviceIds, setServiceIds] = useState<string[]>([]);
@@ -334,8 +334,13 @@ Notas: ${customer.notes || "Ninguna"}`;
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
               <p className="text-xs uppercase tracking-widest text-gold">{selectedStoreCode ? "Sucursal seleccionada" : "Antes de reservar"}</p>
-              <h2 className="mt-1 font-display text-xl font-semibold">
-                {selectedStoreCode ? selectedStore?.name ?? "Sucursal no disponible" : "Seleccioná una sucursal · Tocá aquí para buscar"}
+              <h2 className="mt-1 flex flex-wrap items-baseline gap-x-2 font-display text-xl font-semibold">
+                {selectedStoreCode ? (
+                  <>
+                    <span>{selectedStore?.name ?? "Sucursal no disponible"}</span>
+                    {selectedStore && <span className="font-sans text-sm font-medium text-muted-foreground">{selectedStore.code}</span>}
+                  </>
+                ) : "Seleccioná una sucursal · Tocá aquí para buscar"}
               </h2>
             </div>
             <div className="flex items-center gap-3">
@@ -409,7 +414,7 @@ Notas: ${customer.notes || "Ninguna"}`;
         <div className="mt-4 rounded-2xl border border-gold/30 bg-card p-5 sm:p-6">
           {step === 0 && <StepCustomer customer={customer} setCustomer={setCustomer} />}
           {step === 1 && <StepBarber value={barberId} onChange={setBarberId} />}
-          {step === 2 && <StepServices value={serviceIds} onChange={setServiceIds} hairType={customer.hairType} setHairType={(v) => setCustomer({ ...customer, hairType: v })} barberId={barberId} />}
+          {step === 2 && <StepServices value={serviceIds} onChange={setServiceIds} barberId={barberId} />}
           {step === 3 && <StepDateTime date={date} setDate={setDate} time={time} setTime={setTime} barberId={barberId} duration={duration} />}
           {step === 4 && (date ? <StepConfirm storeName={stores.find((store) => store.code === selectedStoreCode)?.name ?? selectedStoreCode} storeCode={selectedStoreCode} customer={customer} barberId={barberId} serviceIds={serviceIds} date={date} time={time} duration={duration} price={price} /> : <p className="py-8 text-center text-sm text-muted-foreground">Seleccioná fecha y horario para ver el resumen.</p>)}
         </div>
@@ -613,10 +618,9 @@ function StepBarber({ value, onChange }: { value: string; onChange: (v: string) 
 }
 
 function StepServices({
-  value, onChange, hairType, setHairType, barberId,
+  value, onChange, barberId,
 }: {
   value: string[]; onChange: (v: string[]) => void;
-  hairType?: Customer["hairType"]; setHairType: (v: Customer["hairType"]) => void;
   barberId: string;
 }) {
   const professionalServices = getProfessionalServiceList(barberId);
@@ -659,23 +663,6 @@ function StepServices({
             </button>
           );
         })}
-      </div>
-
-      <div className="mt-8">
-        <Label className="mb-3 block text-xs uppercase tracking-wider text-muted-foreground">Tipo de cabello</Label>
-        <div className="flex flex-wrap gap-2">
-          {(["corto", "medio", "largo"] as const).map((t) => (
-            <button
-              type="button"
-              key={t}
-              onClick={() => setHairType(t)}
-              className={cn(
-                "rounded-full border px-4 py-2 text-sm capitalize transition",
-                hairType === t ? "border-gold bg-gold text-primary-foreground" : "border-border bg-card hover:border-gold/40"
-              )}
-            >{t}</button>
-          ))}
-        </div>
       </div>
 
       {value.length > 0 && (
@@ -722,13 +709,26 @@ function StepDateTime({
     ? scheduleDay.closed ? [] : generateSlotsFromSchedule(scheduleDay)
     : professionalSlots;
 
-  function isSlotAvailable(slot: string): boolean {
+  function fitsSelectedDuration(slot: string): boolean {
     const [h, m] = slot.split(":").map(Number);
     const start = h * 60 + m;
     for (let i = 0; i < slotsNeeded; i++) {
       const t = start + i * 30;
       const key = `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`;
       if (!slots.includes(key)) return false;
+    }
+    return true;
+  }
+
+  const hasDurationFit = slots.some(fitsSelectedDuration);
+
+  function isSlotAvailable(slot: string): boolean {
+    if (!fitsSelectedDuration(slot)) return false;
+    const [h, m] = slot.split(":").map(Number);
+    const start = h * 60 + m;
+    for (let i = 0; i < slotsNeeded; i++) {
+      const t = start + i * 30;
+      const key = `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`;
       if (occupied.has(key)) return false;
     }
     return true;
@@ -775,6 +775,10 @@ function StepDateTime({
         <p className="text-sm text-muted-foreground">Elegí primero una fecha.</p>
       ) : slots.length === 0 ? (
         <p className="text-sm text-muted-foreground">No hay horarios disponibles para esta fecha. Elegí otro día o revisá la disponibilidad del profesional.</p>
+      ) : !hasDurationFit ? (
+        <p className="text-sm text-muted-foreground">
+          La duración seleccionada ({duration} min) no entra en el horario de esta fecha. Elegí un servicio de menor duración o un día con más horas disponibles.
+        </p>
       ) : (
         <div className="grid grid-cols-3 gap-2 sm:grid-cols-5 md:grid-cols-6">
           {slots.map((s) => {

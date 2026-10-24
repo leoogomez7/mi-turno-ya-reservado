@@ -14,6 +14,22 @@ export default defineConfig(({ mode }) => {
       "import.meta.env.VITE_ORG_CODE": JSON.stringify(env.VITE_ORG_CODE || env.CODE_ORG || env.ORG_CODE || env.VITE_KINDE_ORG_CODE || ""),
       "import.meta.env.VITE_AUTH_CONNECTION_ID": JSON.stringify(env.VITE_AUTH_CONNECTION_ID || env.AUTH_CONNECTION_ID || env.VITE_KINDE_CONNECTION_ID || ""),
     },
-    plugins: [tanstackStart(), react(), tsconfigPaths(), tailwindcss()],
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (id.includes("/node_modules/lucide-react/")) return "icons";
+            if (id.includes("/node_modules/date-fns/")) return "date-utils";
+            if (id.includes("/node_modules/@kinde-oss/kinde-auth-react/")) return "authentication";
+          },
+        },
+      },
+    },
+    plugins: [
+      tanstackStart({ router: { autoCodeSplitting: true } }),
+      react(),
+      tsconfigPaths(),
+      tailwindcss(),
+    ],
   };
 });

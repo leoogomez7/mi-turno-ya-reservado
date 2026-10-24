@@ -211,7 +211,7 @@ function PlanPage() {
             </Button>
             <input className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm sm:w-44" value={promoCode} onChange={(event) => setPromoCode(event.target.value.toUpperCase())} placeholder="Código promocional" aria-label="Código promocional" />
             <Button type="button" variant="outline" disabled={subscriptionBusy || !promoCode.trim()} onClick={() => void applyPromoCode()} className="h-10 whitespace-nowrap">
-              Aplicar cupón (100% OFF)
+              Aplicar descuento
             </Button>
           </div>
           {paymentNotice && (
