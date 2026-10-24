@@ -54,6 +54,8 @@ export function ProfessionalsManager() {
   const [professionals, setProfessionals] = useState<Professional[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [savingProfessional, setSavingProfessional] = useState(false);
+  const [deletingProfessionalId, setDeletingProfessionalId] = useState<string | null>(null);
   const [form, setForm] = useState<Partial<Professional>>(defaultFormState);
   const [storeName, setStoreName] = useState(() => getAvailableStores().find((store) => store.code === getCurrentStoreCode())?.name ?? "");
   const [storeCode, setStoreCode] = useState(getCurrentStoreCode());
@@ -135,9 +137,9 @@ export function ProfessionalsManager() {
     try {
       const saved = await updateStoreSettings(storeSettings);
       setStoreSettings(saved);
-      toast.success("Datos de la sucursal guardados.");
+      toast.success("Datos bancarios guardados.");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "No se pudieron guardar los datos de la sucursal.");
+      toast.error(error instanceof Error ? error.message : "No se pudieron guardar los datos bancarios.");
     } finally {
       setSavingSettings(false);
     }
@@ -321,10 +323,16 @@ export function ProfessionalsManager() {
     setShowForm(false);
   }
 
-  function saveProfessional() {
-    void performSaveProfessional().catch((error: unknown) => {
+  async function saveProfessional() {
+    if (savingProfessional) return;
+    setSavingProfessional(true);
+    try {
+      await performSaveProfessional();
+    } catch (error) {
       toast.error(error instanceof Error ? error.message : "No se pudo guardar el profesional.");
-    });
+    } finally {
+      setSavingProfessional(false);
+    }
   }
 
   async function saveStore() {
@@ -345,6 +353,8 @@ export function ProfessionalsManager() {
   }
 
   async function deleteProfessional(id: string) {
+    if (deletingProfessionalId) return;
+    setDeletingProfessionalId(id);
     try {
       await professionalStore.remove(id);
       setProfessionals(professionalStore.all());
@@ -352,6 +362,8 @@ export function ProfessionalsManager() {
       toast.success("Profesional eliminado.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "No se pudo eliminar el profesional.");
+    } finally {
+      setDeletingProfessionalId(null);
     }
   }
 
@@ -516,7 +528,7 @@ export function ProfessionalsManager() {
   return (
     <div className="min-h-screen bg-gradient-dark">
       <SiteHeader />
-      <main className="mx-auto w-full max-w-7xl px-4 py-10 sm:px-6">
+      <main className="page-container">
         <div className="space-y-6">
           <section className="rounded-3xl border border-gold/30 bg-card p-6">
             <div className="flex flex-wrap items-start justify-between gap-4">
@@ -605,9 +617,10 @@ export function ProfessionalsManager() {
                           variant="outline"
                           size="sm"
                           className="border-red-500/40 bg-red-500/10 text-red-300 hover:bg-red-500/20 hover:text-red-200"
+                          disabled={deletingProfessionalId === professional.id}
                           onClick={() => requestDeleteProfessional(professional.id)}
                         >
-                          Eliminar
+                          {deletingProfessionalId === professional.id ? "Eliminando..." : "Eliminar"}
                         </Button>
                       )}
                     </div>
@@ -653,8 +666,8 @@ export function ProfessionalsManager() {
 
           <section className="rounded-3xl border border-gold/30 bg-card p-6">
             <div className="mb-5">
-              <p className="text-xs uppercase tracking-widest text-gold">Datos de la sucursal</p>
-              <h2 className="mt-1 font-display text-2xl font-semibold">Datos para transferir</h2>
+              <p className="text-xs uppercase tracking-widest text-gold">Transferencia bancaria</p>
+              <h2 className="mt-1 font-display text-2xl font-semibold">Datos bancarios</h2>
               <p className="mt-2 text-sm text-muted-foreground">Información bancaria para recibir transferencias.</p>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
@@ -729,14 +742,14 @@ export function ProfessionalsManager() {
                       Profesional de prueba
                     </Button>
                   ) : editingId ? (
-                    <Button variant="outline" className="border-red-500/30 text-red-300 hover:bg-red-500/10 hover:text-red-300" onClick={() => requestDeleteProfessional(editingId)}>
-                      Eliminar profesional
+                    <Button variant="outline" disabled={Boolean(deletingProfessionalId) || savingProfessional} className="border-red-500/30 text-red-300 hover:bg-red-500/10 hover:text-red-300" onClick={() => requestDeleteProfessional(editingId)}>
+                      {deletingProfessionalId === editingId ? "Eliminando..." : "Eliminar profesional"}
                     </Button>
                   ) : null}
-                  <Button onClick={saveProfessional} className="bg-gold text-primary-foreground hover:bg-gold-soft">
-                    Guardar profesional
+                  <Button disabled={savingProfessional || Boolean(deletingProfessionalId)} onClick={() => void saveProfessional()} className="bg-gold text-primary-foreground hover:bg-gold-soft">
+                    {savingProfessional ? "Guardando…" : "Guardar profesional"}
                   </Button>
-                  <Button variant="outline" onClick={() => setShowForm(false)}>
+                  <Button variant="outline" disabled={savingProfessional || Boolean(deletingProfessionalId)} onClick={() => setShowForm(false)}>
                     Cancelar
                   </Button>
                 </div>
@@ -1052,7 +1065,7 @@ function ProfessionalsPage() {
   return (
     <div className="min-h-screen bg-gradient-dark">
       <SiteHeader />
-      <main className="mx-auto w-full max-w-7xl px-4 py-10 sm:px-6">
+      <main className="page-container">
         <ProfessionalsManager />
       </main>
     </div>

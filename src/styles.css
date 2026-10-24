@@ -113,6 +113,17 @@
   body {
     overflow-x: hidden;
   }
+  .page-container {
+    width: 100%;
+    max-width: 80rem;
+    margin-inline: auto;
+    padding: 2.5rem 1rem;
+  }
+  @media (min-width: 640px) {
+    .page-container {
+      padding-inline: 1.5rem;
+    }
+  }
   input[type="date"]::-webkit-calendar-picker-indicator {
     filter: invert(1) brightness(1.4);
   }

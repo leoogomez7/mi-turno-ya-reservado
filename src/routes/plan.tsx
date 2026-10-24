@@ -159,8 +159,8 @@ function PlanPage() {
   return (
     <div className="min-h-screen bg-gradient-dark">
       <SiteHeader />
-      <main className="mx-auto w-full max-w-7xl px-4 py-10 sm:px-6">
-        <section className="mb-8 p-1">
+      <main className="page-container">
+        <section className="mb-8 rounded-3xl border border-gold/30 bg-card p-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <h2 className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 font-display text-2xl font-semibold">
