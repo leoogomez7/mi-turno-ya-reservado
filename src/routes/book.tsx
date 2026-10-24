@@ -312,7 +312,7 @@ Notas: ${customer.notes || "Ninguna"}`;
   return (
     <div className="min-h-screen bg-gradient-dark">
       <SiteHeader />
-      <main className="page-container flex flex-col">
+      <main className="mx-auto flex w-full max-w-7xl flex-col px-4 py-10 sm:px-6">
         <section
           className={cn(
             "mb-4 rounded-2xl border border-gold/30 bg-card p-4 sm:p-5",

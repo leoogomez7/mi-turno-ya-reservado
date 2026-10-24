@@ -37,7 +37,7 @@ export function AdminPage() {
   return (
     <div className="min-h-screen bg-gradient-dark">
       <SiteHeader />
-      <main className="page-container grid gap-4">
+      <main className="mx-auto grid w-full max-w-7xl gap-4 px-4 py-10 sm:px-6">
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Stat icon={TrendingUp} label="Profesional con más atención" value={`${stats.topBarber.name} · ${stats.topBarber.count}`} />
           <Stat icon={TrendingDown} label="Profesional con menos atención" value={`${stats.lowBarber.name} · ${stats.lowBarber.count}`} />
