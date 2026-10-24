@@ -58,7 +58,7 @@ export function BookPage() {
   const paymentReturn = new URLSearchParams(location.searchStr).get("payment");
 
   const [customer, setCustomer] = useState<Customer>({
-    fullName: "", phone: "", email: "", birthday: "", paymentMethod: "efectivo", notes: "", hairType: undefined,
+    fullName: "", phone: "", email: "", birthday: "", paymentMethod: undefined, notes: "", hairType: undefined,
   });
   const [barberId, setBarberId] = useState("");
   const [serviceIds, setServiceIds] = useState<string[]>([]);
@@ -169,7 +169,7 @@ export function BookPage() {
       .map((s) => s.name)
       .join(", ");
     const message = `Hola! Quiero confirmar un turno.
-  Sucursal: ${stores.find((store) => store.code === selectedStoreCode)?.name ?? selectedStoreCode} (${selectedStoreCode})
+  Sucursal: ${stores.find((store) => store.code === selectedStoreCode)?.name ?? ""}
 Nombre: ${customer.fullName}
 Teléfono: ${customer.phone}
 Email: ${customer.email}
@@ -335,13 +335,10 @@ Notas: ${customer.notes || "Ninguna"}`;
             <div>
               <p className="text-xs uppercase tracking-widest text-gold">{selectedStoreCode ? "Sucursal seleccionada" : "Antes de reservar"}</p>
               <h2 className="mt-1 font-display text-xl font-semibold">
-                {selectedStoreCode
-                  ? stores.find((store) => store.code === selectedStoreCode)?.name ?? selectedStoreCode
-                  : "Seleccioná una sucursal · Tocá aquí para buscar"}
+                {selectedStoreCode ? selectedStore?.name ?? "Sucursal no disponible" : "Seleccioná una sucursal · Tocá aquí para buscar"}
               </h2>
             </div>
             <div className="flex items-center gap-3">
-              {selectedStoreCode && <p className="text-xs text-muted-foreground">Código: {selectedStoreCode}</p>}
               {selectedStoreCode && <Button type="button" size="sm" className="bg-gold text-primary-foreground hover:bg-gold-soft" onClick={() => setStorePickerOpen(true)}>Cambiar sucursal</Button>}
             </div>
           </div>
@@ -533,16 +530,17 @@ function StepCustomer({ customer, setCustomer }: { customer: Customer; setCustom
     <div>
       <SectionTitle icon={User} title="Paso 1" subtitle="Tus datos" />
       <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Nombre completo *"><Input required value={customer.fullName} onChange={(e) => setCustomer({ ...customer, fullName: e.target.value })} placeholder="Juan Pérez" /></Field>
-        <Field label="Teléfono *"><Input required value={customer.phone} onChange={(e) => setCustomer({ ...customer, phone: e.target.value })} placeholder="+54 11 5555 5555" /></Field>
-        <Field label="Correo electrónico *"><Input required type="email" value={customer.email} onChange={(e) => setCustomer({ ...customer, email: e.target.value })} placeholder="vos@email.com" /></Field>
+        <Field label="Nombre completo *"><Input required value={customer.fullName} onChange={(e) => setCustomer({ ...customer, fullName: e.target.value })} /></Field>
+        <Field label="Teléfono *"><Input required value={customer.phone} onChange={(e) => setCustomer({ ...customer, phone: e.target.value })} /></Field>
+        <Field label="Correo electrónico *"><Input required type="email" value={customer.email} onChange={(e) => setCustomer({ ...customer, email: e.target.value })} /></Field>
         <Field label="Método de pago *">
           <select
             required
             className="block w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-gold focus:ring-2 focus:ring-gold/20"
-            value={customer.paymentMethod ?? "efectivo"}
+            value={customer.paymentMethod ?? ""}
             onChange={(e) => setCustomer({ ...customer, paymentMethod: e.target.value as Customer["paymentMethod"] })}
           >
+            <option value="" disabled>Seleccioná un método de pago</option>
             <option value="efectivo">Efectivo</option>
             <option value="transferencia">Transferencia</option>
             <option value="tarjeta de crédito">Tarjeta de crédito</option>
@@ -552,7 +550,7 @@ function StepCustomer({ customer, setCustomer }: { customer: Customer; setCustom
         </Field>
         <div className="sm:col-span-2">
           <Field label="Observaciones">
-            <Textarea rows={2} value={customer.notes} onChange={(e) => setCustomer({ ...customer, notes: e.target.value })} placeholder="Ej: ¿Puedo ir acompañado? / ¿Hay televisión?" />
+            <Textarea rows={2} value={customer.notes} onChange={(e) => setCustomer({ ...customer, notes: e.target.value })} />
           </Field>
         </div>
       </div>
@@ -825,7 +823,7 @@ function StepConfirm({
         <Row label="Servicios" value={serviceNames || "-"} />
         <Row label="Fecha" value={format(date, "EEEE d 'de' MMMM, yyyy", { locale: es })} />
         <Row label="Hora" value={time} />
-        <Row label="Método de pago" value={customer.paymentMethod ?? "Efectivo"} />
+        <Row label="Método de pago" value={customer.paymentMethod ?? "Sin seleccionar"} />
         <Row label="Duración" value={`${duration} min`} icon={Clock} />
         {customer.notes && <Row label="Observaciones" value={customer.notes} />}
       </div>

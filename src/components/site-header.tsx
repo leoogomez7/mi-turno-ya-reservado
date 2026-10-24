@@ -79,14 +79,14 @@ export function SiteHeader() {
             <Link to="/mis-turnos" className="inline-flex h-9 items-center rounded-md border border-gold/30 bg-background px-3 text-xs font-medium text-foreground transition-colors hover:bg-accent hover:text-accent-foreground">
               {user?.email || "Mis turnos"}
             </Link>
-          ) : isAuthenticated && role === "unassigned" ? (
+          ) : isAuthenticated && !role ? (
             <Link to="/configuracion" className="inline-flex h-9 items-center rounded-md border border-gold/30 bg-background px-3 text-xs font-medium text-foreground transition-colors hover:bg-accent hover:text-accent-foreground">
               {user?.email || "Configuración"}
             </Link>
           ) : isAuthenticated ? (
             <Button size="sm" variant="outline" className="border-gold/30" disabled>{user?.email || "Cuenta"}</Button>
           ) : (
-            <Button size="sm" variant="ghost" className="px-3 py-2 text-muted-foreground hover:bg-transparent hover:text-foreground [&.active]:text-gold" onClick={() => setAuthDialogOpen(true)}>Ingresar</Button>
+            <button type="button" className="px-3 py-2 text-sm text-muted-foreground hover:text-foreground" onClick={() => setAuthDialogOpen(true)}>Ingresar</button>
           )}
         </nav>
 
@@ -139,7 +139,7 @@ export function SiteHeader() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Identificate</DialogTitle>
-            <DialogDescription>Iniciá sesión con Kinde. Si usás correo electrónico, Kinde te enviará un código para verificar tu acceso.</DialogDescription>
+            <DialogDescription>Se te enviará un código para verificar tu acceso.</DialogDescription>
           </DialogHeader>
           <DialogFooter className="flex-col sm:flex-row">
             <Button variant="outline" onClick={() => { setAuthDialogOpen(false); setRegistrationDialogOpen(true); }}>
