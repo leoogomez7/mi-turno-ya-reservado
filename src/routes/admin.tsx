@@ -90,6 +90,7 @@ function ChartTooltip({ active, payload, label }: TooltipProps<number, string>) 
 function ChartCard({ title, data }: { title: string; data: { name: string; value: number }[] }) {
   const colors = ["#F59E0B", "#60A5FA", "#34D399", "#A855F7", "#F97316", "#22C55E"];
   const isProfessionalChart = title.includes("profesionales");
+  const hasData = data.length > 0 && (!isProfessionalChart || data.some((entry) => entry.value > 0));
 
   const dataList = (
     <div className="grid gap-3 sm:grid-cols-2">
@@ -109,10 +110,10 @@ function ChartCard({ title, data }: { title: string; data: { name: string; value
   );
 
   return (
-    <div className="h-fit rounded-2xl border border-gold/30 bg-card p-6">
-      <h3 className="mb-4 font-display text-lg font-semibold">{title}</h3>
-      {data.length === 0 ? (
-        <p className="py-10 text-center text-sm text-muted-foreground">Sin datos aún.</p>
+    <div className="h-fit rounded-2xl border border-gold/30 bg-card p-4 sm:p-5">
+      <h3 className="mb-3 font-display text-lg font-semibold">{title}</h3>
+      {!hasData ? (
+        <p className="py-4 text-center text-sm text-muted-foreground">Sin datos aún.</p>
       ) : isProfessionalChart ? (
         <div className="grid gap-3 sm:grid-cols-2">
           {data.map((entry, index) => (
