@@ -37,17 +37,23 @@ export function AdminPage() {
     <div className="min-h-screen bg-gradient-dark">
       <SiteHeader />
       <main className="mx-auto w-full max-w-7xl px-4 py-10 sm:px-6">
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <Stat icon={TrendingUp} label="Profesional con más atención" value={`${stats.topBarber.name} · ${stats.topBarber.count}`} />
-          <Stat icon={TrendingDown} label="Profesional con menos atención" value={`${stats.lowBarber.name} · ${stats.lowBarber.count}`} />
-          <Stat icon={Users} label="Último cliente" value={stats.lastClient} />
-          <Stat icon={Calendar} label="Último profesional" value={stats.lastBarber} />
-        </div>
+        <section className="w-full rounded-2xl border border-gold/30 bg-card p-4 sm:p-5">
+          <header className="mb-4">
+            <p className="text-xs uppercase tracking-widest text-gold">Control</p>
+            <h1 className="font-display text-2xl font-semibold">Estadísticas</h1>
+          </header>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <Stat icon={TrendingUp} label="Profesional con más atención" value={`${stats.topBarber.name} · ${stats.topBarber.count}`} />
+            <Stat icon={TrendingDown} label="Profesional con menos atención" value={`${stats.lowBarber.name} · ${stats.lowBarber.count}`} />
+            <Stat icon={Users} label="Último cliente" value={stats.lastClient} />
+            <Stat icon={Calendar} label="Último profesional" value={stats.lastBarber} />
+          </div>
 
-        <div className="mt-10 grid items-start gap-6 md:grid-cols-2">
-          <ChartCard title="Servicios más solicitados" data={stats.servicesChart} />
-          <ChartCard title="Turnos por profesionales" data={stats.barbersChart} />
-        </div>
+          <div className="mt-4 grid items-start gap-4 md:grid-cols-2">
+            <ChartCard title="Servicios más solicitados" data={stats.servicesChart} />
+            <ChartCard title="Turnos por profesionales" data={stats.barbersChart} />
+          </div>
+        </section>
       </main>
     </div>
   );
