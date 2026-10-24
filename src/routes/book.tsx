@@ -491,12 +491,13 @@ function TransferDetail({ label, value, onCopy }: { label: string; value: string
 
 function Stepper({ step }: { step: number }) {
   return (
-    <div className="mx-auto flex w-full items-center justify-center gap-2 rounded-2xl border border-gold/30 bg-card p-3 sm:gap-3 sm:p-4">
-      {STEPS.map((label, i) => {
+    <div className="w-full rounded-2xl border border-gold/30 bg-card p-3 sm:p-4">
+      <div className="mx-auto flex w-fit max-w-full items-center justify-center gap-2 sm:gap-3">
+        {STEPS.map((label, i) => {
         const done = i < step;
         const active = i === step;
         return (
-          <div key={label} className="flex flex-1 items-center gap-2">
+          <div key={label} className="flex shrink-0 items-center gap-2">
             <div className={cn(
               "flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-xs font-semibold transition",
               done && "border-gold bg-gold text-primary-foreground",
@@ -506,10 +507,11 @@ function Stepper({ step }: { step: number }) {
               {done ? <Check className="h-4 w-4" /> : i + 1}
             </div>
             <span className={cn("hidden text-xs sm:inline", active ? "text-foreground" : "text-muted-foreground")}>{label}</span>
-            {i < STEPS.length - 1 && <div className={cn("h-px flex-1", done ? "bg-gold" : "bg-border")} />}
+            {i < STEPS.length - 1 && <div className={cn("h-px w-4 sm:w-8 md:w-12", done ? "bg-gold" : "bg-border")} />}
           </div>
         );
-      })}
+        })}
+      </div>
     </div>
   );
 }
