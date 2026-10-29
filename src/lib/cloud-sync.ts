@@ -28,6 +28,7 @@ export type Store = {
 };
 let tokenGetter: (() => Promise<string | undefined>) | undefined;
 let activeAccount: string | undefined;
+let activeRole: "admin" | "client" | "guest" | "unassigned" = "guest";
 let snapshot: CloudSnapshot = { bookings: [], professionals: [] };
 let initialized = false;
 let storeCode = "";
@@ -92,6 +93,7 @@ export async function bootstrapCloudData(account: string, getToken: () => Promis
   storeCode = loadedStoreCode;
   availableStores = result.stores;
   setSnapshot(result.data);
+  activeRole = result.role;
   return result.role;
 }
 
@@ -105,6 +107,7 @@ export async function refreshCloudData() {
 
 export function clearCloudSession() {
   activeAccount = undefined;
+  activeRole = "guest";
   tokenGetter = undefined;
   snapshot = { bookings: [], professionals: [] };
   initialized = false;
@@ -145,7 +148,7 @@ export async function persistCloudCollection(collection: "bookings" | "professio
   const nextIds = new Set(records.map((record) => record.id));
   const deleteIds = [...oldIds].filter((id) => !nextIds.has(id));
   const recordsCopy = records
-    .filter((record) => collection !== "bookings" || (record as Booking).customer?.email?.trim().toLowerCase() === activeAccount)
+    .filter((record) => collection !== "bookings" || activeRole === "admin" || (record as Booking).customer?.email?.trim().toLowerCase() === activeAccount)
     .map((record) => ({ ...record, storeCode }));
   const accountAtWrite = activeAccount;
   await writeRecords(collection, recordsCopy, deleteIds);
