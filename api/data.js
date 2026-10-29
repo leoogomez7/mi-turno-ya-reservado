@@ -498,17 +498,21 @@ export default async function handler(request, response) {
       let role = "guest";
       const requestedStoreCode = normalizeStoreCode(request.headers["x-store-code"]);
       let userStoreCode = requestedStoreCode;
+      let adminStoreCode = "";
+      let reservationMode = false;
       if (user) {
         const storedRoleResult = await db.execute({ sql: "SELECT role, store_code FROM account_roles WHERE user_id = ?", args: [user.id] });
         const existingRole = storedRoleResult.rows[0]?.role;
         role = user.emailVerified && (existingRole === "admin" || existingRole === "client") ? existingRole : "unassigned";
-        userStoreCode = role === "admin" ? normalizeStoreCode(storedRoleResult.rows[0]?.store_code) : requestedStoreCode;
+        adminStoreCode = role === "admin" ? normalizeStoreCode(storedRoleResult.rows[0]?.store_code) : "";
+        reservationMode = role === "admin" && Boolean(requestedStoreCode && requestedStoreCode !== adminStoreCode);
+        userStoreCode = role === "admin" ? (requestedStoreCode || adminStoreCode) : requestedStoreCode;
       }
       if (userStoreCode) {
         const storeExists = await db.execute({ sql: "SELECT code, subscription_expires_at FROM stores WHERE code = ?", args: [userStoreCode] });
         if (!storeExists.rows[0]) return response.status(404).json({ error: "No encontramos esa sucursal. Revisá el nombre o código." });
-        if (role === "admin") await activateFreeTrial(db, userStoreCode);
-        if (role !== "admin" && !isSubscriptionActive(storeExists.rows[0].subscription_expires_at)) {
+        if (role === "admin" && !reservationMode) await activateFreeTrial(db, userStoreCode);
+        if ((role !== "admin" || reservationMode) && !isSubscriptionActive(storeExists.rows[0].subscription_expires_at)) {
           return response.status(404).json({ error: "Esta sucursal no está disponible para reservas en este momento." });
         }
       }
@@ -521,7 +525,7 @@ export default async function handler(request, response) {
       const storeBookings = userStoreCode
         ? allBookings.filter((booking) => normalizeStoreCode(booking.storeCode) === userStoreCode)
         : [];
-      const bookings = role === "admin"
+      const bookings = role === "admin" && !reservationMode
         ? storeBookings
         : storeBookings.map((booking) => user && booking.customer?.email?.trim().toLowerCase() === user.email
           ? booking

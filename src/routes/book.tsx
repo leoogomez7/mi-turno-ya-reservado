@@ -13,10 +13,10 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
-import { bookingStore, getBarber, sumDuration, sumPrice, type Customer } from "@/lib/booking-store";
+import { bookingStore, getBarber, sumDuration, sumPrice, type Booking, type Customer } from "@/lib/booking-store";
 import { professionalStore, getProfessionalServiceList, getScheduleForDate, generateSlotsFromSchedule, isProfessionalAvailableOnDate } from "@/lib/professional-store";
 import { useAppAuth } from "@/lib/auth";
-import { cancelPendingBooking, getAvailableStores, getCurrentStoreCode, isCloudInitialized, refreshCloudData, selectStore, type Store } from "@/lib/cloud-sync";
+import { cancelPendingBooking, createPublicBooking, getAvailableStores, getCurrentStoreCode, isCloudInitialized, refreshCloudData, selectStore, type Store } from "@/lib/cloud-sync";
 
 export const Route = createFileRoute("/book")({
   beforeLoad: () => {
@@ -60,12 +60,14 @@ type ReservationResult = {
 };
 
 const PENDING_PAYMENT_SESSION_KEY = "mi-turno-ya:pending-payment-booking";
+const SELECTED_STORE_SESSION_KEY = "mi-turno-ya:selected-booking-store";
 
 export function BookPage() {
   const auth = useAppAuth();
   const { isAuthenticated, role, user } = auth;
   const location = useLocation();
   const initialStep = stepForPath(location.pathname) ?? 0;
+  const [accountStoreCode] = useState(getCurrentStoreCode());
   const [step, setStep] = useState<number>(Number(initialStep));
   const [stepError, setStepError] = useState<string | null>(null);
   const [confirmingBooking, setConfirmingBooking] = useState(false);
@@ -74,6 +76,7 @@ export function BookPage() {
   const [reservationResult, setReservationResult] = useState<ReservationResult | null>(null);
   const [stores, setStores] = useState<Store[]>(getAvailableStores());
   const [selectedStoreCode, setSelectedStoreCode] = useState(getCurrentStoreCode());
+  const [storeSelectionHydrated, setStoreSelectionHydrated] = useState(false);
   const [cloudDataReady, setCloudDataReady] = useState(isCloudInitialized);
   const [storePickerOpen, setStorePickerOpen] = useState(false);
   const [storeSearch, setStoreSearch] = useState("");
@@ -98,7 +101,7 @@ export function BookPage() {
   useEffect(() => {
     const reloadStores = () => {
       setStores(getAvailableStores());
-      setSelectedStoreCode(getCurrentStoreCode());
+      setSelectedStoreCode((currentCode) => currentCode || getCurrentStoreCode());
       setCloudDataReady(true);
     };
     window.addEventListener("mi-turno-ya:cloud-ready", reloadStores);
@@ -108,6 +111,21 @@ export function BookPage() {
       window.removeEventListener("mi-turno-ya:store-changed", reloadStores);
     };
   }, []);
+
+  useEffect(() => {
+    const savedStoreCode = window.sessionStorage.getItem(SELECTED_STORE_SESSION_KEY);
+    if (savedStoreCode) setSelectedStoreCode(savedStoreCode);
+    setStoreSelectionHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    if (!storeSelectionHydrated) return;
+    if (selectedStoreCode) {
+      window.sessionStorage.setItem(SELECTED_STORE_SESSION_KEY, selectedStoreCode);
+    } else {
+      window.sessionStorage.removeItem(SELECTED_STORE_SESSION_KEY);
+    }
+  }, [selectedStoreCode, storeSelectionHydrated]);
 
   useEffect(() => {
     if (!cloudDataReady) return;
@@ -210,6 +228,13 @@ export function BookPage() {
     }
   }
 
+  async function saveBooking(input: Omit<Booking, "id" | "createdAt">) {
+    if (role === "admin" && selectedStoreCode !== accountStoreCode) {
+      return createPublicBooking(selectedStoreCode, input);
+    }
+    return bookingStore.add(input);
+  }
+
   const duration = sumDuration(barberId, serviceIds);
   const price = sumPrice(barberId, serviceIds);
 
@@ -273,7 +298,7 @@ Observaciones: ${customer.notes || "Ninguna"}`;
 
     if (customer.paymentMethod === "transferencia") {
       try {
-        await bookingStore.add({
+        await saveBooking({
         storeCode: selectedStoreCode,
         customer, barberId, serviceIds,
         date: format(date, "yyyy-MM-dd"),
@@ -305,7 +330,7 @@ Observaciones: ${customer.notes || "Ninguna"}`;
         if (!response.ok || !result.initPoint) {
           throw new Error(result.error || "No se pudo preparar el pago.");
         }
-        const pendingBooking = await bookingStore.add({
+        const pendingBooking = await saveBooking({
           storeCode: selectedStoreCode,
           customer, barberId, serviceIds,
           date: format(date, "yyyy-MM-dd"),
@@ -326,7 +351,7 @@ Observaciones: ${customer.notes || "Ninguna"}`;
     }
 
     try {
-      await bookingStore.add({
+      await saveBooking({
         storeCode: selectedStoreCode,
         customer, barberId, serviceIds,
         date: format(date, "yyyy-MM-dd"),

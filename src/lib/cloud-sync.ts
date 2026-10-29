@@ -235,3 +235,25 @@ export async function verifySubscriptionPayment(purchaseId: string) {
 export async function cancelPendingBooking(bookingId: string, cancellationToken: string) {
   return request<{ ok: boolean }>("POST", { action: "cancel-pending-booking", bookingId, cancellationToken });
 }
+
+export async function createPublicBooking(storeCode: string, booking: Omit<Booking, "id" | "createdAt">) {
+  const normalizedStoreCode = storeCode.trim().toUpperCase();
+  const createdBooking: Booking = {
+    ...booking,
+    id: crypto.randomUUID(),
+    storeCode: normalizedStoreCode,
+    createdAt: new Date().toISOString(),
+  };
+  const response = await fetch("/api/data", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Store-Code": normalizedStoreCode,
+    },
+    body: JSON.stringify({ action: "guest-booking", booking: createdBooking }),
+    cache: "no-store",
+  });
+  const result = await response.json() as { error?: string };
+  if (!response.ok) throw new Error(result.error || "No se pudo guardar el turno.");
+  return createdBooking;
+}
