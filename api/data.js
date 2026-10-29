@@ -575,10 +575,12 @@ export default async function handler(request, response) {
     if (user && body?.action === "redeem-subscription-promo") {
       try {
         if (!user.emailVerified) return response.status(403).json({ error: "Verificá tu email antes de activar el plan." });
-        const configuredCodes = (process.env.DESCUENTO_OFF ?? process.env.CODIGO_PROMO ?? "")
+        const configuredCodes = [process.env.DESCUENTO_OFF, process.env.CODIGO_PROMO]
+          .filter((value) => typeof value === "string")
+          .join(",")
           .split(",")
           .map((code) => code.trim().toUpperCase())
-          .filter(Boolean);
+          .filter((code, index, codes) => Boolean(code) && codes.indexOf(code) === index);
         if (!configuredCodes.length) return response.status(503).json({ error: "El código promocional no está configurado." });
         const submittedCode = typeof body.code === "string" ? body.code.trim() : "";
         if (!submittedCode || !configuredCodes.includes(submittedCode.toUpperCase())) {
