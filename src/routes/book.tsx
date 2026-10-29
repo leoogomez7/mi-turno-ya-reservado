@@ -988,11 +988,12 @@ function StepDateTime({
         <p className="text-sm text-muted-foreground">No hay horarios disponibles para esta fecha. Elegí otro día o revisá la disponibilidad del profesional.</p>
       ) : !hasDurationFit ? (
         <p className="text-sm text-muted-foreground">
-          La duración seleccionada ({duration} min) no entra en el horario de esta fecha. Elegí un servicio de menor duración o un día con más horas disponibles.
+          Se sobrepasa el turno: la duración seleccionada ({duration} min) no entra en el horario de esta fecha. Elegí un horario anterior o un servicio de menor duración.
         </p>
       ) : (
         <div className="grid grid-cols-3 gap-2 sm:grid-cols-5 md:grid-cols-6">
           {slots.map((s) => {
+            const durationFits = fitsSelectedDuration(s);
             const avail = isSlotAvailable(s);
             const remaining = remainingForSlot(s);
             const selected = time === s;
@@ -1009,7 +1010,9 @@ function StepDateTime({
                 )}
               >
                 <span>{s}</span>
-                <span className="text-[10px] font-normal opacity-75">{avail ? `${remaining} disponible${remaining === 1 ? "" : "s"}` : "Completo"}</span>
+                <span className="text-[10px] font-normal opacity-75">
+                  {!durationFits ? "Se sobrepasa el turno" : avail ? `${remaining} disponible${remaining === 1 ? "" : "s"}` : "Completo"}
+                </span>
               </button>
             );
           })}
