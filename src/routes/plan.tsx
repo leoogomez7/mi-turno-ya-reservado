@@ -129,7 +129,7 @@ function PlanPage() {
       if (result.discountPercent < 100) {
         setAppliedPromoCode(promoCode.trim());
         setDiscountPercent(result.discountPercent);
-        setPaymentNotice(`Código aplicado: ${result.discountPercent}% de descuento en ${result.planLabel}.`);
+        setPaymentNotice(`Código aplicado: ${result.discountPercent}% de descuento.`);
         toast.success(`Descuento del ${result.discountPercent}% aplicado.`);
         return;
       }
@@ -233,7 +233,10 @@ function PlanPage() {
             </Button>
           </div>
           {paymentNotice && (
-            <div role="status" className="mt-3 rounded-lg border border-border bg-background p-3 text-sm">
+            <div
+              role="status"
+              className={`mt-3 rounded-lg border p-3 text-sm ${paymentNotice.startsWith("Cupón aplicado:") || paymentNotice.startsWith("Código aplicado:") ? "border-emerald-400/50 bg-emerald-400/10 text-emerald-300" : paymentNotice === "El código promocional no es válido." ? "border-red-500/40 bg-red-500/10 text-red-300" : "border-border bg-background"}`}
+            >
               <p>{paymentNotice}</p>
               {pendingPurchaseId && <Button type="button" variant="outline" size="sm" className="mt-2" disabled={subscriptionBusy} onClick={() => void retrySubscriptionVerification()}>Verificar pago</Button>}
             </div>
