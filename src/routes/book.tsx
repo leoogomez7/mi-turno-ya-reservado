@@ -158,6 +158,24 @@ export function BookPage() {
   }, [cloudDataReady, selectedStoreCode, stores, step]);
 
   useEffect(() => {
+    if (!cloudDataReady || !selectedStoreCode || selectedStoreCode === getCurrentStoreCode()) return;
+    let cancelled = false;
+    setStoreLoading(true);
+    void selectStore(selectedStoreCode, user?.email ?? "guest", auth.getIdToken)
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        toast.error(error instanceof Error ? error.message : "No se pudo cargar la sucursal elegida.");
+        setSelectedStoreCode(getCurrentStoreCode());
+      })
+      .finally(() => {
+        if (!cancelled) setStoreLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [auth.getIdToken, cloudDataReady, selectedStoreCode, user?.email]);
+
+  useEffect(() => {
     if (!paymentReturn) return;
     let pendingPayment: { bookingId?: string; cancellationToken?: string; date?: string; time?: string } = {};
     try {
@@ -207,7 +225,7 @@ export function BookPage() {
   async function chooseStore(store: Store) {
     setStoreLoading(true);
     try {
-      if (store.code !== selectedStoreCode) {
+      if (store.code !== getCurrentStoreCode()) {
         await selectStore(store.code, user?.email ?? "guest", auth.getIdToken);
       }
       setSelectedStoreCode(store.code);

@@ -241,6 +241,7 @@ export async function createPublicBooking(storeCode: string, booking: Omit<Booki
   const createdBooking: Booking = {
     ...booking,
     id: crypto.randomUUID(),
+    ...(booking.status === "pending-payment" ? { cancellationToken: crypto.randomUUID() } : {}),
     storeCode: normalizedStoreCode,
     createdAt: new Date().toISOString(),
   };
