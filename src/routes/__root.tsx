@@ -106,8 +106,8 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { name: "twitter:card", content: "summary_large_image" },
     ],
     links: [
-      { rel: "icon", type: "image/png", href: "/logo.png?v=9" },
-      { rel: "shortcut icon", type: "image/png", href: "/logo.png?v=9" },
+      { rel: "icon", type: "image/svg+xml", href: "/favicon.svg?v=10" },
+      { rel: "shortcut icon", type: "image/svg+xml", href: "/favicon.svg?v=10" },
       { rel: "apple-touch-icon", type: "image/png", href: "/logo.png?v=9" },
       {
         rel: "stylesheet",
