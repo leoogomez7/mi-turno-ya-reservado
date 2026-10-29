@@ -33,6 +33,8 @@ function PlanPage() {
   const [storeInfoLoaded, setStoreInfoLoaded] = useState(isCloudInitialized);
   const [selectedPlanId, setSelectedPlanId] = useState<string>("15d");
   const [promoCode, setPromoCode] = useState("");
+  const [appliedPromoCode, setAppliedPromoCode] = useState("");
+  const [discountPercent, setDiscountPercent] = useState(0);
   const [currentTime, setCurrentTime] = useState(Date.now());
   const [subscriptionBusy, setSubscriptionBusy] = useState(false);
   const [paymentNotice, setPaymentNotice] = useState("");
@@ -96,6 +98,7 @@ function PlanPage() {
     ? Math.ceil((Date.parse(storeInfo.subscriptionExpiresAt) - currentTime) / 86_400_000)
     : null;
   const selectedPlan = SUBSCRIPTION_PLANS.find((plan) => plan.id === selectedPlanId) ?? SUBSCRIPTION_PLANS[0];
+  const payableAmount = Math.round(selectedPlan.amount * (100 - discountPercent) / 100);
 
   const subscriptionDataReady = Boolean(
     storeInfoLoaded && storeInfo && storeInfo.subscriptionExpiresAt !== undefined,
@@ -110,7 +113,7 @@ function PlanPage() {
     setSubscriptionBusy(true);
     setPaymentNotice("");
     try {
-      const checkout = await createSubscriptionCheckout(selectedPlanId);
+      const checkout = await createSubscriptionCheckout(selectedPlanId, appliedPromoCode || undefined);
       window.location.assign(checkout.checkoutUrl);
     } catch (error) {
       setPaymentNotice(error instanceof Error ? error.message : "No se pudo iniciar el pago del plan.");
@@ -123,9 +126,19 @@ function PlanPage() {
     setPaymentNotice("");
     try {
       const result = await redeemSubscriptionPromo(promoCode, selectedPlanId);
+      if (result.discountPercent < 100) {
+        setAppliedPromoCode(promoCode.trim());
+        setDiscountPercent(result.discountPercent);
+        setPaymentNotice(`Código aplicado: ${result.discountPercent}% de descuento en ${result.planLabel}.`);
+        toast.success(`Descuento del ${result.discountPercent}% aplicado.`);
+        return;
+      }
+      if (!result.expiresAt) throw new Error("No se pudo activar el plan gratuito.");
       await bootstrapCloudData(user?.email ?? "", getIdToken);
       setStoreInfo(getAvailableStores().find((store) => store.code === getCurrentStoreCode()));
       setPromoCode("");
+      setAppliedPromoCode("");
+      setDiscountPercent(0);
       setPaymentNotice(`Cupón aplicado: ${result.planLabel} gratis, hasta ${format(new Date(result.expiresAt), "d 'de' MMMM yyyy", { locale: es })}.`);
       toast.success("Cupón aplicado y plan activado.");
     } catch (error) {
@@ -201,15 +214,20 @@ function PlanPage() {
             {SUBSCRIPTION_PLANS.map((plan) => (
               <button key={plan.id} type="button" onClick={() => setSelectedPlanId(plan.id)} className={`rounded-xl border p-3 text-left transition ${selectedPlanId === plan.id ? "border-gold bg-gold/10" : "border-border bg-background hover:border-gold/50"}`}>
                 <span className="block font-semibold">{plan.label}</span>
-                <span className="text-sm text-muted-foreground">${plan.amount.toLocaleString("es-AR")}</span>
+                {discountPercent > 0 ? (
+                  <span className="flex items-baseline gap-2 text-sm">
+                    <span className="text-muted-foreground line-through">${plan.amount.toLocaleString("es-AR")}</span>
+                    <span className="font-semibold text-gold">${Math.round(plan.amount * (100 - discountPercent) / 100).toLocaleString("es-AR")}</span>
+                  </span>
+                ) : <span className="text-sm text-muted-foreground">${plan.amount.toLocaleString("es-AR")}</span>}
               </button>
             ))}
           </div>
           <div className="mt-4 flex flex-col items-stretch gap-2 sm:flex-row sm:items-center">
             <Button disabled={subscriptionBusy} onClick={() => void startSubscriptionCheckout()} className="h-10 whitespace-nowrap bg-gold text-primary-foreground hover:bg-gold-soft">
-              {subscriptionBusy ? "Procesando…" : `Pagar $${selectedPlan.amount.toLocaleString("es-AR")} con Mercado Pago`}
+              {subscriptionBusy ? "Procesando…" : `Pagar $${payableAmount.toLocaleString("es-AR")} con Mercado Pago`}
             </Button>
-            <input className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm sm:w-44" value={promoCode} onChange={(event) => setPromoCode(event.target.value)} placeholder="Código promocional" aria-label="Código promocional" />
+            <input className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm sm:w-44" value={promoCode} onChange={(event) => { setPromoCode(event.target.value); setAppliedPromoCode(""); setDiscountPercent(0); }} placeholder="Código promocional" aria-label="Código promocional" />
             <Button type="button" variant="outline" disabled={subscriptionBusy || !promoCode.trim()} onClick={() => void applyPromoCode()} className="h-10 whitespace-nowrap">
               Aplicar descuento
             </Button>

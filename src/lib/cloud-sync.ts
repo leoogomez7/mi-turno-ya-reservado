@@ -217,14 +217,14 @@ export async function updateStoreContact(contact: StoreContactSettings) {
   return response.settings;
 }
 
-export async function createSubscriptionCheckout(planId: string) {
+export async function createSubscriptionCheckout(planId: string, promoCode?: string) {
   if (!tokenGetter) throw new Error("Iniciá sesión como administrador para contratar un plan.");
-  return request<{ checkoutUrl: string; purchaseId: string }>("POST", { action: "create-subscription-checkout", planId });
+  return request<{ checkoutUrl: string; purchaseId: string }>("POST", { action: "create-subscription-checkout", planId, promoCode });
 }
 
 export async function redeemSubscriptionPromo(code: string, planId: string) {
   if (!tokenGetter) throw new Error("Iniciá sesión como administrador para canjear una promoción.");
-  return request<{ expiresAt: string; planLabel: string }>("POST", { action: "redeem-subscription-promo", code, planId });
+  return request<{ expiresAt?: string; planLabel: string; discountPercent: number }>("POST", { action: "redeem-subscription-promo", code, planId });
 }
 
 export async function verifySubscriptionPayment(purchaseId: string) {

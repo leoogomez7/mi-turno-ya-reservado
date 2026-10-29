@@ -4,6 +4,7 @@ import { randomBytes } from "node:crypto";
 
 const COLLECTIONS = ["bookings", "professionals"];
 const FREE_TRIAL_DAYS = 4;
+const SUBSCRIPTION_PROMO_CODES = ["DESCUENTO_OFF", "GRATIS2026"];
 const SUBSCRIPTION_PLANS = new Map([
   ["15d", { days: 15, months: 0, amount: 5999, label: "15 días" }],
   ["1m", { days: 0, months: 1, amount: 9999, label: "1 mes" }],
@@ -272,6 +273,12 @@ function isSubscriptionActive(expiresAt) {
   return typeof expiresAt === "string" && Number.isFinite(Date.parse(expiresAt)) && Date.parse(expiresAt) > Date.now();
 }
 
+function subscriptionPromoDiscountPercent(code) {
+  if (code === "DESCUENTO_OFF") return 10;
+  if (code === "GRATIS2026") return 100;
+  return 0;
+}
+
 async function verifyMercadoPagoPayment(db, paymentId, expectedOwnerId) {
   if (!/^\d{1,30}$/.test(String(paymentId))) throw new Error("Identificador de pago inválido.");
   const accessToken = requiredEnv("MERCADOPAGO_ACCESS_TOKEN");
@@ -529,6 +536,14 @@ export default async function handler(request, response) {
         if (!user.emailVerified) return response.status(403).json({ error: "Verificá tu email antes de contratar un plan." });
         const plan = SUBSCRIPTION_PLANS.get(String(body.planId));
         if (!plan) return response.status(400).json({ error: "Elegí uno de los planes disponibles." });
+        const promoCode = typeof body.promoCode === "string" ? body.promoCode.trim().toUpperCase() : "";
+        let discountPercent = 0;
+        if (promoCode) {
+          if (!SUBSCRIPTION_PROMO_CODES.includes(promoCode)) return response.status(400).json({ error: "El código promocional no es válido." });
+          discountPercent = subscriptionPromoDiscountPercent(promoCode);
+          if (discountPercent <= 0 || discountPercent >= 100) return response.status(400).json({ error: "Este código no puede usarse para pagar un plan." });
+        }
+        const payableAmount = Math.round(plan.amount * (100 - discountPercent) / 100);
         const roleResult = await db.execute({ sql: "SELECT role, store_code FROM account_roles WHERE user_id = ?", args: [user.id] });
         const storeCode = normalizeStoreCode(roleResult.rows[0]?.store_code);
         if (roleResult.rows[0]?.role !== "admin" || !storeCode) return response.status(403).json({ error: "Solo el administrador de una sucursal puede contratar el plan." });
@@ -541,13 +556,13 @@ export default async function handler(request, response) {
         orderId = randomBytes(18).toString("hex");
         await db.execute({
           sql: "INSERT INTO subscription_orders (id, store_code, owner_id, months, duration_days, amount, status, method) VALUES (?, ?, ?, ?, ?, ?, 'pending', 'mercadopago')",
-          args: [orderId, storeCode, user.id, plan.months, plan.days, plan.amount],
+          args: [orderId, storeCode, user.id, plan.months, plan.days, payableAmount],
         });
         const preferenceResponse = await fetch("https://api.mercadopago.com/checkout/preferences", {
           method: "POST",
           headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
           body: JSON.stringify({
-            items: [{ id: `subscription-${String(body.planId)}`, title: `Plan de turnos por ${plan.label}`, quantity: 1, currency_id: "ARS", unit_price: plan.amount }],
+            items: [{ id: `subscription-${String(body.planId)}`, title: `Plan de turnos por ${plan.label}${discountPercent ? ` (${discountPercent}% de descuento)` : ""}`, quantity: 1, currency_id: "ARS", unit_price: payableAmount }],
             payer: { email: user.email },
             external_reference: orderId,
             notification_url: `${appUrl}/api/mercadopago/webhook`,
@@ -575,22 +590,21 @@ export default async function handler(request, response) {
     if (user && body?.action === "redeem-subscription-promo") {
       try {
         if (!user.emailVerified) return response.status(403).json({ error: "Verificá tu email antes de activar el plan." });
-        const configuredCodes = [process.env.DESCUENTO_OFF, process.env.CODIGO_PROMO]
-          .filter((value) => typeof value === "string")
-          .join(",")
-          .split(",")
-          .map((code) => code.trim().toUpperCase())
-          .filter((code, index, codes) => Boolean(code) && codes.indexOf(code) === index);
-        if (!configuredCodes.length) return response.status(503).json({ error: "El código promocional no está configurado." });
         const submittedCode = typeof body.code === "string" ? body.code.trim() : "";
-        if (!submittedCode || !configuredCodes.includes(submittedCode.toUpperCase())) {
+        const normalizedCode = submittedCode.toUpperCase();
+        if (!submittedCode || !SUBSCRIPTION_PROMO_CODES.includes(normalizedCode)) {
           return response.status(400).json({ error: "El código promocional no es válido." });
         }
         const plan = SUBSCRIPTION_PLANS.get(String(body.planId));
         if (!plan) return response.status(400).json({ error: "Elegí uno de los planes disponibles." });
         const roleResult = await db.execute({ sql: "SELECT role, store_code FROM account_roles WHERE user_id = ?", args: [user.id] });
         const storeCode = normalizeStoreCode(roleResult.rows[0]?.store_code);
-        if (roleResult.rows[0]?.role !== "admin" || !storeCode) return response.status(403).json({ error: "Solo el administrador de una sucursal puede canjear el código." });
+        if (roleResult.rows[0]?.role !== "admin" || !storeCode) return response.status(403).json({ error: "Solo el administrador de una sucursal puede aplicar el código." });
+        const discountPercent = subscriptionPromoDiscountPercent(normalizedCode);
+        if (discountPercent === 10) {
+          return response.status(200).json({ discountPercent, planLabel: plan.label });
+        }
+        if (discountPercent !== 100) return response.status(400).json({ error: "El código promocional no es válido." });
         const transaction = await db.transaction("write");
         try {
           const store = await transaction.execute({ sql: "SELECT subscription_expires_at FROM stores WHERE code = ?", args: [storeCode] });
@@ -607,7 +621,7 @@ export default async function handler(request, response) {
           });
           await transaction.execute({ sql: "UPDATE stores SET subscription_expires_at = ?, subscription_plan_type = 'promo' WHERE code = ?", args: [expiresAt, storeCode] });
           await transaction.commit();
-          return response.status(200).json({ expiresAt, planLabel: plan.label });
+          return response.status(200).json({ expiresAt, planLabel: plan.label, discountPercent });
         } catch (error) {
           await transaction.rollback().catch(() => undefined);
           throw error;
