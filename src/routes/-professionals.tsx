@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, Plus, Trash2, X } from "lucide-react";
 import { format, getDay, startOfToday } from "date-fns";
 import { es } from "date-fns/locale";
@@ -85,6 +85,7 @@ export function ProfessionalsManager() {
   const [scheduleDateStart, setScheduleDateStart] = useState("09:00");
   const [scheduleDateEnd, setScheduleDateEnd] = useState("18:00");
   const [scheduleDateCapacity, setScheduleDateCapacity] = useState(1);
+  const professionalDialogTitleRef = useRef<HTMLHeadingElement>(null);
 
   useEffect(() => {
     const load = () => setProfessionals(professionalStore.all());
@@ -691,6 +692,10 @@ export function ProfessionalsManager() {
           <Dialog open={showForm} onOpenChange={setShowForm}>
             <DialogContent
               className="max-h-[90vh] overflow-y-auto sm:max-w-2xl"
+              onOpenAutoFocus={(event) => {
+                event.preventDefault();
+                professionalDialogTitleRef.current?.focus();
+              }}
               onCloseAutoFocus={() => {
                 setEditingId(null);
                 setForm(defaultFormState);
@@ -698,7 +703,7 @@ export function ProfessionalsManager() {
             >
               <DialogHeader className="mb-2">
                 <div>
-                  <DialogTitle className="font-display text-2xl font-semibold">
+                  <DialogTitle ref={professionalDialogTitleRef} tabIndex={-1} className="font-display text-2xl font-semibold">
                     {editingId ? "Editar profesional" : "Agregar profesional"}
                   </DialogTitle>
                 </div>
@@ -915,7 +920,11 @@ export function ProfessionalsManager() {
           </Dialog>
 
           <Dialog open={detailDialogOpen} onOpenChange={closeDetailDialog}>
-            <DialogContent className={viewMode === "schedule" ? `w-[calc(100vw-2rem)] max-h-[90vh] overflow-x-hidden overflow-y-auto ${schedulePanel === "weekly" ? "[&>button:last-child]:hidden" : ""} sm:max-w-lg` : "max-h-[90vh] overflow-y-auto"}>
+            <DialogContent className={viewMode === "schedule"
+              ? schedulePanel === "exceptions"
+                ? "w-[calc(100vw-2rem)] max-h-[calc(100dvh-1rem)] overflow-hidden gap-2 p-4 sm:max-w-lg"
+                : "w-[calc(100vw-2rem)] max-h-[90vh] overflow-x-hidden overflow-y-auto [&>button:last-child]:hidden sm:max-w-lg"
+              : "max-h-[90vh] overflow-y-auto"}>
               {(viewMode !== "schedule" || schedulePanel !== "weekly") && (
                 <DialogHeader>
                   <DialogTitle>{viewMode === "schedule" ? "Excepciones" : "Editar servicios"}</DialogTitle>
@@ -926,7 +935,7 @@ export function ProfessionalsManager() {
                   </DialogDescription>
                 </DialogHeader>
               )}
-              <div className="space-y-4 py-2">
+              <div className={viewMode === "schedule" && schedulePanel === "exceptions" ? "space-y-2" : "space-y-4 py-2"}>
                 {viewMode === "schedule" ? (
                   <div className="min-w-0 space-y-6">
                     {schedulePanel === "weekly" && (
@@ -971,7 +980,7 @@ export function ProfessionalsManager() {
                     </section>
                     )}
                     {schedulePanel === "exceptions" && (
-                    <section className="mx-auto w-fit max-w-full rounded-2xl border border-border bg-background/60 p-3">
+                    <section className="mx-auto w-fit max-w-full">
                       <Calendar
                         mode="single"
                         locale={es}
@@ -983,9 +992,10 @@ export function ProfessionalsManager() {
                           closedDay: "rounded-md bg-muted text-muted-foreground opacity-80",
                           customHours: "rounded-md bg-gold text-primary-foreground font-semibold",
                         }}
-                        className=""
+                        className="p-2 [--cell-size:1.75rem]"
+                        classNames={{ week: "mt-1 flex w-full" }}
                       />
-                      <div className="mt-2 flex flex-wrap items-center justify-start gap-x-4 gap-y-2 text-xs text-muted-foreground">
+                      <div className="mt-1 flex flex-wrap items-center justify-start gap-x-3 gap-y-1 text-xs text-muted-foreground">
                         <span className="h-2 w-2 rounded-full bg-muted-foreground" /> Día cerrado
                         <span className="ml-4 h-2 w-2 rounded-full bg-gold" /> Horario distinto
                       </div>
