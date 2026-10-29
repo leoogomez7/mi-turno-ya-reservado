@@ -130,7 +130,7 @@ export function ProfessionalsManager() {
       return;
     }
     if (!storeSettings.transferCbu.trim() && !storeSettings.transferAlias.trim()) {
-      toast.error("Completá el CBU o el alias para recibir transferencias.");
+      toast.error("Completá el CBU o el alias para recibir transferencias bancarias.");
       return;
     }
     setSavingSettings(true);
@@ -655,7 +655,7 @@ export function ProfessionalsManager() {
             <div className="mb-5">
               <p className="text-xs uppercase tracking-widest text-gold">Transferencia bancaria</p>
               <h2 className="mt-1 font-display text-2xl font-semibold">Datos bancarios</h2>
-              <p className="mt-2 text-sm text-muted-foreground">Información bancaria para recibir transferencias.</p>
+              <p className="mt-2 text-sm text-muted-foreground">Información bancaria para recibir transferencias bancarias.</p>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Titular de la cuenta (obligatorio)">

@@ -16,7 +16,7 @@ import { toast } from "sonner";
 import { bookingStore, getBarber, sumDuration, sumPrice, type Customer } from "@/lib/booking-store";
 import { professionalStore, getProfessionalServiceList, getScheduleForDate, generateSlotsFromSchedule, isProfessionalAvailableOnDate } from "@/lib/professional-store";
 import { useAppAuth } from "@/lib/auth";
-import { getAvailableStores, getCurrentStoreCode, selectStore, type Store } from "@/lib/cloud-sync";
+import { getAvailableStores, getCurrentStoreCode, isCloudInitialized, refreshCloudData, selectStore, type Store } from "@/lib/cloud-sync";
 
 export const Route = createFileRoute("/book")({
   beforeLoad: () => {
@@ -35,6 +35,14 @@ const STEP_PATHS = {
 function stepForPath(pathname: string) {
   return Object.entries(STEP_PATHS).find(([, path]) => path === pathname)?.[0] as keyof typeof STEP_PATHS | undefined;
 }
+
+const EMPTY_CUSTOMER: Customer = {
+  fullName: "",
+  phone: "",
+  email: "",
+  paymentMethod: undefined,
+  notes: "",
+};
 
 export function BookPage() {
   const auth = useAppAuth();
@@ -58,9 +66,7 @@ export function BookPage() {
   const navigate = useNavigate();
   const paymentReturn = new URLSearchParams(location.searchStr).get("payment");
 
-  const [customer, setCustomer] = useState<Customer>({
-    fullName: "", phone: "", email: "", birthday: "", paymentMethod: undefined, notes: "",
-  });
+  const [customer, setCustomer] = useState<Customer>(EMPTY_CUSTOMER);
   const [barberId, setBarberId] = useState("");
   const [serviceIds, setServiceIds] = useState<string[]>([]);
   const [date, setDate] = useState<Date | null>(null);
@@ -86,11 +92,45 @@ export function BookPage() {
   }, []);
 
   useEffect(() => {
-    if (selectedStoreCode) setStorePickerOpen(false);
-  }, [selectedStoreCode]);
+    if (!isCloudInitialized() || !selectedStoreCode) return;
+    const selectedStore = stores.find((store) => store.code === selectedStoreCode);
+    const active = selectedStore?.subscriptionExpiresAt
+      ? Date.parse(selectedStore.subscriptionExpiresAt) > Date.now()
+      : false;
+    if (active) return;
+    setSelectedStoreCode("");
+    setStorePickerOpen(true);
+    setBarberId("");
+    setServiceIds([]);
+    setDate(null);
+    setTime("");
+  }, [selectedStoreCode, stores]);
 
-  const matchingStores = stores.filter((store) => `${store.name} ${store.code}`.toLowerCase().includes(storeSearch.trim().toLowerCase()));
-  const selectedStore = stores.find((store) => store.code === selectedStoreCode);
+  useEffect(() => {
+    if (step !== 3 || !selectedStoreCode) return;
+    const refresh = () => { void refreshCloudData().catch(() => undefined); };
+    refresh();
+    const intervalId = window.setInterval(refresh, 15000);
+    window.addEventListener("focus", refresh);
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", refresh);
+    };
+  }, [step, selectedStoreCode]);
+
+  useEffect(() => {
+    const hasActiveSelection = stores.some((store) =>
+      store.code === selectedStoreCode
+      && Boolean(store.subscriptionExpiresAt && Date.parse(store.subscriptionExpiresAt) > Date.now()),
+    );
+    if (hasActiveSelection) setStorePickerOpen(false);
+  }, [selectedStoreCode, stores]);
+
+  const activeStores = stores.filter((store) =>
+    Boolean(store.subscriptionExpiresAt && Date.parse(store.subscriptionExpiresAt) > Date.now()),
+  );
+  const matchingStores = activeStores.filter((store) => `${store.name} ${store.code}`.toLowerCase().includes(storeSearch.trim().toLowerCase()));
+  const selectedStore = activeStores.find((store) => store.code === selectedStoreCode);
   const storeSettings = selectedStore?.settings;
 
   async function chooseStore(store: Store) {
@@ -174,8 +214,8 @@ export function BookPage() {
       .map((s) => s.name)
       .join(", ");
     const message = `Hola! Quiero confirmar un turno.
-  Sucursal: ${stores.find((store) => store.code === selectedStoreCode)?.name ?? ""}
-Nombre: ${customer.fullName}
+Sucursal: ${stores.find((store) => store.code === selectedStoreCode)?.name ?? ""}
+Cliente: ${customer.fullName}
 Teléfono: ${customer.phone}
 Email: ${customer.email}
 Profesional: ${barber?.name ?? ""}
@@ -184,7 +224,7 @@ Fecha: ${format(date, "EEEE d 'de' MMMM yyyy", { locale: es })}
 Horario: ${time}
 Método de pago: ${customer.paymentMethod ?? "Efectivo"}
 Precio total: $${price}
-Notas: ${customer.notes || "Ninguna"}`;
+Observaciones: ${customer.notes || "Ninguna"}`;
 
     if (customer.paymentMethod === "transferencia") {
       try {
@@ -201,7 +241,7 @@ Notas: ${customer.notes || "Ninguna"}`;
       return;
     }
 
-    if (["tarjeta de crédito", "tarjeta de débito", "mercadopago"].includes(customer.paymentMethod ?? "")) {
+    if (customer.paymentMethod === "tarjeta o mercado pago") {
       setPaymentDialog("mercadopago");
       setPaymentLoading(true);
       setPaymentUrl(null);
@@ -245,6 +285,7 @@ Notas: ${customer.notes || "Ninguna"}`;
         customer, barberId, serviceIds,
         date: format(date, "yyyy-MM-dd"),
         time, duration, totalPrice: price,
+        status: "confirmed",
       });
       if (storeSettings?.whatsapp) {
         const whatsappUrl = `https://wa.me/${storeSettings.whatsapp.replace(/\D/g, "")}?text=${encodeURIComponent(message)}`;
@@ -265,9 +306,14 @@ Notas: ${customer.notes || "Ninguna"}`;
       toast.error("La sucursal todavía no configuró su WhatsApp.");
       return;
     }
-    const message = `Hola, quiero enviar el comprobante de transferencia de mi turno por $${price.toLocaleString("es-AR")}. Nombre: ${customer.fullName}, fecha: ${date ? format(date, "dd/MM/yyyy") : ""}, horario: ${time}.`;
-    window.open(`https://wa.me/${storeSettings.whatsapp.replace(/\D/g, "")}?text=${encodeURIComponent(message)}`, "_blank");
+    const message = `Hola, envío el comprobante de transferencia bancaria del turno reservado por $${price.toLocaleString("es-AR")}. Nombre: ${customer.fullName}, fecha: ${date ? format(date, "dd/MM/yyyy") : ""}, horario: ${time}.`;
+    const whatsappUrl = `https://wa.me/${storeSettings.whatsapp.replace(/\D/g, "")}?text=${encodeURIComponent(message)}`;
+
     setPaymentDialog(null);
+    goToStep(4);
+    window.setTimeout(() => {
+      window.open(whatsappUrl, "_blank", "noopener,noreferrer");
+    }, 150);
   }
 
   async function copyTransferValue(value: string) {
@@ -280,7 +326,7 @@ Notas: ${customer.notes || "Ninguna"}`;
   }
 
   function handleContinue() {
-    if (!selectedStoreCode) {
+    if (!selectedStoreCode || !selectedStore) {
       const message = "Elegí una sucursal para poder continuar con la reserva.";
       setStepError(message);
       setStorePickerOpen(true);
@@ -324,16 +370,16 @@ Notas: ${customer.notes || "Ninguna"}`;
         <section
           className={cn(
             "mb-4 rounded-2xl border border-gold/30 bg-card p-4 sm:p-5",
-            !selectedStoreCode && "cursor-pointer transition-colors hover:bg-gold/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold",
+            (!selectedStoreCode || !selectedStore) && "cursor-pointer transition-colors hover:bg-gold/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold",
           )}
-          role={!selectedStoreCode ? "button" : undefined}
-          tabIndex={!selectedStoreCode ? 0 : undefined}
-          aria-label={!selectedStoreCode ? "Buscar sucursal para reservar" : undefined}
+          role={!selectedStoreCode || !selectedStore ? "button" : undefined}
+          tabIndex={!selectedStoreCode || !selectedStore ? 0 : undefined}
+          aria-label={!selectedStoreCode || !selectedStore ? "Buscar sucursal para reservar" : undefined}
           onClick={() => {
-            if (!selectedStoreCode) setStorePickerOpen(true);
+            if (!selectedStoreCode || !selectedStore) setStorePickerOpen(true);
           }}
           onKeyDown={(event) => {
-            if (!selectedStoreCode && (event.key === "Enter" || event.key === " ")) {
+            if ((!selectedStoreCode || !selectedStore) && (event.key === "Enter" || event.key === " ")) {
               event.preventDefault();
               setStorePickerOpen(true);
             }
@@ -341,9 +387,9 @@ Notas: ${customer.notes || "Ninguna"}`;
         >
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
-              <p className="text-xs uppercase tracking-widest text-gold">{selectedStoreCode ? "Sucursal seleccionada" : "Antes de reservar"}</p>
+              <p className="text-xs uppercase tracking-widest text-gold">{selectedStore ? "Sucursal seleccionada" : "Antes de reservar"}</p>
               <h2 className="mt-1 flex flex-wrap items-baseline gap-x-2 font-display text-xl font-semibold">
-                {selectedStoreCode ? (
+                {selectedStore ? (
                   <>
                     <span>{selectedStore?.name ?? "Sucursal no disponible"}</span>
                     {selectedStore && <span className="font-sans text-sm font-medium text-muted-foreground">{selectedStore.code}</span>}
@@ -352,7 +398,7 @@ Notas: ${customer.notes || "Ninguna"}`;
               </h2>
             </div>
             <div className="flex items-center gap-3">
-              {selectedStoreCode && <Button type="button" size="sm" className="bg-gold text-primary-foreground hover:bg-gold-soft" onClick={() => setStorePickerOpen(true)}>Cambiar sucursal</Button>}
+              {selectedStore && <Button type="button" size="sm" className="bg-gold text-primary-foreground hover:bg-gold-soft" onClick={() => setStorePickerOpen(true)}>Cambiar sucursal</Button>}
             </div>
           </div>
         </section>
@@ -464,7 +510,7 @@ Notas: ${customer.notes || "Ninguna"}`;
           {paymentDialog === "transfer" ? (
             <>
               <DialogHeader>
-                <DialogTitle>Datos para la transferencia</DialogTitle>
+                <DialogTitle>Datos para la transferencia bancaria</DialogTitle>
                 <DialogDescription>Transferí el total de ${price.toLocaleString("es-AR")} y envianos el comprobante para confirmar tu turno.</DialogDescription>
               </DialogHeader>
               <div className="space-y-3 rounded-xl border border-border bg-card p-4 text-sm">
@@ -562,10 +608,8 @@ function StepCustomer({ customer, setCustomer }: { customer: Customer; setCustom
           >
             <option value="" disabled>Seleccioná un método de pago</option>
             <option value="efectivo">Efectivo</option>
-            <option value="transferencia">Transferencia</option>
-            <option value="tarjeta de crédito">Tarjeta de crédito</option>
-            <option value="tarjeta de débito">Tarjeta de débito</option>
-            <option value="mercadopago">Mercado Pago</option>
+            <option value="transferencia">Transferencia Bancaria</option>
+            <option value="tarjeta o mercado pago">Tarjeta o MercadoPago</option>
           </select>
         </Field>
         <div className="sm:col-span-2">
@@ -698,6 +742,13 @@ function StepDateTime({
   time: string; setTime: (t: string) => void;
   barberId: string; duration: number;
 }) {
+  const [, setBookingsRevision] = useState(0);
+  useEffect(() => {
+    const reloadBookings = () => setBookingsRevision((revision) => revision + 1);
+    window.addEventListener("bookings:changed", reloadBookings);
+    return () => window.removeEventListener("bookings:changed", reloadBookings);
+  }, []);
+
   const today = startOfToday();
   const professional = barberId ? professionalStore.all().find((p) => p.id === barberId) : undefined;
   const scheduledDates = professional?.scheduleDates
@@ -841,17 +892,17 @@ function StepConfirm({
         <Row label="Profesional" value={barber?.name ?? "-"} />
         <Row label="Servicios" value={serviceNames || "-"} />
         <Row label="Fecha" value={format(date, "EEEE d 'de' MMMM, yyyy", { locale: es })} />
-        <Row label="Hora" value={time} />
+        <Row label="Horario" value={time} />
         <Row label="Método de pago" value={customer.paymentMethod ?? "Sin seleccionar"} />
         <Row label="Duración" value={`${duration} min`} icon={Clock} />
         {customer.notes && <Row label="Observaciones" value={customer.notes} />}
       </div>
       <div className="mt-6 flex items-center justify-between rounded-xl border border-gold/30 bg-gold/5 px-5 py-4">
-        <span className="text-sm uppercase tracking-wider text-muted-foreground">Total estimado</span>
+        <span className="text-sm uppercase tracking-wider text-muted-foreground">Precio total</span>
         <span className="font-display text-3xl font-semibold text-gold">${price.toLocaleString("es-AR")}</span>
       </div>
       <p className="mt-4 text-center text-xs text-muted-foreground">
-        Una vez confirmado, el horario quedará reservado y te enviaremos un recordatorio.
+        Una vez confirmado, el horario quedará reservado.
       </p>
     </div>
   );

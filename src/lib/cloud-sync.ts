@@ -95,6 +95,14 @@ export async function bootstrapCloudData(account: string, getToken: () => Promis
   return result.role;
 }
 
+export async function refreshCloudData() {
+  if (!activeAccount || !initialized) return;
+  const result = await request<{ data: CloudSnapshot; stores: Store[] }>("GET");
+  if (!result.data || !Array.isArray(result.stores)) throw new Error("Se devolvió una respuesta incompleta.");
+  availableStores = result.stores;
+  setSnapshot(result.data);
+}
+
 export function clearCloudSession() {
   activeAccount = undefined;
   tokenGetter = undefined;

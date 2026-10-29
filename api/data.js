@@ -344,6 +344,20 @@ function recordId(record) {
     ? record.id : null;
 }
 
+async function hasBookingConflict(db, booking, storeCode, bookingId = "") {
+  const existingResult = await db.execute("SELECT id, value FROM bookings");
+  const [hours, minutes] = String(booking.time).split(":").map(Number);
+  const startMinute = hours * 60 + minutes;
+  return existingResult.rows.some((row) => {
+    const existing = JSON.parse(String(row.value));
+    if (normalizeStoreCode(existing.storeCode) !== storeCode || existing.id === bookingId) return false;
+    if (existing.barberId !== booking.barberId || existing.date !== booking.date || existing.status === "cancelled") return false;
+    const [existingHours, existingMinutes] = String(existing.time).split(":").map(Number);
+    const existingStart = existingHours * 60 + existingMinutes;
+    return startMinute < existingStart + Number(existing.duration) && existingStart < startMinute + Number(booking.duration);
+  });
+}
+
 async function validateBookingAvailability(db, booking, storeCode, bookingId = "") {
   const storeResult = await db.execute({ sql: "SELECT subscription_expires_at FROM stores WHERE code = ?", args: [storeCode] });
   if (!storeResult.rows[0] || !isSubscriptionActive(storeResult.rows[0].subscription_expires_at)) {
@@ -392,16 +406,7 @@ async function validateBookingAvailability(db, booking, storeCode, bookingId = "
   const startMinute = hours * 60 + minutes;
   if (scheduleEnd !== null && startMinute + booking.duration > scheduleEnd) return "El turno excede el horario del profesional.";
 
-  const existingResult = await db.execute("SELECT id, value FROM bookings");
-  const hasConflict = existingResult.rows.some((row) => {
-    const existing = JSON.parse(String(row.value));
-    const existingStoreCode = normalizeStoreCode(existing.storeCode);
-    if (existingStoreCode !== storeCode || existing.id === bookingId) return false;
-    if (existing.barberId !== booking.barberId || existing.date !== booking.date || existing.status === "cancelled") return false;
-    const [existingHours, existingMinutes] = String(existing.time).split(":").map(Number);
-    const existingStart = existingHours * 60 + existingMinutes;
-    return startMinute < existingStart + Number(existing.duration) && existingStart < startMinute + booking.duration;
-  });
+  const hasConflict = await hasBookingConflict(db, booking, storeCode, bookingId);
   return hasConflict ? "Ese horario acaba de ser reservado. Elegí otro horario." : null;
 }
 
@@ -756,9 +761,9 @@ export default async function handler(request, response) {
         const storeCode = normalizeStoreCode(roleResult.rows[0]?.store_code);
         const settings = validateStoreSettings(body.settings);
         if (role !== "admin" || !user.emailVerified || !storeCode) return response.status(403).json({ error: "Solo el administrador de una sucursal puede modificar sus datos." });
-        if (!settings) return response.status(400).json({ error: "Revisá los datos de contacto y transferencia." });
+        if (!settings) return response.status(400).json({ error: "Revisá los datos de contacto y transferencia bancaria." });
         if (!settings.transferHolder.trim()) return response.status(400).json({ error: "El titular de la cuenta es obligatorio." });
-        if (!settings.transferCbu.trim() && !settings.transferAlias.trim()) return response.status(400).json({ error: "Completá el CBU o el alias para recibir transferencias." });
+        if (!settings.transferCbu.trim() && !settings.transferAlias.trim()) return response.status(400).json({ error: "Completá el CBU o el alias para recibir transferencias bancarias." });
         await db.execute({ sql: "UPDATE stores SET settings = ? WHERE code = ?", args: [JSON.stringify(settings), storeCode] });
         return response.status(200).json({ code: storeCode, settings });
       } catch (error) {
@@ -860,15 +865,7 @@ export default async function handler(request, response) {
       }
 
       transaction = await db.transaction("write");
-      const existingResult = await transaction.execute({ sql: "SELECT value FROM bookings" });
-      const hasConflict = existingResult.rows.some((row) => {
-        const existing = JSON.parse(String(row.value));
-        if (normalizeStoreCode(existing.storeCode) !== storeCode || existing.barberId !== booking.barberId || existing.date !== booking.date || existing.status === "cancelled") return false;
-        const [existingHours, existingMinutes] = String(existing.time).split(":").map(Number);
-        const existingStart = existingHours * 60 + existingMinutes;
-        return startMinute < existingStart + Number(existing.duration)
-          && existingStart < startMinute + booking.duration;
-      });
+      const hasConflict = await hasBookingConflict(transaction, booking, storeCode);
       if (hasConflict) {
         await transaction.rollback();
         return response.status(409).json({ error: "Ese horario acaba de ser reservado. Elegí otro horario." });
@@ -971,6 +968,22 @@ export default async function handler(request, response) {
             const conflict = availabilityError.includes("acaba de ser reservado");
             return response.status(conflict ? 409 : 400).json({ error: availabilityError });
           }
+          const transaction = await db.transaction("write");
+          try {
+            if (await hasBookingConflict(transaction, record, storeCode, id)) {
+              await transaction.rollback();
+              return response.status(409).json({ error: "Ese horario acaba de ser reservado. Elegí otro horario." });
+            }
+            await transaction.execute({
+              sql: "INSERT INTO bookings (id, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) ON CONFLICT(id) DO NOTHING",
+              args: [databaseId, JSON.stringify(record)],
+            });
+            await transaction.commit();
+          } catch (error) {
+            await transaction.rollback().catch(() => undefined);
+            throw error;
+          }
+          continue;
         }
       }
       statements.push({

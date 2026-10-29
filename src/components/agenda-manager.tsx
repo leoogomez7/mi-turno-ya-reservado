@@ -19,7 +19,7 @@ export function AgendaManager() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
-  const [editMode, setEditMode] = useState<"attendance" | "confirmation" | "turno" | null>(null);
+  const [editMode, setEditMode] = useState<"attendance" | "turno" | null>(null);
   const [editedDate, setEditedDate] = useState("");
   const [editedTime, setEditedTime] = useState("");
   const [editedProfessionalId, setEditedProfessionalId] = useState("");
@@ -50,7 +50,7 @@ export function AgendaManager() {
   if (isLoading) return <LoadingScreen message="Preparando tu agenda" />;
   if (!isAuthenticated || role !== "admin") return <><SiteHeader /><AuthRequired role="admin" title="Agenda" /></>;
 
-  function openDialog(booking: Booking, mode: "attendance" | "confirmation" | "turno") {
+  function openDialog(booking: Booking, mode: "attendance" | "turno") {
     setSelectedBooking(booking);
     setEditMode(mode);
     setDialogOpen(true);
@@ -153,15 +153,13 @@ export function AgendaManager() {
                       {booking.status === "pending-payment" && <Badge variant="outline" className="border-amber-300 text-amber-300">Pago pendiente · {booking.customer.paymentMethod}</Badge>}
                       {booking.status === "completed" && <Badge variant="outline" className="border-emerald-300 text-emerald-400">Asistió</Badge>}
                       {booking.status === "no-show" && <Badge variant="outline" className="border-red-500/30 bg-red-500/10 text-red-300">No asistió</Badge>}
-                      {booking.status !== "pending-payment" && <Badge variant="outline" className={booking.appointmentConfirmation === "confirmed" ? "border-emerald-300 text-emerald-400" : "border-amber-300 text-amber-300"}>{booking.appointmentConfirmation === "confirmed" ? "Turno confirmado" : "No confirmó todavía"}</Badge>}
                       <span>{booking.customer.phone}</span>
                     </div>
                   </div>
                   <div className="font-display text-lg font-semibold text-gold">${booking.totalPrice.toLocaleString("es-AR")}</div>
                   <div className="flex flex-wrap gap-2">
-                    {booking.status === "pending-payment" && <Button size="sm" variant="outline" onClick={() => void updateBooking(booking.id, { status: "confirmed" }, "Pago verificado y turno confirmado")}>Confirmar pago</Button>}
+                    {booking.status === "pending-payment" && <Button size="sm" variant="outline" onClick={() => void updateBooking(booking.id, { status: "confirmed" }, "Pago verificado")}>Confirmar pago</Button>}
                     {booking.status === "confirmed" && <Button size="sm" variant="outline" onClick={() => openDialog(booking, "attendance")}>Indicar asistencia</Button>}
-                    {booking.status !== "pending-payment" && <Button size="sm" variant="outline" onClick={() => openDialog(booking, "confirmation")}>Confirmar turno</Button>}
                     <Button size="sm" variant="outline" onClick={() => openDialog(booking, "turno")}>Modificar turno</Button>
                     <Button size="sm" variant="destructive" disabled={booking.isTest} onClick={() => void removeBooking(booking.id)}>Borrar turno</Button>
                   </div>
@@ -175,12 +173,11 @@ export function AgendaManager() {
         <Dialog open={dialogOpen} onOpenChange={(open) => open ? setDialogOpen(true) : closeDialog()}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>{editMode === "attendance" ? "Asistencia" : editMode === "confirmation" ? "Confirmación de turno" : "Modificar turno"}</DialogTitle>
-              <DialogDescription>{editMode === "attendance" ? "Seleccioná si el cliente asistió al turno." : editMode === "confirmation" ? "¿El cliente confirmó el turno?" : "Modificá profesional, servicio y horario."}</DialogDescription>
+              <DialogTitle>{editMode === "attendance" ? "Asistencia" : "Modificar turno"}</DialogTitle>
+              <DialogDescription>{editMode === "attendance" ? "Seleccioná si el cliente asistió al turno." : "Modificá profesional, servicio y horario."}</DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
               {editMode === "attendance" && <div className="grid gap-3 sm:grid-cols-2"><Button className="bg-emerald-500 text-white" onClick={() => selectedBooking && void updateBooking(selectedBooking.id, { status: "completed" }, "Asistencia registrada")}>Sí asistió</Button><Button className="border border-red-500/30 bg-red-500/10 text-red-300 hover:bg-red-500/20" onClick={() => selectedBooking && void updateBooking(selectedBooking.id, { status: "no-show" }, "Turno indicado como no asistió")}>No asistió</Button></div>}
-              {editMode === "confirmation" && <div className="grid gap-3 sm:grid-cols-2"><Button className="bg-emerald-500 text-white" onClick={() => selectedBooking && void updateBooking(selectedBooking.id, { appointmentConfirmation: "confirmed" }, "Turno confirmado por el cliente")}>Confirmó turno</Button><Button className="bg-amber-500 text-white hover:bg-amber-600" onClick={() => selectedBooking && void updateBooking(selectedBooking.id, { appointmentConfirmation: "pending" }, "Confirmación pendiente")}>No confirmó todavía</Button></div>}
               {editMode === "turno" && (
                 <div className="grid gap-4">
                   <label className="block text-sm text-muted-foreground">Profesional<select className="mt-2 block w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground" value={editedProfessionalId} onChange={(event) => { setEditedProfessionalId(event.target.value); setEditedServiceId(professionals.find((item) => item.id === event.target.value)?.services[0]?.id ?? ""); }}>

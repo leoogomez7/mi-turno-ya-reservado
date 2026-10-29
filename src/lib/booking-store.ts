@@ -5,10 +5,8 @@ export interface Customer {
   fullName: string;
   phone: string;
   email: string;
-  birthday?: string;
-  paymentMethod?: "efectivo" | "transferencia" | "tarjeta de crédito" | "tarjeta de débito" | "mercadopago";
+  paymentMethod?: "efectivo" | "transferencia" | "tarjeta o mercado pago";
   notes?: string;
-  hairType?: "corto" | "medio" | "largo";
 }
 
 export interface Booking {
@@ -33,18 +31,16 @@ function read(): Booking[] {
 
 async function write(list: Booking[]) {
   await persistCloudCollection("bookings", list);
-  window.dispatchEvent(new Event("bookings:changed"));
 }
 
 export const bookingStore = {
   all(): Booking[] {
     return read().slice().sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
   },
-  async add(input: Omit<Booking, "id" | "createdAt" | "status"> & { status?: Booking["status"] }): Promise<Booking> {
+  async add(input: Omit<Booking, "id" | "createdAt">): Promise<Booking> {
     const booking: Booking = {
       ...input,
       id: crypto.randomUUID(),
-      status: input.status ?? "confirmed",
       createdAt: new Date().toISOString(),
     };
     await write([...read(), booking]);
@@ -58,9 +54,6 @@ export const bookingStore = {
   },
   async remove(id: string) {
     await write(read().filter((booking) => booking.id !== id));
-  },
-  forDate(date: string): Booking[] {
-    return this.all().filter((booking) => booking.date === date && booking.status !== "cancelled");
   },
   occupiedSlots(date: string, barberId: string): Set<string> {
     const slots = new Set<string>();
