@@ -21,6 +21,7 @@ export interface Booking {
   totalPrice: number;
   status: "pending-payment" | "confirmed" | "cancelled" | "completed" | "no-show";
   appointmentConfirmation?: "confirmed" | "pending";
+  cancellationToken?: string;
   createdAt: string;
   isTest?: boolean;
 }
@@ -41,6 +42,7 @@ export const bookingStore = {
     const booking: Booking = {
       ...input,
       id: crypto.randomUUID(),
+      ...(input.status === "pending-payment" ? { cancellationToken: crypto.randomUUID() } : {}),
       createdAt: new Date().toISOString(),
     };
     await write([...read(), booking]);

@@ -84,9 +84,9 @@ export default async function handler(req, res) {
             reservation_time: String(body.reservationTime || "").slice(0, 5),
           },
           back_urls: {
-            success: `${appUrl}/reserva/confirmacion?payment=success`,
-            failure: `${appUrl}/reserva/confirmacion?payment=failure`,
-            pending: `${appUrl}/reserva/confirmacion?payment=pending`,
+            success: `${appUrl}/reserva?payment=success`,
+            failure: `${appUrl}/reserva?payment=failure`,
+            pending: `${appUrl}/reserva?payment=pending`,
           },
           auto_return: "approved",
         }),

@@ -231,3 +231,7 @@ export async function verifySubscriptionPayment(purchaseId: string) {
   if (!tokenGetter) throw new Error("Iniciá sesión como administrador para verificar el pago.");
   return request<{ approved: boolean; expiresAt?: string | null }>("POST", { action: "verify-subscription-payment", purchaseId });
 }
+
+export async function cancelPendingBooking(bookingId: string, cancellationToken: string) {
+  return request<{ ok: boolean }>("POST", { action: "cancel-pending-booking", bookingId, cancellationToken });
+}

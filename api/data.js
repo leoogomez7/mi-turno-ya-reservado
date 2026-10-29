@@ -565,6 +565,49 @@ export default async function handler(request, response) {
     return response.status(400).json({ error: "El cuerpo JSON no es válido." });
   }
   if (request.method === "POST") {
+    if (body?.action === "cancel-pending-booking") {
+      const bookingId = typeof body.bookingId === "string" ? body.bookingId : "";
+      const cancellationToken = typeof body.cancellationToken === "string" ? body.cancellationToken : "";
+      if (!/^[\da-f-]{36}$/i.test(bookingId) || !/^[\da-f-]{36}$/i.test(cancellationToken)) {
+        return response.status(400).json({ error: "La solicitud para cancelar la reserva no es válida." });
+      }
+
+      let transaction;
+      try {
+        transaction = await db.transaction("write");
+        const result = await transaction.execute({ sql: "SELECT value FROM bookings WHERE id = ?", args: [bookingId] });
+        if (!result.rows[0]) {
+          await transaction.rollback();
+          return response.status(404).json({ error: "No encontramos la reserva pendiente." });
+        }
+        const booking = JSON.parse(String(result.rows[0].value));
+        const requestedStoreCode = normalizeStoreCode(request.headers["x-store-code"]);
+        if (normalizeStoreCode(booking.storeCode) !== requestedStoreCode) {
+          await transaction.rollback();
+          return response.status(403).json({ error: "La reserva no corresponde a la sucursal seleccionada." });
+        }
+        if (booking.status !== "pending-payment" || booking.cancellationToken !== cancellationToken) {
+          await transaction.rollback();
+          return response.status(403).json({ error: "No se puede cancelar esta reserva pendiente." });
+        }
+        if (user && booking.customer?.email?.trim().toLowerCase() !== user.email) {
+          await transaction.rollback();
+          return response.status(403).json({ error: "La reserva no pertenece a esta cuenta." });
+        }
+        booking.status = "cancelled";
+        delete booking.cancellationToken;
+        await transaction.execute({
+          sql: "UPDATE bookings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+          args: [JSON.stringify(booking), bookingId],
+        });
+        await transaction.commit();
+        return response.status(200).json({ ok: true });
+      } catch (error) {
+        if (transaction) await transaction.rollback().catch(() => undefined);
+        console.error("No se pudo cancelar la reserva pendiente", error);
+        return response.status(500).json({ error: "No se pudo cancelar la reserva pendiente." });
+      }
+    }
     if (!user && body?.action === "mercadopago-subscription-webhook") {
       try {
         const result = await verifyMercadoPagoPayment(db, String(body.paymentId ?? ""));
