@@ -17,6 +17,9 @@
       "dest": "/$0"
     },
     {
+      "handle": "filesystem"
+    },
+    {
       "src": "^/(.*)$",
       "dest": "/api/index.js"
     }
