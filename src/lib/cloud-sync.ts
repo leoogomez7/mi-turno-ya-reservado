@@ -236,6 +236,27 @@ export async function cancelPendingBooking(bookingId: string, cancellationToken:
   return request<{ ok: boolean }>("POST", { action: "cancel-pending-booking", bookingId, cancellationToken });
 }
 
+export async function loadReservationStore(storeCode: string, getToken?: () => Promise<string | undefined>) {
+  const token = await getToken?.();
+  const response = await fetch("/api/data", {
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      "X-Store-Code": storeCode.trim().toUpperCase(),
+    },
+    cache: "no-store",
+  });
+  const result = await response.json() as {
+    data?: CloudSnapshot;
+    stores?: Store[];
+    error?: string;
+  };
+  if (!response.ok) throw new Error(result.error || "No se pudo cargar la sucursal elegida.");
+  if (!result.data || !Array.isArray(result.data.professionals) || !Array.isArray(result.data.bookings) || !Array.isArray(result.stores)) {
+    throw new Error("No se recibieron los datos de la sucursal elegida.");
+  }
+  return { data: result.data, stores: result.stores };
+}
+
 export async function createPublicBooking(storeCode: string, booking: Omit<Booking, "id" | "createdAt">) {
   const normalizedStoreCode = storeCode.trim().toUpperCase();
   const createdBooking: Booking = {

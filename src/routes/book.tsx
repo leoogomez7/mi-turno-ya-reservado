@@ -13,10 +13,10 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
-import { bookingStore, getBarber, sumDuration, sumPrice, type Booking, type Customer } from "@/lib/booking-store";
-import { professionalStore, getProfessionalServiceList, getScheduleForDate, generateSlotsFromSchedule, isProfessionalAvailableOnDate } from "@/lib/professional-store";
+import { bookingStore, type Booking, type Customer } from "@/lib/booking-store";
+import { type Professional, getScheduleForDate, generateSlotsFromSchedule, isProfessionalAvailableOnDate } from "@/lib/professional-store";
 import { useAppAuth } from "@/lib/auth";
-import { cancelPendingBooking, createPublicBooking, getAvailableStores, getCurrentStoreCode, isCloudInitialized, refreshCloudData, selectStore, type Store } from "@/lib/cloud-sync";
+import { cancelPendingBooking, createPublicBooking, getAvailableStores, getCloudRecords, getCurrentStoreCode, isCloudInitialized, loadReservationStore, refreshCloudData, selectStore, type Store } from "@/lib/cloud-sync";
 
 export const Route = createFileRoute("/book")({
   beforeLoad: () => {
@@ -24,7 +24,7 @@ export const Route = createFileRoute("/book")({
   },
 });
 
-const STEPS = ["Datos", "Profesional", "Servicios", "Fecha & hora", "Confirmar"] as const;
+const STEPS = ["Datos", "Profesional", "Servicios", "Horarios", "Confirmar"] as const;
 const STEP_PATHS = {
   0: "/reserva",
   1: "/reserva/profesional",
@@ -75,6 +75,8 @@ export function BookPage() {
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [reservationResult, setReservationResult] = useState<ReservationResult | null>(null);
   const [stores, setStores] = useState<Store[]>(getAvailableStores());
+  const [reservationProfessionals, setReservationProfessionals] = useState<Professional[]>(getCloudRecords("professionals"));
+  const [reservationBookings, setReservationBookings] = useState<Booking[]>(getCloudRecords("bookings"));
   const [selectedStoreCode, setSelectedStoreCode] = useState(getCurrentStoreCode());
   const [storeSelectionHydrated, setStoreSelectionHydrated] = useState(false);
   const [cloudDataReady, setCloudDataReady] = useState(isCloudInitialized);
@@ -158,14 +160,19 @@ export function BookPage() {
   }, [cloudDataReady, selectedStoreCode, stores, step]);
 
   useEffect(() => {
-    if (!cloudDataReady || !selectedStoreCode || selectedStoreCode === getCurrentStoreCode()) return;
+    if (!cloudDataReady || !selectedStoreCode) return;
     let cancelled = false;
     setStoreLoading(true);
-    void selectStore(selectedStoreCode, user?.email ?? "guest", auth.getIdToken)
+    void loadReservationStore(selectedStoreCode, isAuthenticated ? auth.getIdToken : undefined)
+      .then(({ data, stores: loadedStores }) => {
+        if (cancelled) return;
+        setReservationProfessionals(data.professionals);
+        setReservationBookings(data.bookings);
+        setStores(loadedStores);
+      })
       .catch((error: unknown) => {
         if (cancelled) return;
         toast.error(error instanceof Error ? error.message : "No se pudo cargar la sucursal elegida.");
-        setSelectedStoreCode(getCurrentStoreCode());
       })
       .finally(() => {
         if (!cancelled) setStoreLoading(false);
@@ -173,7 +180,7 @@ export function BookPage() {
     return () => {
       cancelled = true;
     };
-  }, [auth.getIdToken, cloudDataReady, selectedStoreCode, user?.email]);
+  }, [auth.getIdToken, cloudDataReady, isAuthenticated, selectedStoreCode]);
 
   useEffect(() => {
     if (!paymentReturn) return;
@@ -205,15 +212,26 @@ export function BookPage() {
 
   useEffect(() => {
     if (step !== 3 || !selectedStoreCode) return;
-    const refresh = () => { void refreshCloudData().catch(() => undefined); };
+    let cancelled = false;
+    const refresh = () => {
+      void loadReservationStore(selectedStoreCode, isAuthenticated ? auth.getIdToken : undefined)
+        .then(({ data, stores: loadedStores }) => {
+          if (cancelled) return;
+          setReservationProfessionals(data.professionals);
+          setReservationBookings(data.bookings);
+          setStores(loadedStores);
+        })
+        .catch(() => undefined);
+    };
     refresh();
     const intervalId = window.setInterval(refresh, 15000);
     window.addEventListener("focus", refresh);
     return () => {
+      cancelled = true;
       window.clearInterval(intervalId);
       window.removeEventListener("focus", refresh);
     };
-  }, [step, selectedStoreCode]);
+  }, [auth.getIdToken, isAuthenticated, selectedStoreCode, step]);
 
   const activeStores = stores.filter((store) =>
     Boolean(store.subscriptionExpiresAt && Date.parse(store.subscriptionExpiresAt) > Date.now()),
@@ -225,7 +243,7 @@ export function BookPage() {
   async function chooseStore(store: Store) {
     setStoreLoading(true);
     try {
-      if (store.code !== getCurrentStoreCode()) {
+      if (role !== "admin" && store.code !== getCurrentStoreCode()) {
         await selectStore(store.code, user?.email ?? "guest", auth.getIdToken);
       }
       setSelectedStoreCode(store.code);
@@ -253,8 +271,10 @@ export function BookPage() {
     return bookingStore.add(input);
   }
 
-  const duration = sumDuration(barberId, serviceIds);
-  const price = sumPrice(barberId, serviceIds);
+  const selectedProfessional = reservationProfessionals.find((professional) => professional.id === barberId);
+  const selectedServices = selectedProfessional?.services ?? [];
+  const duration = selectedServices.reduce((total, service) => total + (serviceIds.includes(service.id) ? service.duration : 0), 0);
+  const price = selectedServices.reduce((total, service) => total + (serviceIds.includes(service.id) ? service.price : 0), 0);
 
   useEffect(() => {
     const pathStep = stepForPath(location.pathname);
@@ -296,8 +316,8 @@ export function BookPage() {
     setConfirmingBooking(true);
     let redirectingToPayment = false;
     try {
-    const barber = getBarber(barberId);
-    const serviceNames = getProfessionalServiceList(barberId)
+    const barber = selectedProfessional;
+    const serviceNames = selectedServices
       .filter((s) => serviceIds.includes(s.id))
       .map((s) => s.name)
       .join(", ");
@@ -568,10 +588,10 @@ Observaciones: ${customer.notes || "Ninguna"}`;
 
         <div className="mt-4 rounded-2xl border border-gold/30 bg-card p-5 sm:p-6">
           {step === 0 && <StepCustomer customer={customer} setCustomer={setCustomer} />}
-          {step === 1 && <StepBarber value={barberId} onChange={setBarberId} />}
-          {step === 2 && <StepServices value={serviceIds} onChange={setServiceIds} barberId={barberId} />}
-          {step === 3 && <StepDateTime date={date} setDate={setDate} time={time} setTime={setTime} barberId={barberId} duration={duration} />}
-          {step === 4 && (date ? <StepConfirm storeName={stores.find((store) => store.code === selectedStoreCode)?.name ?? selectedStoreCode} storeCode={selectedStoreCode} customer={customer} barberId={barberId} serviceIds={serviceIds} date={date} time={time} duration={duration} price={price} /> : <p className="py-8 text-center text-sm text-muted-foreground">Seleccioná fecha y horario para ver el resumen.</p>)}
+          {step === 1 && <StepBarber professionals={reservationProfessionals} value={barberId} onChange={setBarberId} />}
+          {step === 2 && <StepServices professional={selectedProfessional} value={serviceIds} onChange={setServiceIds} />}
+          {step === 3 && <StepDateTime professional={selectedProfessional} bookings={reservationBookings} date={date} setDate={setDate} time={time} setTime={setTime} barberId={barberId} duration={duration} />}
+          {step === 4 && (date ? <StepConfirm professional={selectedProfessional} storeName={stores.find((store) => store.code === selectedStoreCode)?.name ?? selectedStoreCode} storeCode={selectedStoreCode} customer={customer} serviceIds={serviceIds} date={date} time={time} duration={duration} price={price} /> : <p className="py-8 text-center text-sm text-muted-foreground">Seleccioná fecha y horario para ver el resumen.</p>)}
         </div>
 
         {stepError && (
@@ -751,9 +771,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-function StepBarber({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const professionals = professionalStore.all();
-
+function StepBarber({ professionals, value, onChange }: { professionals: Professional[]; value: string; onChange: (v: string) => void }) {
   return (
     <div>
       <SectionTitle icon={Briefcase} title="Paso 2" subtitle="Elegí tu profesional" />
@@ -795,15 +813,15 @@ function StepBarber({ value, onChange }: { value: string; onChange: (v: string) 
 }
 
 function StepServices({
-  value, onChange, barberId,
+  value, onChange, professional,
 }: {
   value: string[]; onChange: (v: string[]) => void;
-  barberId: string;
+  professional?: Professional;
 }) {
-  const professionalServices = getProfessionalServiceList(barberId);
+  const professionalServices = professional?.services ?? [];
   const toggle = (id: string) => onChange(value.includes(id) ? value.filter((x) => x !== id) : [...value, id]);
-  const totalDur = sumDuration(barberId, value);
-  const totalPrice = sumPrice(barberId, value);
+  const totalDur = professionalServices.reduce((total, service) => total + (value.includes(service.id) ? service.duration : 0), 0);
+  const totalPrice = professionalServices.reduce((total, service) => total + (value.includes(service.id) ? service.price : 0), 0);
 
   return (
     <div>
@@ -856,21 +874,15 @@ function StepServices({
 }
 
 function StepDateTime({
-  date, setDate, time, setTime, barberId, duration,
+  date, setDate, time, setTime, barberId, duration, professional, bookings,
 }: {
   date: Date | null; setDate: (d: Date) => void;
   time: string; setTime: (t: string) => void;
   barberId: string; duration: number;
+  professional?: Professional;
+  bookings: Booking[];
 }) {
-  const [, setBookingsRevision] = useState(0);
-  useEffect(() => {
-    const reloadBookings = () => setBookingsRevision((revision) => revision + 1);
-    window.addEventListener("bookings:changed", reloadBookings);
-    return () => window.removeEventListener("bookings:changed", reloadBookings);
-  }, []);
-
   const today = startOfToday();
-  const professional = barberId ? professionalStore.all().find((p) => p.id === barberId) : undefined;
   const scheduledDates = professional?.scheduleDates
     ?.map((entry) => ({ ...entry, parsed: parseISO(entry.date) }))
     .filter((entry) => !Number.isNaN(entry.parsed.getTime()) && entry.parsed >= today && !entry.closed)
@@ -908,7 +920,25 @@ function StepDateTime({
 
   function remainingForSlot(slot: string): number {
     if (!date) return 0;
-    return bookingStore.remainingCapacity(dateKey, barberId, slot, duration, slotCapacity);
+    const [hours, minutes] = slot.split(":").map(Number);
+    const start = hours * 60 + minutes;
+    const end = start + duration;
+    const overlappingBookings = bookings.filter((booking) => {
+      if (booking.date !== dateKey || booking.barberId !== barberId || booking.status === "cancelled") return false;
+      const [bookingHours, bookingMinutes] = booking.time.split(":").map(Number);
+      const bookingStart = bookingHours * 60 + bookingMinutes;
+      return start < bookingStart + booking.duration && bookingStart < end;
+    });
+    let maximumOverlapping = 0;
+    for (let minute = start; minute < end; minute += 15) {
+      const overlapping = overlappingBookings.filter((booking) => {
+        const [bookingHours, bookingMinutes] = booking.time.split(":").map(Number);
+        const bookingStart = bookingHours * 60 + bookingMinutes;
+        return minute < bookingStart + booking.duration && bookingStart < minute + 15;
+      }).length;
+      maximumOverlapping = Math.max(maximumOverlapping, overlapping);
+    }
+    return Math.max(0, slotCapacity - maximumOverlapping);
   }
 
   function isSlotAvailable(slot: string): boolean {
@@ -990,15 +1020,15 @@ function StepDateTime({
 }
 
 function StepConfirm({
-  storeName, storeCode, customer, barberId, serviceIds, date, time, duration, price,
+  professional, storeName, storeCode, customer, serviceIds, date, time, duration, price,
 }: {
+  professional?: Professional;
   storeName: string; storeCode: string;
-  customer: Customer; barberId: string; serviceIds: string[];
+  customer: Customer; serviceIds: string[];
   date: Date; time: string; duration: number; price: number;
 }) {
-  const barber = getBarber(barberId);
   const serviceNames = serviceIds
-    .map((id) => getProfessionalServiceList(barberId).find((s) => s.id === id)?.name)
+    .map((id) => professional?.services.find((service) => service.id === id)?.name)
     .filter(Boolean)
     .join(", ");
   return (
@@ -1008,7 +1038,7 @@ function StepConfirm({
         <Row label="Sucursal" value={`${storeName} · ${storeCode}`} />
         <Row label="Cliente" value={customer.fullName} />
         <Row label="Contacto" value={`${customer.email} · ${customer.phone}`} />
-        <Row label="Profesional" value={barber?.name ?? "-"} />
+        <Row label="Profesional" value={professional?.name ?? "-"} />
         <Row label="Servicios" value={serviceNames || "-"} />
         <Row label="Fecha" value={format(date, "EEEE d 'de' MMMM, yyyy", { locale: es })} />
         <Row label="Horario" value={time} />
