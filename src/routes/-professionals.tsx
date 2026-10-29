@@ -254,6 +254,10 @@ export function ProfessionalsManager() {
       toast.error("Completá el nombre, la duración y un precio mayor a cero.");
       return;
     }
+    if (!Number.isInteger(serviceDraft.duration) || serviceDraft.duration % 15 !== 0) {
+      toast.error("La duración debe ser un múltiplo de 15 minutos (15, 30, 45, 60, etc.).");
+      return;
+    }
     const nextService = { ...serviceDraft, name };
     const nextForm = {
       ...form,
@@ -765,14 +769,14 @@ export function ProfessionalsManager() {
             <DialogContent className="sm:max-w-lg">
               <DialogHeader>
                 <DialogTitle>{editingServiceId ? "Modificar servicio" : "Agregar servicio"}</DialogTitle>
-                <DialogDescription>Ingresá el nombre, la duración y el precio del servicio.</DialogDescription>
+                <DialogDescription>Ingresá el nombre, una duración en múltiplos de 15 minutos y el precio del servicio.</DialogDescription>
               </DialogHeader>
               <div className="grid gap-4 sm:grid-cols-3">
                 <Field label="Nombre">
                   <Input value={serviceDraft.name} onChange={(event) => setServiceDraft({ ...serviceDraft, name: event.target.value })} placeholder="Corte clásico" />
                 </Field>
                 <Field label="Duración (min)">
-                  <Input type="number" min="1" value={serviceDraft.duration || ""} onChange={(event) => setServiceDraft({ ...serviceDraft, duration: Number(event.target.value) })} placeholder="Minutos" />
+                  <Input type="number" min="15" step="15" value={serviceDraft.duration || ""} onChange={(event) => setServiceDraft({ ...serviceDraft, duration: Number(event.target.value) })} placeholder="15, 30, 45…" />
                 </Field>
                 <Field label="Precio ($)">
                   <Input type="number" min="1" value={serviceDraft.price || ""} onChange={(event) => setServiceDraft({ ...serviceDraft, price: Number(event.target.value) })} placeholder="8000" />
@@ -1017,7 +1021,7 @@ export function ProfessionalsManager() {
                             <Input value={service.name} onChange={(e) => updateService(index, { name: e.target.value })} placeholder="Corte clásico" />
                           </Field>
                           <Field label="Duración (min)">
-                            <Input type="number" value={service.duration} onChange={(e) => updateService(index, { duration: Number(e.target.value) })} placeholder="30" />
+                            <Input type="number" min="15" step="15" value={service.duration} onChange={(e) => updateService(index, { duration: Number(e.target.value) })} placeholder="15, 30, 45…" />
                           </Field>
                           <Field label="Precio">
                             <Input type="number" value={service.price} onChange={(e) => updateService(index, { price: Number(e.target.value) })} placeholder="8000" />
