@@ -50,7 +50,7 @@ export function rememberAuthReturnPath(path: string) {
 export function rememberSignupRole(role: AccountRole) {
   if (typeof window === "undefined") return;
   window.sessionStorage.setItem("kinde-signup-role", role);
-  window.sessionStorage.setItem("kinde-auth-return-path", role === "admin" ? "/estadisticas" : "/reserva");
+  window.sessionStorage.setItem("kinde-auth-return-path", role === "admin" ? "/configuracion" : "/reserva");
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {

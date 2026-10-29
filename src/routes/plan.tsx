@@ -1,4 +1,4 @@
-import { createFileRoute, useLocation } from "@tanstack/react-router";
+import { createFileRoute, Link, useLocation } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
@@ -101,7 +101,7 @@ function PlanPage() {
   const payableAmount = Math.round(selectedPlan.amount * (100 - discountPercent) / 100);
 
   const subscriptionDataReady = Boolean(
-    storeInfoLoaded && storeInfo && storeInfo.subscriptionExpiresAt !== undefined,
+    storeInfoLoaded && (!storeInfo || storeInfo.subscriptionExpiresAt !== undefined),
   );
 
   if (isLoading || (isAuthenticated && role === "admin" && !subscriptionDataReady)) {
@@ -182,7 +182,12 @@ function PlanPage() {
                     <Check aria-hidden="true" className="h-5 w-5" />
                     Plan activo
                   </span>
-                ) : "Plan inactivo"}
+                ) : (
+                  <span className="inline-flex items-center gap-2 rounded-xl border border-red-500/40 bg-red-500/10 px-3 py-1 text-red-300 shadow-sm shadow-red-500/10">
+                    <AlertTriangle aria-hidden="true" className="h-5 w-5" />
+                    Plan inactivo
+                  </span>
+                )}
                 {subscriptionIsActive && subscriptionDaysRemaining !== null && subscriptionDaysRemaining > 0 && subscriptionDaysRemaining <= 4 && (
                   <span role="status" className="inline-flex items-center gap-1.5 font-sans text-sm font-semibold text-red-400">
                     <AlertTriangle aria-hidden="true" className="h-4 w-4" />
@@ -224,14 +229,19 @@ function PlanPage() {
             ))}
           </div>
           <div className="mt-4 flex flex-col items-stretch gap-2 sm:flex-row sm:items-center">
-            <Button disabled={subscriptionBusy} onClick={() => void startSubscriptionCheckout()} className="h-10 whitespace-nowrap bg-gold text-primary-foreground hover:bg-gold-soft">
+            <Button disabled={subscriptionBusy || !storeInfo} onClick={() => void startSubscriptionCheckout()} className="h-10 whitespace-nowrap bg-gold text-primary-foreground hover:bg-gold-soft">
               {subscriptionBusy ? "Procesando…" : `Pagar $${payableAmount.toLocaleString("es-AR")} con Mercado Pago`}
             </Button>
-            <input className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm sm:w-44" value={promoCode} onChange={(event) => { setPromoCode(event.target.value); setAppliedPromoCode(""); setDiscountPercent(0); }} placeholder="Código promocional" aria-label="Código promocional" />
-            <Button type="button" variant="outline" disabled={subscriptionBusy || !promoCode.trim()} onClick={() => void applyPromoCode()} className="h-10 whitespace-nowrap">
+            <input className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm sm:w-44" disabled={!storeInfo} value={promoCode} onChange={(event) => { setPromoCode(event.target.value); setAppliedPromoCode(""); setDiscountPercent(0); }} placeholder="Código promocional" aria-label="Código promocional" />
+            <Button type="button" variant="outline" disabled={subscriptionBusy || !storeInfo || !promoCode.trim()} onClick={() => void applyPromoCode()} className="h-10 whitespace-nowrap">
               Aplicar descuento
             </Button>
           </div>
+          {!storeInfo && (
+            <p className="mt-3 text-sm text-muted-foreground">
+              Para contratar o aplicar un código, primero creá tu sucursal en <Link to="/configuracion" className="font-medium text-gold underline underline-offset-4">Configuración</Link>.
+            </p>
+          )}
           {paymentNotice && (
             <div
               role="status"

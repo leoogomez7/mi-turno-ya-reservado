@@ -507,7 +507,7 @@ Observaciones: ${customer.notes || "Ninguna"}`;
               </div>
               {storeLoading && (
                 <p role="status" aria-live="polite" className="rounded-lg border border-gold/30 bg-gold/10 px-3 py-2 text-sm text-gold">
-                  Eligiendo sucursal…
+                  Agregando sucursal…
                 </p>
               )}
               <Button type="button" disabled={storeLoading || !storeSearch.trim()} className="w-full bg-gold text-primary-foreground hover:bg-gold-soft" onClick={() => {
@@ -515,7 +515,7 @@ Observaciones: ${customer.notes || "Ninguna"}`;
                 setStoreNotFound(matchingStores.length === 0);
                 if (matchingStores.length === 1) void chooseStore(matchingStores[0]);
               }}>
-                {storeLoading ? "Eligiendo sucursal…" : "Buscar sucursal"}
+                {storeLoading ? "Agregando sucursal…" : "Buscar sucursal"}
               </Button>
               {storeSearchSubmitted && storeNotFound && <p role="status" className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">No encontramos sucursales con ese nombre o código.</p>}
             </div>
