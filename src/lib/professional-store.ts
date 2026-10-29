@@ -13,6 +13,7 @@ export interface ProfessionalScheduleDate {
   start: string;
   end: string;
   closed?: boolean;
+  capacity?: number;
 }
 
 export interface ProfessionalWeeklySchedule {
@@ -20,19 +21,21 @@ export interface ProfessionalWeeklySchedule {
   closed: boolean;
   start: string;
   end: string;
+  capacity?: number;
 }
 
 export function getScheduleForDate(professional: Professional, date: Date) {
   const target = format(date, "yyyy-MM-dd");
   const override = professional.scheduleDates?.find((entry) => entry.date === target);
-  if (override) return override;
+  const weekly = professional.weeklySchedule?.find((entry) => entry.dayOfWeek === getDay(date));
+  if (override) return { ...override, capacity: override.capacity ?? weekly?.capacity ?? 1 };
   if (professional.weeklySchedule?.length) {
-    const weekly = professional.weeklySchedule.find((entry) => entry.dayOfWeek === getDay(date));
     return {
       date: target,
       start: weekly?.start ?? "",
       end: weekly?.end ?? "",
       closed: !weekly || weekly.closed,
+      capacity: weekly?.capacity ?? 1,
     };
   }
   return undefined;
@@ -70,9 +73,9 @@ export function generateSlotsFromSchedule(scheduleDay: ProfessionalScheduleDate)
   if (current >= end) return [];
 
   const slots: string[] = [];
-  while (current + 30 <= end) {
+  while (current + 15 <= end) {
     slots.push(`${String(Math.floor(current / 60)).padStart(2, "0")}:${String(current % 60).padStart(2, "0")}`);
-    current += 30;
+    current += 15;
   }
   return slots;
 }

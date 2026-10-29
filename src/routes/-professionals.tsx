@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { Check, Plus, Trash2 } from "lucide-react";
+import { Check, Plus, Trash2, X } from "lucide-react";
 import { format, getDay, startOfToday } from "date-fns";
 import { es } from "date-fns/locale";
 import { SiteHeader } from "@/components/site-header";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
@@ -84,6 +84,7 @@ export function ProfessionalsManager() {
   const [scheduleDateClosed, setScheduleDateClosed] = useState(false);
   const [scheduleDateStart, setScheduleDateStart] = useState("09:00");
   const [scheduleDateEnd, setScheduleDateEnd] = useState("18:00");
+  const [scheduleDateCapacity, setScheduleDateCapacity] = useState(1);
 
   useEffect(() => {
     const load = () => setProfessionals(professionalStore.all());
@@ -374,12 +375,12 @@ export function ProfessionalsManager() {
     setForm({ ...form, scheduleDates });
   }
 
-  function setWeeklyDay(dayOfWeek: number, changes: Partial<{ closed: boolean; start: string; end: string }>) {
+  function setWeeklyDay(dayOfWeek: number, changes: Partial<{ closed: boolean; start: string; end: string; capacity: number }>) {
     const current = weeklyScheduleDraft ?? [];
     const existing = current.find((entry) => entry.dayOfWeek === dayOfWeek);
     const next = existing
       ? current.map((entry) => entry.dayOfWeek === dayOfWeek ? { ...entry, ...changes } : entry)
-      : [...current, { dayOfWeek, closed: true, start: "09:00", end: "18:00", ...changes }];
+      : [...current, { dayOfWeek, closed: true, start: "09:00", end: "18:00", capacity: 1, ...changes }];
     setWeeklyScheduleDraft(next);
   }
 
@@ -391,6 +392,7 @@ export function ProfessionalsManager() {
     setScheduleDateClosed(override ? Boolean(override.closed) : weekly ? weekly.closed : true);
     setScheduleDateStart(override?.start || weekly?.start || "09:00");
     setScheduleDateEnd(override?.end || weekly?.end || "18:00");
+    setScheduleDateCapacity(override?.capacity ?? weekly?.capacity ?? 1);
     setScheduleDateDialogOpen(true);
   }
 
@@ -400,12 +402,17 @@ export function ProfessionalsManager() {
       toast.error("La hora de fin debe ser posterior a la hora de inicio.");
       return;
     }
+    if (!scheduleDateClosed && (!Number.isInteger(scheduleDateCapacity) || scheduleDateCapacity < 1 || scheduleDateCapacity > 20)) {
+      toast.error("La cantidad de turnos simultáneos debe estar entre 1 y 20.");
+      return;
+    }
     const dateKey = format(activeScheduleDate, "yyyy-MM-dd");
     const nextEntry = {
       date: dateKey,
       start: scheduleDateStart,
       end: scheduleDateEnd,
       closed: scheduleDateClosed,
+      capacity: scheduleDateCapacity,
     };
     const nextForm = {
       ...form,
@@ -435,8 +442,13 @@ export function ProfessionalsManager() {
 
   async function saveWeeklySchedule() {
     const hasInvalidHours = (weeklyScheduleDraft ?? []).some((entry) => !entry.closed && entry.start >= entry.end);
+    const hasInvalidCapacity = (weeklyScheduleDraft ?? []).some((entry) => !Number.isInteger(entry.capacity ?? 1) || (entry.capacity ?? 1) < 1 || (entry.capacity ?? 1) > 20);
     if (hasInvalidHours) {
       toast.error("En cada día abierto, la hora de fin debe ser posterior a la hora de inicio.");
+      return;
+    }
+    if (hasInvalidCapacity) {
+      toast.error("La cantidad de turnos simultáneos debe estar entre 1 y 20.");
       return;
     }
     const nextForm = { ...form, weeklySchedule: weeklyScheduleDraft ?? [] };
@@ -730,15 +742,15 @@ export function ProfessionalsManager() {
                         Profesional de prueba
                       </Button>
                     ) : editingId ? (
-                      <Button variant="outline" disabled={Boolean(deletingProfessionalId) || savingProfessional} className="w-full max-w-[13rem] border-red-500/30 text-red-300 hover:bg-red-500/10 hover:text-red-300" onClick={() => requestDeleteProfessional(editingId)}>
+                      <Button variant="outline" disabled={Boolean(deletingProfessionalId) || savingProfessional} className="w-full max-w-52 border-red-500/30 text-red-300 hover:bg-red-500/10 hover:text-red-300" onClick={() => requestDeleteProfessional(editingId)}>
                         {deletingProfessionalId === editingId ? "Eliminando..." : "Eliminar profesional"}
                       </Button>
                     ) : null}
-                    <Button disabled={savingProfessional || Boolean(deletingProfessionalId)} onClick={() => void saveProfessional()} className="w-full max-w-[13rem] bg-gold text-primary-foreground hover:bg-gold-soft">
+                    <Button disabled={savingProfessional || Boolean(deletingProfessionalId)} onClick={() => void saveProfessional()} className="w-full max-w-52 bg-gold text-primary-foreground hover:bg-gold-soft">
                       {savingProfessional ? "Guardando…" : "Guardar profesional"}
                     </Button>
                   </div>
-                  <Button variant="outline" disabled={savingProfessional || Boolean(deletingProfessionalId)} onClick={() => setShowForm(false)} className="w-full max-w-[13rem]">
+                  <Button variant="outline" disabled={savingProfessional || Boolean(deletingProfessionalId)} onClick={() => setShowForm(false)} className="w-full max-w-52">
                     Cancelar
                   </Button>
                 </div>
@@ -905,7 +917,7 @@ export function ProfessionalsManager() {
           </Dialog>
 
           <Dialog open={detailDialogOpen} onOpenChange={closeDetailDialog}>
-            <DialogContent className={viewMode === "schedule" ? "w-[calc(100vw-2rem)] max-h-[90vh] overflow-x-hidden overflow-y-auto sm:max-w-lg" : "max-h-[90vh] overflow-y-auto"}>
+            <DialogContent className={viewMode === "schedule" ? `w-[calc(100vw-2rem)] max-h-[90vh] overflow-x-hidden overflow-y-auto ${schedulePanel === "weekly" ? "[&>button:last-child]:hidden" : ""} sm:max-w-lg` : "max-h-[90vh] overflow-y-auto"}>
               {(viewMode !== "schedule" || schedulePanel !== "weekly") && (
                 <DialogHeader>
                   <DialogTitle>{viewMode === "schedule" ? "Excepciones" : "Editar servicios"}</DialogTitle>
@@ -921,8 +933,16 @@ export function ProfessionalsManager() {
                   <div className="min-w-0 space-y-6">
                     {schedulePanel === "weekly" && (
                     <section>
-                      <h3 className="font-display text-2xl font-semibold">Horarios</h3>
-                      <p className="mt-1 text-sm text-muted-foreground">Configurá el horario semanal del profesional.</p>
+                      <div className="flex items-start justify-between gap-4 pr-1">
+                        <div>
+                          <h3 className="font-display text-2xl font-semibold">Horarios</h3>
+                          <p className="mt-1 text-sm text-muted-foreground">Configurá el horario semanal del profesional.</p>
+                        </div>
+                        <DialogClose aria-label="Cerrar horarios" className="shrink-0 rounded-sm opacity-70 transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring">
+                          <X className="h-4 w-4" />
+                          <span className="sr-only">Cerrar</span>
+                        </DialogClose>
+                      </div>
                       <div className="mt-4 space-y-3">
                         {WEEKDAYS.map((day) => {
                           const schedule = weeklyScheduleDraft?.find((entry) => entry.dayOfWeek === day.id);
@@ -942,6 +962,10 @@ export function ProfessionalsManager() {
                               <Field label="Hasta">
                                 <Input type="time" className="scheme-dark w-full [&::-webkit-calendar-picker-indicator]:invert" disabled={isClosed} value={schedule?.end ?? "18:00"} onChange={(event) => setWeeklyDay(day.id, { end: event.target.value })} />
                               </Field>
+                              <div className="flex items-center justify-between gap-3 sm:col-span-3">
+                                <label htmlFor={`capacity-${day.id}`} className="text-sm text-muted-foreground">Turnos simultáneos por horario</label>
+                                <Input id={`capacity-${day.id}`} type="number" min={1} max={20} step={1} className="w-20" disabled={isClosed} value={schedule?.capacity ?? 1} onChange={(event) => setWeeklyDay(day.id, { capacity: Number(event.target.value) })} />
+                              </div>
                             </div>
                           );
                         })}
@@ -1015,7 +1039,7 @@ export function ProfessionalsManager() {
           </Dialog>
 
           <Dialog open={scheduleDateDialogOpen} onOpenChange={handleScheduleDateDialogChange}>
-            <DialogContent className="sm:max-w-md">
+              <DialogContent className="sm:max-w-md">
               <DialogHeader>
                 <DialogTitle>{activeScheduleDate ? format(activeScheduleDate, "EEEE d 'de' MMMM", { locale: es }) : "Horario de la fecha"}</DialogTitle>
                 <DialogDescription>Configurá una excepción para este día. Si no cambiás nada, se usa el horario semanal.</DialogDescription>
@@ -1032,6 +1056,10 @@ export function ProfessionalsManager() {
                   <Field label="Hasta">
                     <Input type="time" className="scheme-dark [&::-webkit-calendar-picker-indicator]:invert" value={scheduleDateEnd} onChange={(event) => setScheduleDateEnd(event.target.value)} />
                   </Field>
+                  <div className="col-span-2 flex items-center justify-between gap-3">
+                    <label htmlFor="schedule-date-capacity" className="text-sm text-muted-foreground">Turnos simultáneos por horario</label>
+                    <Input id="schedule-date-capacity" type="number" min={1} max={20} step={1} className="w-20" value={scheduleDateCapacity} onChange={(event) => setScheduleDateCapacity(Number(event.target.value))} />
+                  </div>
                 </div>
               )}
               <DialogFooter>

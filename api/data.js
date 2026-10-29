@@ -4,7 +4,6 @@ import { randomBytes } from "node:crypto";
 
 const COLLECTIONS = ["bookings", "professionals"];
 const FREE_TRIAL_DAYS = 4;
-const SUBSCRIPTION_PROMO_CODES = ["DESCUENTO_OFF", "GRATIS2026"];
 const SUBSCRIPTION_PLANS = new Map([
   ["15d", { days: 15, months: 0, amount: 5999, label: "15 días" }],
   ["1m", { days: 0, months: 1, amount: 9999, label: "1 mes" }],
@@ -273,9 +272,22 @@ function isSubscriptionActive(expiresAt) {
   return typeof expiresAt === "string" && Number.isFinite(Date.parse(expiresAt)) && Date.parse(expiresAt) > Date.now();
 }
 
-function subscriptionPromoDiscountPercent(code) {
-  if (code === "DESCUENTO_OFF") return 10;
-  if (code === "GRATIS2026") return 100;
+export function subscriptionPromoDiscountPercent(code) {
+  const normalizedCode = typeof code === "string" ? code.trim().toUpperCase() : "";
+  if (!normalizedCode) return 0;
+
+  const discountCodes = (process.env.DESCUENTO_OFF ?? "")
+    .split(",")
+    .map((configuredCode) => configuredCode.trim().toUpperCase())
+    .filter(Boolean);
+  if (discountCodes.includes(normalizedCode)) return 10;
+
+  const freeCodes = (process.env.GRATIS2026 ?? "")
+    .split(",")
+    .map((configuredCode) => configuredCode.trim().toUpperCase())
+    .filter(Boolean);
+  if (freeCodes.includes(normalizedCode)) return 100;
+
   return 0;
 }
 
@@ -351,18 +363,54 @@ function recordId(record) {
     ? record.id : null;
 }
 
-async function hasBookingConflict(db, booking, storeCode, bookingId = "") {
+function scheduleForDate(professional, date) {
+  const override = professional.scheduleDates?.find((entry) => entry.date === date);
+  if (override) return override;
+  const dayOfWeek = new Date(`${date}T12:00:00Z`).getUTCDay();
+  if (!professional.weeklySchedule?.length) return null;
+  return professional.weeklySchedule.find((entry) => entry.dayOfWeek === dayOfWeek)
+    ?? { date, start: "", end: "", closed: true };
+}
+
+function bookingCapacityForDate(professional, date) {
+  const schedule = scheduleForDate(professional, date);
+  const dayOfWeek = new Date(`${date}T12:00:00Z`).getUTCDay();
+  const weeklySchedule = professional.weeklySchedule?.find((entry) => entry.dayOfWeek === dayOfWeek);
+  const capacity = Number(schedule?.capacity ?? weeklySchedule?.capacity ?? 1);
+  return Number.isInteger(capacity) && capacity >= 1 && capacity <= 20 ? capacity : 1;
+}
+
+function scheduleSlots(schedule) {
+  const start = /^([0-2]\d):([0-5]\d)$/.exec(schedule.start);
+  const end = /^([0-2]\d):([0-5]\d)$/.exec(schedule.end);
+  if (!start || !end) return null;
+  const firstMinute = Number(start[1]) * 60 + Number(start[2]);
+  const endMinute = Number(end[1]) * 60 + Number(end[2]);
+  const slots = [];
+  for (let minute = firstMinute; minute + 15 <= endMinute; minute += 15) {
+    slots.push(`${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`);
+  }
+  return { slots, endMinute };
+}
+
+async function hasBookingConflict(db, booking, storeCode, capacity = 1, bookingId = "") {
   const existingResult = await db.execute("SELECT id, value FROM bookings");
   const [hours, minutes] = String(booking.time).split(":").map(Number);
   const startMinute = hours * 60 + minutes;
-  return existingResult.rows.some((row) => {
+  const existingBookings = existingResult.rows.map((row) => {
     const existing = JSON.parse(String(row.value));
-    if (normalizeStoreCode(existing.storeCode) !== storeCode || existing.id === bookingId) return false;
-    if (existing.barberId !== booking.barberId || existing.date !== booking.date || existing.status === "cancelled") return false;
+    if (normalizeStoreCode(existing.storeCode) !== storeCode || existing.id === bookingId) return null;
+    if (existing.barberId !== booking.barberId || existing.date !== booking.date || existing.status === "cancelled") return null;
     const [existingHours, existingMinutes] = String(existing.time).split(":").map(Number);
     const existingStart = existingHours * 60 + existingMinutes;
-    return startMinute < existingStart + Number(existing.duration) && existingStart < startMinute + Number(booking.duration);
-  });
+    return { start: existingStart, end: existingStart + Number(existing.duration) };
+  }).filter(Boolean);
+  const bookingEnd = startMinute + Number(booking.duration);
+  for (let minute = startMinute; minute < bookingEnd; minute += 15) {
+    const overlapping = existingBookings.filter((existing) => minute < existing.end && existing.start < minute + 15).length;
+    if (overlapping >= capacity) return true;
+  }
+  return false;
 }
 
 async function validateBookingAvailability(db, booking, storeCode, bookingId = "") {
@@ -394,27 +442,23 @@ async function validateBookingAvailability(db, booking, storeCode, bookingId = "
   const expectedPrice = services.reduce((sum, service) => sum + Number(service.price), 0);
   if (booking.duration !== expectedDuration || booking.totalPrice !== expectedPrice) return "El precio o la duración cambió. Volvé a elegir el servicio.";
 
-  const schedule = professional.scheduleDates?.find((entry) => entry.date === booking.date);
+  const schedule = scheduleForDate(professional, booking.date);
   let allowedSlots = professional.availableSlots ?? [];
   let scheduleEnd = null;
   if (schedule) {
-    const start = /^([0-2]\d):([0-5]\d)$/.exec(schedule.start);
-    const end = /^([0-2]\d):([0-5]\d)$/.exec(schedule.end);
-    if (!start || !end) return "El horario del profesional no es válido.";
-    const firstMinute = Number(start[1]) * 60 + Number(start[2]);
-    scheduleEnd = Number(end[1]) * 60 + Number(end[2]);
-    allowedSlots = [];
-    for (let minute = firstMinute; minute + 30 <= scheduleEnd; minute += 30) {
-      allowedSlots.push(`${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`);
-    }
+    if (schedule.closed) return "El profesional no trabaja en esa fecha.";
+    const generated = scheduleSlots(schedule);
+    if (!generated) return "El horario del profesional no es válido.";
+    allowedSlots = generated.slots;
+    scheduleEnd = generated.endMinute;
   }
   if (!allowedSlots.includes(booking.time)) return "Ese horario no está dentro de la disponibilidad del profesional.";
   const [hours, minutes] = booking.time.split(":").map(Number);
   const startMinute = hours * 60 + minutes;
   if (scheduleEnd !== null && startMinute + booking.duration > scheduleEnd) return "El turno excede el horario del profesional.";
 
-  const hasConflict = await hasBookingConflict(db, booking, storeCode, bookingId);
-  return hasConflict ? "Ese horario acaba de ser reservado. Elegí otro horario." : null;
+  const hasConflict = await hasBookingConflict(db, booking, storeCode, bookingCapacityForDate(professional, booking.date), bookingId);
+  return hasConflict ? "Ese horario acaba de ser reservado o completó sus lugares disponibles. Elegí otro horario." : null;
 }
 
 export default async function handler(request, response) {
@@ -537,12 +581,9 @@ export default async function handler(request, response) {
         const plan = SUBSCRIPTION_PLANS.get(String(body.planId));
         if (!plan) return response.status(400).json({ error: "Elegí uno de los planes disponibles." });
         const promoCode = typeof body.promoCode === "string" ? body.promoCode.trim().toUpperCase() : "";
-        let discountPercent = 0;
-        if (promoCode) {
-          if (!SUBSCRIPTION_PROMO_CODES.includes(promoCode)) return response.status(400).json({ error: "El código promocional no es válido." });
-          discountPercent = subscriptionPromoDiscountPercent(promoCode);
-          if (discountPercent <= 0 || discountPercent >= 100) return response.status(400).json({ error: "Este código no puede usarse para pagar un plan." });
-        }
+        const discountPercent = promoCode ? subscriptionPromoDiscountPercent(promoCode) : 0;
+        if (promoCode && discountPercent <= 0) return response.status(400).json({ error: "El código promocional no es válido." });
+        if (discountPercent >= 100) return response.status(400).json({ error: "Este código activa un plan gratis y no requiere pago." });
         const payableAmount = Math.round(plan.amount * (100 - discountPercent) / 100);
         const roleResult = await db.execute({ sql: "SELECT role, store_code FROM account_roles WHERE user_id = ?", args: [user.id] });
         const storeCode = normalizeStoreCode(roleResult.rows[0]?.store_code);
@@ -592,7 +633,8 @@ export default async function handler(request, response) {
         if (!user.emailVerified) return response.status(403).json({ error: "Verificá tu email antes de activar el plan." });
         const submittedCode = typeof body.code === "string" ? body.code.trim() : "";
         const normalizedCode = submittedCode.toUpperCase();
-        if (!submittedCode || !SUBSCRIPTION_PROMO_CODES.includes(normalizedCode)) {
+        const discountPercent = submittedCode ? subscriptionPromoDiscountPercent(normalizedCode) : 0;
+        if (!discountPercent) {
           return response.status(400).json({ error: "El código promocional no es válido." });
         }
         const plan = SUBSCRIPTION_PLANS.get(String(body.planId));
@@ -600,7 +642,6 @@ export default async function handler(request, response) {
         const roleResult = await db.execute({ sql: "SELECT role, store_code FROM account_roles WHERE user_id = ?", args: [user.id] });
         const storeCode = normalizeStoreCode(roleResult.rows[0]?.store_code);
         if (roleResult.rows[0]?.role !== "admin" || !storeCode) return response.status(403).json({ error: "Solo el administrador de una sucursal puede aplicar el código." });
-        const discountPercent = subscriptionPromoDiscountPercent(normalizedCode);
         if (discountPercent === 10) {
           return response.status(200).json({ discountPercent, planLabel: plan.label });
         }
@@ -859,19 +900,15 @@ export default async function handler(request, response) {
         return response.status(400).json({ error: "El precio o la duración del turno ya cambió. Volvé a seleccionar el servicio." });
       }
 
-      const schedule = professional.scheduleDates?.find((entry) => entry.date === booking.date);
+      const schedule = scheduleForDate(professional, booking.date);
       let allowedSlots = professional.availableSlots ?? [];
       let scheduleEnd = null;
       if (schedule) {
-        const start = /^([0-2]\d):([0-5]\d)$/.exec(schedule.start);
-        const end = /^([0-2]\d):([0-5]\d)$/.exec(schedule.end);
-        if (!start || !end) return response.status(400).json({ error: "El horario del profesional no es válido." });
-        const firstMinute = Number(start[1]) * 60 + Number(start[2]);
-        scheduleEnd = Number(end[1]) * 60 + Number(end[2]);
-        allowedSlots = [];
-        for (let minute = firstMinute; minute + 30 <= scheduleEnd; minute += 30) {
-          allowedSlots.push(`${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`);
-        }
+        if (schedule.closed) return response.status(400).json({ error: "El profesional no trabaja en esa fecha." });
+        const generated = scheduleSlots(schedule);
+        if (!generated) return response.status(400).json({ error: "El horario del profesional no es válido." });
+        allowedSlots = generated.slots;
+        scheduleEnd = generated.endMinute;
       }
       if (!allowedSlots.includes(booking.time)) return response.status(400).json({ error: "Ese horario no está dentro de la disponibilidad del profesional." });
       const [hours, minutes] = booking.time.split(":").map(Number);
@@ -881,10 +918,10 @@ export default async function handler(request, response) {
       }
 
       transaction = await db.transaction("write");
-      const hasConflict = await hasBookingConflict(transaction, booking, storeCode);
+      const hasConflict = await hasBookingConflict(transaction, booking, storeCode, bookingCapacityForDate(professional, booking.date));
       if (hasConflict) {
         await transaction.rollback();
-        return response.status(409).json({ error: "Ese horario acaba de ser reservado. Elegí otro horario." });
+        return response.status(409).json({ error: "Ese horario acaba de ser reservado o completó sus lugares disponibles. Elegí otro horario." });
       }
 
       await transaction.execute({
@@ -986,9 +1023,15 @@ export default async function handler(request, response) {
           }
           const transaction = await db.transaction("write");
           try {
-            if (await hasBookingConflict(transaction, record, storeCode, id)) {
+            const capacityProfessional = await transaction.execute({ sql: "SELECT value FROM professionals WHERE id = ?", args: [storedRecordId(storeCode, record.barberId)] });
+            if (!capacityProfessional.rows[0]) {
               await transaction.rollback();
-              return response.status(409).json({ error: "Ese horario acaba de ser reservado. Elegí otro horario." });
+              return response.status(400).json({ error: "El profesional elegido ya no está disponible." });
+            }
+            const professionalForCapacity = JSON.parse(String(capacityProfessional.rows[0].value));
+            if (await hasBookingConflict(transaction, record, storeCode, bookingCapacityForDate(professionalForCapacity, record.date), id)) {
+              await transaction.rollback();
+              return response.status(409).json({ error: "Ese horario acaba de ser reservado o completó sus lugares disponibles. Elegí otro horario." });
             }
             await transaction.execute({
               sql: "INSERT INTO bookings (id, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) ON CONFLICT(id) DO NOTHING",

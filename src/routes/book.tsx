@@ -766,9 +766,9 @@ function StepDateTime({
       : [];
   const professionalSlots = professional?.availableSlots ?? [];
   const dateKey = date ? format(date, "yyyy-MM-dd") : "";
-  const occupied = date && barberId ? bookingStore.occupiedSlots(dateKey, barberId) : new Set<string>();
-  const slotsNeeded = Math.max(1, Math.ceil(duration / 30));
+  const slotsNeeded = Math.max(1, Math.ceil(duration / 15));
   const scheduleDay = date && professional ? getScheduleForDate(professional, date) : undefined;
+  const slotCapacity = scheduleDay?.capacity ?? 1;
   const slots = scheduleDay
     ? scheduleDay.closed ? [] : generateSlotsFromSchedule(scheduleDay)
     : professionalSlots;
@@ -777,7 +777,7 @@ function StepDateTime({
     const [h, m] = slot.split(":").map(Number);
     const start = h * 60 + m;
     for (let i = 0; i < slotsNeeded; i++) {
-      const t = start + i * 30;
+      const t = start + i * 15;
       const key = `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`;
       if (!slots.includes(key)) return false;
     }
@@ -786,16 +786,13 @@ function StepDateTime({
 
   const hasDurationFit = slots.some(fitsSelectedDuration);
 
+  function remainingForSlot(slot: string): number {
+    if (!date) return 0;
+    return bookingStore.remainingCapacity(dateKey, barberId, slot, duration, slotCapacity);
+  }
+
   function isSlotAvailable(slot: string): boolean {
-    if (!fitsSelectedDuration(slot)) return false;
-    const [h, m] = slot.split(":").map(Number);
-    const start = h * 60 + m;
-    for (let i = 0; i < slotsNeeded; i++) {
-      const t = start + i * 30;
-      const key = `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`;
-      if (occupied.has(key)) return false;
-    }
-    return true;
+    return fitsSelectedDuration(slot) && remainingForSlot(slot) > 0;
   }
 
   return (
@@ -847,6 +844,7 @@ function StepDateTime({
         <div className="grid grid-cols-3 gap-2 sm:grid-cols-5 md:grid-cols-6">
           {slots.map((s) => {
             const avail = isSlotAvailable(s);
+            const remaining = remainingForSlot(s);
             const selected = time === s;
             return (
               <button
@@ -855,12 +853,13 @@ function StepDateTime({
                 disabled={!avail}
                 onClick={() => setTime(s)}
                 className={cn(
-                  "rounded-lg border py-2.5 text-sm font-medium transition",
+                  "flex flex-col items-center rounded-lg border px-2 py-2 text-sm font-medium transition",
                   selected ? "border-gold bg-gold text-primary-foreground" : "border-border bg-card hover:border-gold/40",
                   !avail && "cursor-not-allowed opacity-25 line-through hover:border-border"
                 )}
               >
-                {s}
+                <span>{s}</span>
+                <span className="text-[10px] font-normal opacity-75">{avail ? `${remaining} disponible${remaining === 1 ? "" : "s"}` : "Completo"}</span>
               </button>
             );
           })}

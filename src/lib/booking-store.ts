@@ -55,20 +55,30 @@ export const bookingStore = {
   async remove(id: string) {
     await write(read().filter((booking) => booking.id !== id));
   },
-  occupiedSlots(date: string, barberId: string): Set<string> {
-    const slots = new Set<string>();
-    this.all()
-      .filter((booking) => booking.date === date && booking.barberId === barberId && booking.status !== "cancelled")
-      .forEach((booking) => {
-        const [hours, minutes] = booking.time.split(":").map(Number);
-        const start = hours * 60 + minutes;
-        const count = Math.ceil(booking.duration / 30);
-        for (let index = 0; index < count; index += 1) {
-          const minute = start + index * 30;
-          slots.add(`${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`);
-        }
-      });
-    return slots;
+  remainingCapacity(date: string, barberId: string, time: string, duration: number, capacity: number): number {
+    const [hours, minutes] = time.split(":").map(Number);
+    const start = hours * 60 + minutes;
+    const end = start + duration;
+    const relevantBookings = this.all().filter((booking) =>
+      booking.date === date
+      && booking.barberId === barberId
+      && booking.status !== "cancelled"
+      && (() => {
+        const [bookingHours, bookingMinutes] = booking.time.split(":").map(Number);
+        const bookingStart = bookingHours * 60 + bookingMinutes;
+        return start < bookingStart + booking.duration && bookingStart < end;
+      })(),
+    );
+    let maxOverlapping = 0;
+    for (let minute = start; minute < end; minute += 15) {
+      const overlapping = relevantBookings.filter((booking) => {
+        const [bookingHours, bookingMinutes] = booking.time.split(":").map(Number);
+        const bookingStart = bookingHours * 60 + bookingMinutes;
+        return minute < bookingStart + booking.duration && bookingStart < minute + 15;
+      }).length;
+      maxOverlapping = Math.max(maxOverlapping, overlapping);
+    }
+    return Math.max(0, capacity - maxOverlapping);
   },
 };
 
