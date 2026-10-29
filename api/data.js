@@ -357,6 +357,80 @@ async function verifySubscriptionPurchase(db, purchaseId, expectedOwnerId) {
   return verifyMercadoPagoPayment(db, String(approvedPayment.id), expectedOwnerId);
 }
 
+async function findApprovedMercadoPagoPayment(bookingId, paymentId) {
+  const accessToken = requiredEnv("MERCADOPAGO_ACCESS_TOKEN");
+  const endpoint = paymentId
+    ? `https://api.mercadopago.com/v1/payments/${encodeURIComponent(paymentId)}`
+    : `https://api.mercadopago.com/v1/payments/search?external_reference=${encodeURIComponent(bookingId)}&sort=date_created&criteria=desc`;
+  const response = await fetch(endpoint, { headers: { Authorization: `Bearer ${accessToken}` } });
+  if (!response.ok) throw new Error("No se pudo verificar el pago en Mercado Pago.");
+  const result = await response.json();
+  const payment = paymentId ? result : result.results?.find((item) => item.status === "approved");
+  if (!payment || payment.status !== "approved") return null;
+  if (payment.currency_id !== "ARS" || String(payment.external_reference) !== bookingId) {
+    throw new Error("El pago no coincide con la reserva.");
+  }
+  return payment;
+}
+
+async function verifyBookingPayment(db, bookingId, paymentId) {
+  if (typeof bookingId !== "string" || !/^[\da-f-]{36}$/i.test(bookingId)) {
+    throw new Error("Identificador de reserva inválido.");
+  }
+  const payment = await findApprovedMercadoPagoPayment(bookingId, paymentId);
+  if (!payment) return { approved: false };
+
+  const transaction = await db.transaction("write");
+  try {
+    const result = await transaction.execute({ sql: "SELECT value FROM bookings WHERE id = ?", args: [bookingId] });
+    if (!result.rows[0]) throw new Error("No encontramos el turno asociado al pago.");
+    const booking = JSON.parse(String(result.rows[0].value));
+    if (booking.customer?.paymentMethod !== "tarjeta o mercado pago") {
+      throw new Error("La reserva no corresponde a un pago con Mercado Pago.");
+    }
+    if (Number(payment.transaction_amount) !== Number(booking.totalPrice)) {
+      throw new Error("El importe pagado no coincide con el total del turno.");
+    }
+    if (booking.status === "confirmed" && booking.paymentStatus === "approved") {
+      await transaction.commit();
+      return { approved: true };
+    }
+    if (booking.status !== "pending-payment") {
+      throw new Error("La reserva ya no está pendiente de pago.");
+    }
+
+    booking.status = "confirmed";
+    booking.paymentStatus = "approved";
+    booking.mercadoPagoPaymentId = String(payment.id);
+    delete booking.cancellationToken;
+    await transaction.execute({
+      sql: "UPDATE bookings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+      args: [JSON.stringify(booking), bookingId],
+    });
+    await transaction.commit();
+    return { approved: true };
+  } catch (error) {
+    await transaction.rollback().catch(() => undefined);
+    throw error;
+  }
+}
+
+async function processMercadoPagoNotification(db, paymentId) {
+  if (!/^\d{1,30}$/.test(String(paymentId))) throw new Error("Identificador de pago inválido.");
+  const accessToken = requiredEnv("MERCADOPAGO_ACCESS_TOKEN");
+  const response = await fetch(`https://api.mercadopago.com/v1/payments/${encodeURIComponent(paymentId)}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!response.ok) throw new Error("No se pudo verificar el pago en Mercado Pago.");
+  const payment = await response.json();
+  const reference = typeof payment.external_reference === "string" ? payment.external_reference : "";
+  if (!reference || payment.status !== "approved") return { approved: false };
+
+  const subscription = await db.execute({ sql: "SELECT id FROM subscription_orders WHERE id = ?", args: [reference] });
+  if (subscription.rows[0]) return verifyMercadoPagoPayment(db, String(paymentId));
+  return verifyBookingPayment(db, reference, String(paymentId));
+}
+
 function recordId(record) {
   return record && typeof record === "object" && !Array.isArray(record)
     && typeof record.id === "string" && record.id.length > 0 && record.id.length <= 200
@@ -569,6 +643,58 @@ export default async function handler(request, response) {
     return response.status(400).json({ error: "El cuerpo JSON no es válido." });
   }
   if (request.method === "POST") {
+    if (body?.action === "create-booking-payment-preference") {
+      try {
+        const bookingId = typeof body.bookingId === "string" ? body.bookingId : "";
+        if (!/^[\da-f-]{36}$/i.test(bookingId)) return response.status(400).json({ error: "Identificador de reserva inválido." });
+        const bookingResult = await db.execute({ sql: "SELECT value FROM bookings WHERE id = ?", args: [bookingId] });
+        if (!bookingResult.rows[0]) return response.status(404).json({ error: "No encontramos el turno para preparar el pago." });
+        const booking = JSON.parse(String(bookingResult.rows[0].value));
+        if (booking.status !== "pending-payment" || booking.customer?.paymentMethod !== "tarjeta o mercado pago") {
+          return response.status(409).json({ error: "El turno no está pendiente de pago con Mercado Pago." });
+        }
+
+        const accessToken = requiredEnv("MERCADOPAGO_ACCESS_TOKEN");
+        const host = request.headers.host || "localhost";
+        const protocol = request.headers["x-forwarded-proto"] || "https";
+        const appUrl = (process.env.PUBLIC_APP_URL || `${protocol}://${host}`).replace(/\/$/, "");
+        const preferenceResponse = await fetch("https://api.mercadopago.com/checkout/preferences", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            items: [{ id: `booking-${bookingId}`, title: "Reserva de turno", quantity: 1, currency_id: "ARS", unit_price: Number(Number(booking.totalPrice).toFixed(2)) }],
+            payer: { email: booking.customer.email },
+            external_reference: bookingId,
+            notification_url: `${appUrl}/api/mercadopago/webhook`,
+            metadata: { booking_id: bookingId, store_code: normalizeStoreCode(booking.storeCode) },
+            back_urls: {
+              success: `${appUrl}/reserva?payment=success&booking_id=${encodeURIComponent(bookingId)}`,
+              failure: `${appUrl}/reserva?payment=failure&booking_id=${encodeURIComponent(bookingId)}`,
+              pending: `${appUrl}/reserva?payment=pending&booking_id=${encodeURIComponent(bookingId)}`,
+            },
+            auto_return: "approved",
+          }),
+        });
+        const preference = await preferenceResponse.json();
+        if (!preferenceResponse.ok || !preference.init_point) {
+          console.error("Mercado Pago booking preference failed", preferenceResponse.status);
+          return response.status(502).json({ error: "Mercado Pago no pudo preparar el pago." });
+        }
+        return response.status(200).json({ initPoint: preference.init_point });
+      } catch (error) {
+        console.error("No se pudo iniciar el pago del turno", error);
+        return response.status(500).json({ error: error instanceof Error ? error.message : "No se pudo iniciar el pago del turno." });
+      }
+    }
+    if (body?.action === "verify-booking-payment") {
+      try {
+        const result = await verifyBookingPayment(db, String(body.bookingId ?? ""), body.paymentId ? String(body.paymentId) : undefined);
+        return response.status(200).json(result);
+      } catch (error) {
+        console.error("No se pudo verificar el pago del turno", error);
+        return response.status(400).json({ error: error instanceof Error ? error.message : "No se pudo verificar el pago del turno." });
+      }
+    }
     if (body?.action === "cancel-pending-booking") {
       const bookingId = typeof body.bookingId === "string" ? body.bookingId : "";
       const cancellationToken = typeof body.cancellationToken === "string" ? body.cancellationToken : "";
@@ -594,10 +720,6 @@ export default async function handler(request, response) {
           await transaction.rollback();
           return response.status(403).json({ error: "No se puede cancelar esta reserva pendiente." });
         }
-        if (user && booking.customer?.email?.trim().toLowerCase() !== user.email) {
-          await transaction.rollback();
-          return response.status(403).json({ error: "La reserva no pertenece a esta cuenta." });
-        }
         booking.status = "cancelled";
         delete booking.cancellationToken;
         await transaction.execute({
@@ -612,9 +734,9 @@ export default async function handler(request, response) {
         return response.status(500).json({ error: "No se pudo cancelar la reserva pendiente." });
       }
     }
-    if (!user && body?.action === "mercadopago-subscription-webhook") {
+    if (!user && (body?.action === "mercadopago-payment-webhook" || body?.action === "mercadopago-subscription-webhook")) {
       try {
-        const result = await verifyMercadoPagoPayment(db, String(body.paymentId ?? ""));
+        const result = await processMercadoPagoNotification(db, String(body.paymentId ?? ""));
         return response.status(200).json({ received: true, approved: result.approved });
       } catch (error) {
         console.error("No se pudo procesar la notificación de suscripción de Mercado Pago", error);

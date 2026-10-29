@@ -49,15 +49,16 @@ function setSnapshot(next: CloudSnapshot) {
   dispatchCloudReady();
 }
 
-async function request<T>(method: "GET" | "PUT" | "POST", body?: unknown): Promise<T> {
+async function request<T>(method: "GET" | "PUT" | "POST", body?: unknown, requestedStoreCode?: string): Promise<T> {
   const token = await tokenGetter?.();
   if (!token && method === "PUT") throw new Error("No se obtuvo una sesión válida de Kinde.");
+  const requestStoreCode = requestedStoreCode?.trim().toUpperCase() || storeCode;
   const response = await fetch("/api/data", {
     method,
     headers: {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(body ? { "Content-Type": "application/json" } : {}),
-      ...(storeCode ? { "X-Store-Code": storeCode } : {}),
+      ...(requestStoreCode ? { "X-Store-Code": requestStoreCode } : {}),
     },
     ...(body ? { body: JSON.stringify(body) } : {}),
     cache: "no-store",
@@ -235,8 +236,8 @@ export async function verifySubscriptionPayment(purchaseId: string) {
   return request<{ approved: boolean; expiresAt?: string | null }>("POST", { action: "verify-subscription-payment", purchaseId });
 }
 
-export async function cancelPendingBooking(bookingId: string, cancellationToken: string) {
-  return request<{ ok: boolean }>("POST", { action: "cancel-pending-booking", bookingId, cancellationToken });
+export async function cancelPendingBooking(bookingId: string, cancellationToken: string, requestedStoreCode?: string) {
+  return request<{ ok: boolean }>("POST", { action: "cancel-pending-booking", bookingId, cancellationToken }, requestedStoreCode);
 }
 
 export async function loadReservationStore(storeCode: string, getToken?: () => Promise<string | undefined>) {
