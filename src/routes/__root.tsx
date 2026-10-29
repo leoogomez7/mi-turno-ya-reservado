@@ -10,7 +10,6 @@ import {
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
-import logo from "../../logo.png";
 import { reportAppError } from "../lib/error-reporting";
 import { Toaster } from "@/components/ui/sonner";
 import { LoadingScreen } from "@/components/loading-screen";
@@ -107,13 +106,9 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { name: "twitter:card", content: "summary_large_image" },
     ],
     links: [
-      {
-        rel: "icon",
-        type: "image/png",
-        href: "/logo.png?v=8",
-      },
-      { rel: "shortcut icon", type: "image/png", href: "/logo.png?v=8" },
-      { rel: "apple-touch-icon", type: "image/png", href: `${logo}?v=4` },
+      { rel: "icon", type: "image/png", href: "/logo.png?v=9" },
+      { rel: "shortcut icon", type: "image/png", href: "/logo.png?v=9" },
+      { rel: "apple-touch-icon", type: "image/png", href: "/logo.png?v=9" },
       {
         rel: "stylesheet",
         href: appCss,
