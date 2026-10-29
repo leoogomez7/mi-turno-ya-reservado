@@ -44,6 +44,15 @@ const EMPTY_CUSTOMER: Customer = {
   notes: "",
 };
 
+function paymentMethodLabel(paymentMethod: Customer["paymentMethod"] | undefined) {
+  switch (paymentMethod) {
+    case "efectivo": return "Efectivo";
+    case "transferencia": return "Transferencia Bancaria";
+    case "tarjeta o mercado pago": return "Tarjeta o MercadoPago";
+    default: return "Sin seleccionar";
+  }
+}
+
 type ReservationResult = {
   kind: "confirmed" | "transfer-pending" | "payment-success" | "payment-pending" | "payment-failure";
   date: string;
@@ -960,7 +969,7 @@ function StepConfirm({
         <Row label="Servicios" value={serviceNames || "-"} />
         <Row label="Fecha" value={format(date, "EEEE d 'de' MMMM, yyyy", { locale: es })} />
         <Row label="Horario" value={time} />
-        <Row label="Método de pago" value={customer.paymentMethod ?? "Sin seleccionar"} />
+        <Row label="Método de pago" value={paymentMethodLabel(customer.paymentMethod)} />
         <Row label="Duración" value={`${duration} min`} icon={Clock} />
         {customer.notes && <Row label="Observaciones" value={customer.notes} />}
       </div>
