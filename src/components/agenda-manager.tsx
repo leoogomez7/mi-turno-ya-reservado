@@ -185,15 +185,20 @@ export function AgendaManager() {
                     <span className="text-[10px]">{booking.time}</span>
                   </div>
                   <div className="min-w-0 flex-1">
-                    <div className="font-medium">{booking.customer.fullName}</div>
+                    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                      <span className="font-medium">{booking.customer.fullName}</span>
+                      {booking.customer.phone && <span className="text-xs text-muted-foreground">{booking.customer.phone}</span>}
+                      {booking.customer.email && <span className="truncate text-xs text-muted-foreground">{booking.customer.email}</span>}
+                    </div>
                     <div className="truncate text-sm text-muted-foreground">{services} · {booking.duration} min</div>
                     <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                      <Badge variant="outline" className="border-gold/30 text-gold">{professional?.name}</Badge>
+                      <Badge variant="outline" className="border-gold/30 text-gold">
+                        {professional?.name}{professional?.specialty ? ` · ${professional.specialty}` : ""}
+                      </Badge>
                       {booking.isTest && <Badge variant="outline" className="border-emerald-300 text-emerald-400">Turno de prueba</Badge>}
                       {booking.status === "pending-payment" && <Badge variant="outline" className="border-amber-300 text-amber-300">Pago pendiente · {booking.customer.paymentMethod}</Badge>}
                       {booking.status === "completed" && <Badge variant="outline" className="border-emerald-300 text-emerald-400">Asistió</Badge>}
                       {booking.status === "no-show" && <Badge variant="outline" className="border-red-500/30 bg-red-500/10 text-red-300">No asistió</Badge>}
-                      <span>{booking.customer.phone}</span>
                     </div>
                   </div>
                   <div className="font-display text-lg font-semibold text-gold">${booking.totalPrice.toLocaleString("es-AR")}</div>
