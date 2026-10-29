@@ -58,7 +58,8 @@ export function BookPage() {
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [stores, setStores] = useState<Store[]>(getAvailableStores());
   const [selectedStoreCode, setSelectedStoreCode] = useState(getCurrentStoreCode());
-  const [storePickerOpen, setStorePickerOpen] = useState(() => !getCurrentStoreCode());
+  const [cloudDataReady, setCloudDataReady] = useState(isCloudInitialized);
+  const [storePickerOpen, setStorePickerOpen] = useState(false);
   const [storeSearch, setStoreSearch] = useState("");
   const [storeSearchSubmitted, setStoreSearchSubmitted] = useState(false);
   const [storeNotFound, setStoreNotFound] = useState(false);
@@ -82,6 +83,7 @@ export function BookPage() {
     const reloadStores = () => {
       setStores(getAvailableStores());
       setSelectedStoreCode(getCurrentStoreCode());
+      setCloudDataReady(true);
     };
     window.addEventListener("mi-turno-ya:cloud-ready", reloadStores);
     window.addEventListener("mi-turno-ya:store-changed", reloadStores);
@@ -92,19 +94,34 @@ export function BookPage() {
   }, []);
 
   useEffect(() => {
-    if (!isCloudInitialized() || !selectedStoreCode) return;
-    const selectedStore = stores.find((store) => store.code === selectedStoreCode);
-    const active = selectedStore?.subscriptionExpiresAt
-      ? Date.parse(selectedStore.subscriptionExpiresAt) > Date.now()
-      : false;
-    if (active) return;
-    setSelectedStoreCode("");
-    setStorePickerOpen(true);
-    setBarberId("");
-    setServiceIds([]);
-    setDate(null);
-    setTime("");
-  }, [selectedStoreCode, stores]);
+    if (!cloudDataReady) return;
+    const currentCode = selectedStoreCode || getCurrentStoreCode();
+    const currentStore = stores.find((store) => store.code === currentCode);
+    const hasActiveStore = Boolean(
+      currentStore?.subscriptionExpiresAt
+      && Date.parse(currentStore.subscriptionExpiresAt) > Date.now(),
+    );
+
+    if (hasActiveStore) {
+      if (currentCode !== selectedStoreCode) setSelectedStoreCode(currentCode);
+      setStorePickerOpen(false);
+      setStepError(null);
+      return;
+    }
+
+    if (selectedStoreCode) {
+      setSelectedStoreCode("");
+      setBarberId("");
+      setServiceIds([]);
+      setDate(null);
+      setTime("");
+    }
+    const needsStore = !currentCode || !hasActiveStore;
+    if (needsStore) {
+      setStorePickerOpen(true);
+      setStepError(step > 0 ? "Elegí una sucursal para poder continuar con la reserva." : null);
+    }
+  }, [cloudDataReady, selectedStoreCode, stores, step]);
 
   useEffect(() => {
     if (step !== 3 || !selectedStoreCode) return;
@@ -117,14 +134,6 @@ export function BookPage() {
       window.removeEventListener("focus", refresh);
     };
   }, [step, selectedStoreCode]);
-
-  useEffect(() => {
-    const hasActiveSelection = stores.some((store) =>
-      store.code === selectedStoreCode
-      && Boolean(store.subscriptionExpiresAt && Date.parse(store.subscriptionExpiresAt) > Date.now()),
-    );
-    if (hasActiveSelection) setStorePickerOpen(false);
-  }, [selectedStoreCode, stores]);
 
   const activeStores = stores.filter((store) =>
     Boolean(store.subscriptionExpiresAt && Date.parse(store.subscriptionExpiresAt) > Date.now()),
@@ -163,17 +172,8 @@ export function BookPage() {
   useEffect(() => {
     const pathStep = stepForPath(location.pathname);
     if (pathStep === undefined) return;
-    const currentStoreCode = selectedStoreCode || getCurrentStoreCode();
-    if (Number(pathStep) > 0 && !currentStoreCode) {
-      const message = "Elegí una sucursal para poder continuar con la reserva.";
-      setStepError(message);
-      setStorePickerOpen(true);
-    }
-    if (currentStoreCode && currentStoreCode !== selectedStoreCode) {
-      setSelectedStoreCode(currentStoreCode);
-    }
     setStep(Number(pathStep));
-  }, [location.pathname, navigate, selectedStoreCode]);
+  }, [location.pathname]);
 
   function goToStep(nextStep: number) {
     const safeStep = Math.max(0, Math.min(STEPS.length - 1, nextStep));

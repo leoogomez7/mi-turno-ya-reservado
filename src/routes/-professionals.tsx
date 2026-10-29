@@ -735,23 +735,21 @@ export function ProfessionalsManager() {
                   </div>
                   </Field>
                 </div>
-                <div className="flex flex-col gap-3 pt-2">
-                  <div className="flex flex-wrap justify-start gap-3">
-                    {editingId && selectedProfessional?.isTest ? (
-                      <Button variant="outline" disabled className="cursor-not-allowed opacity-50 text-muted-foreground">
-                        Profesional de prueba
-                      </Button>
-                    ) : editingId ? (
-                      <Button variant="outline" disabled={Boolean(deletingProfessionalId) || savingProfessional} className="w-full max-w-52 border-red-500/30 text-red-300 hover:bg-red-500/10 hover:text-red-300" onClick={() => requestDeleteProfessional(editingId)}>
-                        {deletingProfessionalId === editingId ? "Eliminando..." : "Eliminar profesional"}
-                      </Button>
-                    ) : null}
-                    <Button disabled={savingProfessional || Boolean(deletingProfessionalId)} onClick={() => void saveProfessional()} className="w-full max-w-52 bg-gold text-primary-foreground hover:bg-gold-soft">
-                      {savingProfessional ? "Guardando…" : "Guardar profesional"}
+                <div className="flex w-full items-center gap-3 pt-2">
+                  {editingId && (selectedProfessional?.isTest ? (
+                    <Button variant="outline" disabled className="min-w-0 flex-1 px-2 text-xs opacity-50 text-muted-foreground sm:text-sm">
+                      Profesional de prueba
                     </Button>
-                  </div>
-                  <Button variant="outline" disabled={savingProfessional || Boolean(deletingProfessionalId)} onClick={() => setShowForm(false)} className="w-full max-w-52">
+                  ) : (
+                    <Button variant="outline" disabled={Boolean(deletingProfessionalId) || savingProfessional} className="min-w-0 flex-1 border-red-500/30 px-2 text-xs text-red-300 hover:bg-red-500/10 hover:text-red-300 sm:text-sm" onClick={() => requestDeleteProfessional(editingId)}>
+                      {deletingProfessionalId === editingId ? "Eliminando..." : "Eliminar profesional"}
+                    </Button>
+                  ))}
+                  <Button variant="outline" disabled={savingProfessional || Boolean(deletingProfessionalId)} onClick={() => setShowForm(false)} className="min-w-0 flex-1 px-2 text-xs sm:text-sm">
                     Cancelar
+                  </Button>
+                  <Button disabled={savingProfessional || Boolean(deletingProfessionalId)} onClick={() => void saveProfessional()} className="min-w-0 flex-1 bg-gold px-2 text-xs text-primary-foreground hover:bg-gold-soft sm:text-sm">
+                    {savingProfessional ? "Guardando…" : "Guardar profesional"}
                   </Button>
                 </div>
               </div>
