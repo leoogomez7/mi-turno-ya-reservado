@@ -25,6 +25,7 @@ export function AgendaManager() {
   const [editedProfessionalId, setEditedProfessionalId] = useState("");
   const [editedServiceId, setEditedServiceId] = useState("");
   const [savingEdit, setSavingEdit] = useState(false);
+  const [confirmingPaymentId, setConfirmingPaymentId] = useState<string | null>(null);
 
   useEffect(() => {
     const reload = () => setBookings(bookingStore.all());
@@ -121,12 +122,17 @@ export function AgendaManager() {
   }
 
   async function updateBooking(id: string, patch: Partial<Booking>, success: string) {
+    const confirmingPayment = patch.status === "confirmed";
+    if (confirmingPayment && confirmingPaymentId) return;
+    if (confirmingPayment) setConfirmingPaymentId(id);
     try {
       await bookingStore.update(id, patch);
       toast.success(success);
       closeDialog();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "No se pudo actualizar el turno.");
+    } finally {
+      if (confirmingPayment) setConfirmingPaymentId(null);
     }
   }
 
@@ -192,7 +198,7 @@ export function AgendaManager() {
                   </div>
                   <div className="font-display text-lg font-semibold text-gold">${booking.totalPrice.toLocaleString("es-AR")}</div>
                   <div className="flex flex-wrap gap-2">
-                    {booking.status === "pending-payment" && <Button size="sm" variant="outline" onClick={() => void updateBooking(booking.id, { status: "confirmed" }, "Pago verificado")}>Confirmar pago</Button>}
+                    {booking.status === "pending-payment" && <Button size="sm" disabled={confirmingPaymentId !== null} onClick={() => void updateBooking(booking.id, { status: "confirmed" }, "Pago verificado")} className="bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-60">{confirmingPaymentId === booking.id ? "Confirmando..." : "Confirmar pago"}</Button>}
                     {booking.status === "confirmed" && <Button size="sm" variant="outline" onClick={() => openDialog(booking, "attendance")}>Indicar asistencia</Button>}
                     <Button size="sm" variant="outline" onClick={() => openDialog(booking, "turno")}>Modificar turno</Button>
                     <Button size="sm" variant="destructive" disabled={booking.isTest} onClick={() => void removeBooking(booking.id)}>Borrar turno</Button>
