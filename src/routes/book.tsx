@@ -186,12 +186,12 @@ export function BookPage() {
     if (!paymentReturn) return;
     let pendingPayment: { bookingId?: string; cancellationToken?: string; date?: string; time?: string } = {};
     try {
-      const saved = window.sessionStorage.getItem(PENDING_PAYMENT_SESSION_KEY);
+      const saved = window.localStorage.getItem(PENDING_PAYMENT_SESSION_KEY);
       if (saved) pendingPayment = JSON.parse(saved) as typeof pendingPayment;
     } catch {
       pendingPayment = {};
     }
-    window.sessionStorage.removeItem(PENDING_PAYMENT_SESSION_KEY);
+    window.localStorage.removeItem(PENDING_PAYMENT_SESSION_KEY);
 
     const resultKind: ReservationResult["kind"] = paymentReturn === "success"
       ? "payment-success"
@@ -314,7 +314,6 @@ export function BookPage() {
     }
 
     setConfirmingBooking(true);
-    let redirectingToPayment = false;
     try {
     const barber = selectedProfessional;
     const serviceNames = selectedServices
@@ -351,6 +350,12 @@ Observaciones: ${customer.notes || "Ninguna"}`;
 
     if (customer.paymentMethod === "tarjeta o mercado pago") {
       setPaymentError(null);
+      const paymentWindow = window.open("about:blank", "_blank");
+      if (!paymentWindow) {
+        setPaymentError("El navegador bloqueó la nueva pestaña. Permití las ventanas emergentes para continuar con Mercado Pago.");
+        return;
+      }
+      paymentWindow.opener = null;
       try {
         const response = await fetch("/api/mercadopago/preference", {
           method: "POST",
@@ -374,15 +379,15 @@ Observaciones: ${customer.notes || "Ninguna"}`;
           date: format(date, "yyyy-MM-dd"),
           time, duration, totalPrice: price, status: "pending-payment",
         });
-        window.sessionStorage.setItem(PENDING_PAYMENT_SESSION_KEY, JSON.stringify({
+        window.localStorage.setItem(PENDING_PAYMENT_SESSION_KEY, JSON.stringify({
           bookingId: pendingBooking.id,
           cancellationToken: pendingBooking.cancellationToken,
           date: format(date, "yyyy-MM-dd"),
           time,
         }));
-        redirectingToPayment = true;
-        window.location.assign(result.initPoint);
+        paymentWindow.location.href = result.initPoint;
       } catch (error) {
+        paymentWindow.close();
         setPaymentError(error instanceof Error ? error.message : "No se pudo preparar el pago.");
       }
       return;
@@ -406,7 +411,7 @@ Observaciones: ${customer.notes || "Ninguna"}`;
       toast.error(error instanceof Error ? error.message : "No se pudo guardar el turno.");
     }
     } finally {
-      if (!redirectingToPayment) setConfirmingBooking(false);
+      setConfirmingBooking(false);
     }
   }
 
