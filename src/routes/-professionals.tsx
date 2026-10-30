@@ -769,7 +769,7 @@ export function ProfessionalsManager() {
                   placeholder={loadingMercadoPagoCredentials ? "Cargando…" : mercadoPagoPublicKeyConfigured ? "Public Key guardada; completá solo para reemplazarla" : "APP_USR-..."}
                 />
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Configuración → Integraciones → Tus Integraciones → Credenciales de producción → Public Key
+                  Configuración → Integraciones → Tus Integraciones → Credenciales de producción → Crear aplicación → Escribir nombre → Pagos Online → Con un desarrollo propio → URL de la tienda → Checkout Pro → API de Orders → Confirmar → Activar credenciales → Industria (Otros) → Sitio Web (Esta web) → Activar Credenciales → Public Key
                 </p>
                 {mercadoPagoPublicKeyConfigured && <p className="mt-1 text-xs text-emerald-400">Hay una Public Key guardada para esta sucursal. Por seguridad, no se vuelve a mostrar.</p>}
               </Field>
@@ -784,7 +784,7 @@ export function ProfessionalsManager() {
                   placeholder={loadingMercadoPagoCredentials ? "Cargando…" : mercadoPagoAccessTokenConfigured ? "Token guardado; completá solo para reemplazarlo" : "APP_USR-..."}
                 />
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Configuración → Integraciones → Tus Integraciones → Credenciales de producción → Access Token
+                  Configuración → Integraciones → Tus Integraciones → Credenciales de producción → Crear aplicación → Escribir nombre → Pagos Online → Con un desarrollo propio → URL de la tienda → Checkout Pro → API de Orders → Confirmar → Activar credenciales → Industria (Otros) → Sitio Web (Esta web) → Activar Credenciales → Access Token
                 </p>
                 {mercadoPagoAccessTokenConfigured && <p className="mt-1 text-xs text-emerald-400">Hay un Access Token guardado y protegido para esta sucursal.</p>}
               </Field>
