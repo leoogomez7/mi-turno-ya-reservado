@@ -25,7 +25,11 @@ export default async function handler(req, res) {
       return res.end(JSON.stringify({ error: "Falta el identificador del pago." }));
     }
     req.method = "POST";
-    req.body = { action: "mercadopago-payment-webhook", paymentId: String(paymentId) };
+    req.body = {
+      action: "mercadopago-payment-webhook",
+      paymentId: String(paymentId),
+      ...(url.searchParams.get("booking_id") ? { bookingId: url.searchParams.get("booking_id") } : {}),
+    };
     return dataHandler(req, res);
   }
 

@@ -1,6 +1,6 @@
 import { createClient } from "@libsql/client";
 import { createRemoteJWKSet, jwtVerify } from "jose";
-import { randomBytes } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
 
 const COLLECTIONS = ["bookings", "professionals"];
 const FREE_TRIAL_DAYS = 4;
@@ -20,6 +20,40 @@ function requiredEnv(name) {
   const value = process.env[name]?.trim();
   if (!value) throw new Error(`Falta configurar ${name} en el servidor.`);
   return value;
+}
+
+function paymentCredentialEncryptionKey() {
+  return createHash("sha256").update(requiredEnv("MERCADOPAGO_CREDENTIALS_ENCRYPTION_KEY"), "utf8").digest();
+}
+
+function encryptPaymentAccessToken(accessToken) {
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", paymentCredentialEncryptionKey(), iv);
+  const encrypted = Buffer.concat([cipher.update(accessToken, "utf8"), cipher.final()]);
+  return [iv.toString("base64"), cipher.getAuthTag().toString("base64"), encrypted.toString("base64")].join(".");
+}
+
+function decryptPaymentAccessToken(value) {
+  const [iv, authTag, encrypted] = String(value).split(".");
+  if (!iv || !authTag || !encrypted) throw new Error("Las credenciales de Mercado Pago guardadas no se pueden leer.");
+  const decipher = createDecipheriv("aes-256-gcm", paymentCredentialEncryptionKey(), Buffer.from(iv, "base64"));
+  decipher.setAuthTag(Buffer.from(authTag, "base64"));
+  return Buffer.concat([decipher.update(Buffer.from(encrypted, "base64")), decipher.final()]).toString("utf8");
+}
+
+async function getStorePaymentCredentials(db, storeCode) {
+  const result = await db.execute({
+    sql: "SELECT public_key, encrypted_access_token FROM store_payment_credentials WHERE store_code = ?",
+    args: [normalizeStoreCode(storeCode)],
+  });
+  const credentials = result.rows[0];
+  if (!credentials?.public_key || !credentials?.encrypted_access_token) {
+    throw new Error("Esta sucursal todavía no configuró sus credenciales de Mercado Pago.");
+  }
+  return {
+    publicKey: String(credentials.public_key),
+    accessToken: decryptPaymentAccessToken(credentials.encrypted_access_token),
+  };
 }
 
 function normalizeStoreCode(value) {
@@ -202,6 +236,12 @@ async function database() {
       owner_id TEXT NOT NULL,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     )`,
+    `CREATE TABLE IF NOT EXISTS store_payment_credentials (
+      store_code TEXT PRIMARY KEY,
+      public_key TEXT NOT NULL DEFAULT '',
+      encrypted_access_token TEXT NOT NULL,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )`,
     `CREATE TABLE IF NOT EXISTS subscription_orders (
       id TEXT PRIMARY KEY,
       store_code TEXT NOT NULL,
@@ -357,8 +397,7 @@ async function verifySubscriptionPurchase(db, purchaseId, expectedOwnerId) {
   return verifyMercadoPagoPayment(db, String(approvedPayment.id), expectedOwnerId);
 }
 
-async function findApprovedMercadoPagoPayment(bookingId, paymentId) {
-  const accessToken = requiredEnv("MERCADOPAGO_ACCESS_TOKEN");
+async function findApprovedMercadoPagoPayment(bookingId, paymentId, accessToken) {
   const endpoint = paymentId
     ? `https://api.mercadopago.com/v1/payments/${encodeURIComponent(paymentId)}`
     : `https://api.mercadopago.com/v1/payments/search?external_reference=${encodeURIComponent(bookingId)}&sort=date_created&criteria=desc`;
@@ -377,7 +416,14 @@ async function verifyBookingPayment(db, bookingId, paymentId) {
   if (typeof bookingId !== "string" || !/^[\da-f-]{36}$/i.test(bookingId)) {
     throw new Error("Identificador de reserva inválido.");
   }
-  const payment = await findApprovedMercadoPagoPayment(bookingId, paymentId);
+  const bookingResult = await db.execute({ sql: "SELECT value FROM bookings WHERE id = ?", args: [bookingId] });
+  if (!bookingResult.rows[0]) throw new Error("No encontramos el turno asociado al pago.");
+  const existingBooking = JSON.parse(String(bookingResult.rows[0].value));
+  if (existingBooking.customer?.paymentMethod !== "tarjeta o mercado pago") {
+    throw new Error("La reserva no corresponde a un pago con Mercado Pago.");
+  }
+  const credentials = await getStorePaymentCredentials(db, existingBooking.storeCode);
+  const payment = await findApprovedMercadoPagoPayment(bookingId, paymentId, credentials.accessToken);
   if (!payment) return { approved: false };
 
   const transaction = await db.transaction("write");
@@ -643,29 +689,78 @@ export default async function handler(request, response) {
     return response.status(400).json({ error: "El cuerpo JSON no es válido." });
   }
   if (request.method === "POST") {
+    if (user && (body?.action === "get-store-payment-credentials" || body?.action === "save-store-payment-credentials")) {
+      try {
+        if (!user.emailVerified) return response.status(403).json({ error: "Verificá tu email antes de configurar los pagos." });
+        const roleResult = await db.execute({ sql: "SELECT role, store_code FROM account_roles WHERE user_id = ?", args: [user.id] });
+        const storeCode = normalizeStoreCode(roleResult.rows[0]?.store_code);
+        if (roleResult.rows[0]?.role !== "admin" || !storeCode) {
+          return response.status(403).json({ error: "Solo un administrador con sucursal puede configurar los cobros." });
+        }
+
+        const currentResult = await db.execute({
+          sql: "SELECT public_key, encrypted_access_token FROM store_payment_credentials WHERE store_code = ?",
+          args: [storeCode],
+        });
+        const current = currentResult.rows[0];
+        if (body.action === "get-store-payment-credentials") {
+          return response.status(200).json({
+            publicKey: current ? String(current.public_key) : "",
+            accessTokenConfigured: Boolean(current?.encrypted_access_token),
+          });
+        }
+
+        const publicKey = typeof body.publicKey === "string" ? body.publicKey.trim() : "";
+        const accessToken = typeof body.accessToken === "string" ? body.accessToken.trim() : "";
+        if (publicKey.length > 500 || accessToken.length > 10000) {
+          return response.status(400).json({ error: "Las credenciales superan el tamaño permitido." });
+        }
+        if (!publicKey) return response.status(400).json({ error: "Ingresá la Public Key de Mercado Pago." });
+        if (!accessToken && !current?.encrypted_access_token) {
+          return response.status(400).json({ error: "Ingresá el Access Token de Mercado Pago." });
+        }
+
+        const encryptedAccessToken = accessToken ? encryptPaymentAccessToken(accessToken) : String(current.encrypted_access_token);
+        await db.execute({
+          sql: `INSERT INTO store_payment_credentials (store_code, public_key, encrypted_access_token, updated_at)
+            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(store_code) DO UPDATE SET public_key = excluded.public_key,
+              encrypted_access_token = excluded.encrypted_access_token, updated_at = CURRENT_TIMESTAMP`,
+          args: [storeCode, publicKey, encryptedAccessToken],
+        });
+        return response.status(200).json({ publicKey, accessTokenConfigured: true });
+      } catch (error) {
+        console.error("No se pudieron guardar las credenciales de Mercado Pago", error);
+        return response.status(500).json({ error: error instanceof Error ? error.message : "No se pudieron guardar las credenciales de Mercado Pago." });
+      }
+    }
     if (body?.action === "create-booking-payment-preference") {
       try {
         const bookingId = typeof body.bookingId === "string" ? body.bookingId : "";
+        const cancellationToken = typeof body.cancellationToken === "string" ? body.cancellationToken : "";
         if (!/^[\da-f-]{36}$/i.test(bookingId)) return response.status(400).json({ error: "Identificador de reserva inválido." });
         const bookingResult = await db.execute({ sql: "SELECT value FROM bookings WHERE id = ?", args: [bookingId] });
         if (!bookingResult.rows[0]) return response.status(404).json({ error: "No encontramos el turno para preparar el pago." });
         const booking = JSON.parse(String(bookingResult.rows[0].value));
+        if (!cancellationToken || booking.cancellationToken !== cancellationToken) {
+          return response.status(403).json({ error: "No se pudo validar la reserva para preparar el pago." });
+        }
         if (booking.status !== "pending-payment" || booking.customer?.paymentMethod !== "tarjeta o mercado pago") {
           return response.status(409).json({ error: "El turno no está pendiente de pago con Mercado Pago." });
         }
 
-        const accessToken = requiredEnv("MERCADOPAGO_ACCESS_TOKEN");
+        const credentials = await getStorePaymentCredentials(db, booking.storeCode);
         const host = request.headers.host || "localhost";
         const protocol = request.headers["x-forwarded-proto"] || "https";
         const appUrl = (process.env.PUBLIC_APP_URL || `${protocol}://${host}`).replace(/\/$/, "");
         const preferenceResponse = await fetch("https://api.mercadopago.com/checkout/preferences", {
           method: "POST",
-          headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+          headers: { Authorization: `Bearer ${credentials.accessToken}`, "Content-Type": "application/json" },
           body: JSON.stringify({
             items: [{ id: `booking-${bookingId}`, title: "Reserva de turno", quantity: 1, currency_id: "ARS", unit_price: Number(Number(booking.totalPrice).toFixed(2)) }],
             payer: { email: booking.customer.email },
             external_reference: bookingId,
-            notification_url: `${appUrl}/api/mercadopago/webhook`,
+            notification_url: `${appUrl}/api/mercadopago/webhook?booking_id=${encodeURIComponent(bookingId)}`,
             metadata: { booking_id: bookingId, store_code: normalizeStoreCode(booking.storeCode) },
             back_urls: {
               success: `${appUrl}/reserva?payment=success&booking_id=${encodeURIComponent(bookingId)}`,
@@ -736,10 +831,12 @@ export default async function handler(request, response) {
     }
     if (!user && (body?.action === "mercadopago-payment-webhook" || body?.action === "mercadopago-subscription-webhook")) {
       try {
-        const result = await processMercadoPagoNotification(db, String(body.paymentId ?? ""));
+        const result = body.bookingId
+          ? await verifyBookingPayment(db, String(body.bookingId), String(body.paymentId ?? ""))
+          : await processMercadoPagoNotification(db, String(body.paymentId ?? ""));
         return response.status(200).json({ received: true, approved: result.approved });
       } catch (error) {
-        console.error("No se pudo procesar la notificación de suscripción de Mercado Pago", error);
+        console.error("No se pudo procesar la notificación de pago de Mercado Pago", error);
         return response.status(200).json({ received: true });
       }
     }

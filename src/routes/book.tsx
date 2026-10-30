@@ -405,7 +405,7 @@ Observaciones: ${customer.notes || "Ninguna"}`;
         const response = await fetch("/api/mercadopago/preference", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ bookingId: pendingBooking.id }),
+          body: JSON.stringify({ bookingId: pendingBooking.id, cancellationToken: pendingBooking.cancellationToken }),
         });
         const result = await response.json() as { initPoint?: string; error?: string };
         if (!response.ok || !result.initPoint) {

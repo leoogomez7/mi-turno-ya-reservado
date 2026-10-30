@@ -18,6 +18,10 @@ export type StoreSettings = {
   transferAlias: string;
 };
 export type StoreContactSettings = Pick<StoreSettings, "street" | "height" | "city" | "province" | "postalCode" | "whatsapp" | "instagram">;
+export type StoreMercadoPagoCredentials = {
+  publicKey: string;
+  accessTokenConfigured: boolean;
+};
 export type Store = {
   code: string;
   name: string;
@@ -219,6 +223,18 @@ export async function updateStoreContact(contact: StoreContactSettings) {
   availableStores = availableStores.map((store) => store.code === response.code ? { ...store, settings: response.settings } : store);
   window.dispatchEvent(new Event("mi-turno-ya:store-changed"));
   return response.settings;
+}
+
+export async function getStoreMercadoPagoCredentials() {
+  return request<StoreMercadoPagoCredentials>("POST", { action: "get-store-payment-credentials" });
+}
+
+export async function saveStoreMercadoPagoCredentials(publicKey: string, accessToken: string) {
+  return request<StoreMercadoPagoCredentials>("POST", {
+    action: "save-store-payment-credentials",
+    publicKey,
+    accessToken,
+  });
 }
 
 export async function createSubscriptionCheckout(planId: string, promoCode?: string) {

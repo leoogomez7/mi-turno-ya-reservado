@@ -25,7 +25,8 @@ No subir `.env.local` ni compartir valores privados. Para Vite, los campos públ
 | `TURSO_DATABASE_URL`       | URL de la base Turso de turnos y profesionales                                                                        | Solo servidor / Vercel                             |
 | `TURSO_AUTH_TOKEN`         | Credencial privada de Turso                                                                                           | Solo servidor / Vercel                             |
 | Código de sucursal          | Código público único generado al registrar una sucursal administradora; Turso garantiza su unicidad                | Se guarda en Turso y se comparte con clientes      |
-| `MERCADOPAGO_ACCESS_TOKEN` | Token privado para crear preferencias de pago                                                                         | Solo servidor / Vercel                             |
+| `MERCADOPAGO_ACCESS_TOKEN` | Token privado global que todavía se usa para los pagos de suscripción de la plataforma                               | Solo servidor / Vercel                             |
+| `MERCADOPAGO_CREDENTIALS_ENCRYPTION_KEY` | Secreto estable para cifrar con AES-256-GCM los Access Token individuales de cada sucursal | Solo servidor / Vercel; obligatorio para guardar credenciales por sucursal |
 | `DESCUENTO_OFF`            | Código o códigos válidos para aplicar 10% de descuento; varios valores se separan con coma                            | Solo servidor / Vercel                             |
 | `GRATIS2026`               | Código o códigos válidos para activar gratis el plan seleccionado; varios valores se separan con coma                | Solo servidor / Vercel                             |
 | `PUBLIC_APP_URL`           | Dirección base publicada de la aplicación, sin rutas como `/reserva`; Mercado Pago vuelve allí después del pago | Vercel; opcional local                             |
@@ -38,7 +39,7 @@ Cada administrador registrado crea su sucursal desde la sección Profesionales c
 
 No existe ni se necesita código de invitación de administrador. El usuario verifica su cuenta en Kinde, selecciona Administrador / Profesional y el sistema crea o asigna su sucursal. Comparte con clientes únicamente el código público de sucursal que aparece en el panel; no da permisos de administrador.
 
-Las reservas de visitantes se envían al API y se guardan en Turso; no existe persistencia local ni modo offline. Los clientes que inician sesión consultan los turnos asociados a su email. La agenda, los profesionales y los datos de contacto y transferencia de cada sucursal se guardan en Turso; solo un administrador puede modificar profesionales, configuración de sucursal o todos los turnos.
+Las reservas de visitantes se envían al API y se guardan en Turso; no existe persistencia local ni modo offline. Los clientes que inician sesión consultan los turnos asociados a su email. La agenda, los profesionales y los datos de contacto y transferencia de cada sucursal se guardan en Turso; solo un administrador puede modificar profesionales, configuración de sucursal o todos los turnos. Las credenciales de cobro de Mercado Pago se configuran por sucursal; el Access Token se cifra en Turso y nunca se devuelve al navegador. Configurá `MERCADOPAGO_CREDENTIALS_ENCRYPTION_KEY` en los secretos del servidor con un valor aleatorio fuerte y estable. No lo cambies después de guardar tokens, porque se necesitaría el valor anterior para descifrarlos. El `MERCADOPAGO_ACCESS_TOKEN` global se conserva para el checkout de suscripciones de la plataforma.
 
 ## Planes de suscripción
 

@@ -11,7 +11,7 @@ import { toast } from "sonner";
 import { professionalStore, type Professional, type ProfessionalService } from "@/lib/professional-store";
 import { AuthRequired } from "@/components/auth-required";
 import { useAppAuth } from "@/lib/auth";
-import { createStore, getAvailableStores, getCurrentStoreCode, isCloudInitialized, updateStoreContact, updateStoreSettings, type StoreSettings } from "@/lib/cloud-sync";
+import { createStore, getAvailableStores, getCurrentStoreCode, getStoreMercadoPagoCredentials, isCloudInitialized, saveStoreMercadoPagoCredentials, updateStoreContact, updateStoreSettings, type StoreSettings } from "@/lib/cloud-sync";
 import { LoadingScreen } from "@/components/loading-screen";
 import { Calendar } from "@/components/ui/calendar";
 
@@ -50,7 +50,7 @@ const emptyStoreSettings: StoreSettings = {
   transferAlias: "",
 };
 export function ProfessionalsManager() {
-  const { isAuthenticated, isLoading, role } = useAppAuth();
+  const { isAuthenticated, isLoading, role, getIdToken } = useAppAuth();
   const [professionals, setProfessionals] = useState<Professional[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
@@ -67,6 +67,11 @@ export function ProfessionalsManager() {
   const [loadingStoreSettings, setLoadingStoreSettings] = useState(true);
   const [savingContact, setSavingContact] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
+  const [mercadoPagoPublicKey, setMercadoPagoPublicKey] = useState("");
+  const [mercadoPagoAccessToken, setMercadoPagoAccessToken] = useState("");
+  const [mercadoPagoAccessTokenConfigured, setMercadoPagoAccessTokenConfigured] = useState(false);
+  const [loadingMercadoPagoCredentials, setLoadingMercadoPagoCredentials] = useState(true);
+  const [savingMercadoPagoCredentials, setSavingMercadoPagoCredentials] = useState(false);
   const [viewDialogOpen, setViewDialogOpen] = useState(false);
   const [viewMode, setViewMode] = useState<"schedule" | "services">("schedule");
   const [schedulePanel, setSchedulePanel] = useState<"weekly" | "exceptions">("weekly");
@@ -93,6 +98,32 @@ export function ProfessionalsManager() {
     window.addEventListener("professionals:changed", load);
     return () => window.removeEventListener("professionals:changed", load);
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!currentStoreCode || role !== "admin") {
+      setMercadoPagoPublicKey("");
+      setMercadoPagoAccessToken("");
+      setMercadoPagoAccessTokenConfigured(false);
+      setLoadingMercadoPagoCredentials(false);
+      return;
+    }
+    setLoadingMercadoPagoCredentials(true);
+    void getStoreMercadoPagoCredentials()
+      .then((credentials) => {
+        if (cancelled) return;
+        setMercadoPagoPublicKey(credentials.publicKey);
+        setMercadoPagoAccessToken("");
+        setMercadoPagoAccessTokenConfigured(credentials.accessTokenConfigured);
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) toast.error(error instanceof Error ? error.message : "No se pudieron cargar las credenciales de Mercado Pago.");
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingMercadoPagoCredentials(false);
+      });
+    return () => { cancelled = true; };
+  }, [currentStoreCode, getIdToken, role]);
 
   useEffect(() => {
     const updateStore = (cloudReady = false) => {
@@ -144,6 +175,29 @@ export function ProfessionalsManager() {
       toast.error(error instanceof Error ? error.message : "No se pudieron guardar los datos bancarios.");
     } finally {
       setSavingSettings(false);
+    }
+  }
+
+  async function saveMercadoPagoCredentials() {
+    if (!mercadoPagoPublicKey.trim()) {
+      toast.error("Ingresá la Public Key de Mercado Pago.");
+      return;
+    }
+    if (!mercadoPagoAccessToken.trim() && !mercadoPagoAccessTokenConfigured) {
+      toast.error("Ingresá el Access Token de Mercado Pago.");
+      return;
+    }
+    setSavingMercadoPagoCredentials(true);
+    try {
+      const saved = await saveStoreMercadoPagoCredentials(mercadoPagoPublicKey, mercadoPagoAccessToken);
+      setMercadoPagoPublicKey(saved.publicKey);
+      setMercadoPagoAccessToken("");
+      setMercadoPagoAccessTokenConfigured(saved.accessTokenConfigured);
+      toast.success("Credenciales de Mercado Pago guardadas para esta sucursal.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudieron guardar las credenciales de Mercado Pago.");
+    } finally {
+      setSavingMercadoPagoCredentials(false);
     }
   }
 
@@ -690,6 +744,52 @@ export function ProfessionalsManager() {
             </div>
             <Button type="button" disabled={loadingStoreSettings || savingSettings || !currentStoreCode} onClick={() => void saveSettings()} className="mt-5 bg-gold text-primary-foreground hover:bg-gold-soft">
               {savingSettings ? "Guardando…" : "Guardar datos"}
+            </Button>
+          </section>
+
+          <section className="rounded-3xl border border-gold/30 bg-card p-6">
+            <div className="mb-5">
+              <p className="text-xs uppercase tracking-widest text-gold">Mercado Pago</p>
+              <h2 className="mt-1 font-display text-2xl font-semibold text-foreground">Recibir pagos</h2>
+              <p className="mt-2 text-sm text-muted-foreground">Configurá las credenciales de producción de Mercado Pago para cobrar los turnos de esta sucursal.</p>
+            </div>
+            <div className="grid gap-4">
+              <Field label="Public Key">
+                <Input
+                  disabled={loadingMercadoPagoCredentials || savingMercadoPagoCredentials || !currentStoreCode}
+                  value={mercadoPagoPublicKey}
+                  onChange={(event) => setMercadoPagoPublicKey(event.target.value)}
+                  maxLength={500}
+                  autoComplete="off"
+                  placeholder={loadingMercadoPagoCredentials ? "Cargando…" : "APP_USR-..."}
+                />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Configuración → Integraciones → Tus Integraciones → Credenciales de producción → Public Key
+                </p>
+              </Field>
+              <Field label="Token">
+                <Input
+                  type="password"
+                  disabled={loadingMercadoPagoCredentials || savingMercadoPagoCredentials || !currentStoreCode}
+                  value={mercadoPagoAccessToken}
+                  onChange={(event) => setMercadoPagoAccessToken(event.target.value)}
+                  maxLength={10000}
+                  autoComplete="new-password"
+                  placeholder={loadingMercadoPagoCredentials ? "Cargando…" : mercadoPagoAccessTokenConfigured ? "Token guardado; completá solo para reemplazarlo" : "APP_USR-..."}
+                />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Configuración → Integraciones → Tus Integraciones → Credenciales de producción → Access Token
+                </p>
+                {mercadoPagoAccessTokenConfigured && <p className="mt-1 text-xs text-emerald-400">Hay un Access Token guardado y protegido para esta sucursal.</p>}
+              </Field>
+            </div>
+            <Button
+              type="button"
+              disabled={loadingMercadoPagoCredentials || savingMercadoPagoCredentials || !currentStoreCode}
+              onClick={() => void saveMercadoPagoCredentials()}
+              className="mt-5 bg-gold text-primary-foreground hover:bg-gold-soft"
+            >
+              {savingMercadoPagoCredentials ? "Guardando…" : "Guardar credenciales"}
             </Button>
           </section>
 
