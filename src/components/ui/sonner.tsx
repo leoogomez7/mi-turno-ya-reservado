@@ -11,11 +11,11 @@ const Toaster = ({ ...props }: ToasterProps) => {
         classNames: {
           toast:
             "group toast group-[.toaster]:bg-background group-[.toaster]:text-foreground group-[.toaster]:border-border group-[.toaster]:shadow-lg",
-          content: "flex-1 text-center",
+          content: "flex-1 text-center [&_*]:text-center",
           title: "w-full text-center",
-          description: "group-[.toast]:text-muted-foreground",
-          actionButton: "group-[.toast]:bg-primary group-[.toast]:text-primary-foreground",
-          cancelButton: "group-[.toast]:bg-muted group-[.toast]:text-muted-foreground",
+          description: "w-full text-center group-[.toast]:text-muted-foreground",
+          actionButton: "justify-center text-center group-[.toast]:bg-primary group-[.toast]:text-primary-foreground",
+          cancelButton: "justify-center text-center group-[.toast]:bg-muted group-[.toast]:text-muted-foreground",
         },
       }}
       {...props}
