@@ -201,12 +201,7 @@ function PlanPage() {
                   : "La sucursal no aparece en las búsquedas y no acepta reservas hasta activar un plan."}
               </p>
               {storeInfo?.subscriptionPlanType === "trial" && subscriptionIsActive && (
-                <p className="mt-2 text-sm font-medium text-gold">Estás usando tu prueba gratuita de 4 días. Compra un plan antes de que termine tu prueba gratuita.</p>
-              )}
-              {storeInfo?.subscriptionExpiresAt && subscriptionDaysRemaining !== null && subscriptionDaysRemaining > 0 && subscriptionDaysRemaining <= 4 && (
-                <p role="alert" className="mt-3 rounded-lg border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-300">
-                  Tu plan vence {subscriptionDaysRemaining === 1 ? "dentro de 1 día" : `dentro de ${subscriptionDaysRemaining} días`}. Recordá elegir y pagar un plan manualmente para mantener activa la sucursal.
-                </p>
+                <p className="mt-2 text-sm font-medium text-gold">Estás usando tu prueba gratuita de 4 días. Vence {subscriptionDaysRemaining === 1 ? "dentro de 1 día" : `dentro de ${subscriptionDaysRemaining} días`}. Compra un plan antes de que termine tu prueba gratuita.</p>
               )}
               {storeInfo?.subscriptionExpiresAt && subscriptionDaysRemaining !== null && subscriptionDaysRemaining <= 0 && (
                 <p role="alert" className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">
