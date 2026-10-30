@@ -21,9 +21,13 @@ export const Route = createFileRoute("/admin")({
 export function AdminPage() {
   const { isAuthenticated, isLoading, role } = useAppAuth();
   const [bookings, setBookings] = useState<Booking[]>([]);
+  const [statsReady, setStatsReady] = useState(false);
 
   useEffect(() => {
-    const reload = () => setBookings(bookingStore.all());
+    const reload = () => {
+      setBookings(bookingStore.all());
+      setStatsReady(true);
+    };
     reload();
     window.addEventListener("bookings:changed", reload);
     return () => window.removeEventListener("bookings:changed", reload);
@@ -31,7 +35,7 @@ export function AdminPage() {
 
   const stats = useMemo(() => computeStats(bookings), [bookings]);
 
-  if (isLoading) return <LoadingScreen message="Preparando tu agenda" />;
+  if (isLoading || (isAuthenticated && role === "admin" && !statsReady)) return <LoadingScreen message="Preparando tus estadísticas" />;
   if (!isAuthenticated || role !== "admin") return <><SiteHeader /><AuthRequired role="admin" title="Administración" /></>;
 
   return (

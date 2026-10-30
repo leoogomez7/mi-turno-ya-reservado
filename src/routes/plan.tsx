@@ -30,7 +30,7 @@ function PlanPage() {
   const { isAuthenticated, isLoading, role, getIdToken, user } = useAppAuth();
   const location = useLocation();
   const [storeInfo, setStoreInfo] = useState<Store | undefined>(() => getAvailableStores().find((store) => store.code === getCurrentStoreCode()));
-  const [storeInfoLoaded, setStoreInfoLoaded] = useState(isCloudInitialized);
+  const [storeInfoLoaded, setStoreInfoLoaded] = useState(false);
   const [selectedPlanId, setSelectedPlanId] = useState<string>("15d");
   const [promoCode, setPromoCode] = useState("");
   const [appliedPromoCode, setAppliedPromoCode] = useState("");
