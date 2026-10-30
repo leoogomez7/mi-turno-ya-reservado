@@ -92,6 +92,7 @@
   html {
     box-sizing: border-box;
     overflow-x: hidden;
+    scrollbar-gutter: stable;
   }
 
   *, *::before, *::after {
