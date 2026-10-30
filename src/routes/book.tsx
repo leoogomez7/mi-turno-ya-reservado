@@ -16,7 +16,7 @@ import { toast } from "sonner";
 import { bookingStore, type Booking, type Customer } from "@/lib/booking-store";
 import { type Professional, getScheduleForDate, generateSlotsFromSchedule, isProfessionalAvailableOnDate } from "@/lib/professional-store";
 import { useAppAuth } from "@/lib/auth";
-import { cancelPendingBooking, createPublicBooking, getAvailableStores, getCloudRecords, getCurrentStoreCode, isCloudInitialized, loadReservationStore, refreshCloudData, selectStore, type Store } from "@/lib/cloud-sync";
+import { cancelPendingBooking, createPublicBooking, getAvailableStores, getClientProfile, getCloudRecords, getCurrentStoreCode, isCloudInitialized, loadReservationStore, refreshCloudData, selectStore, type Store } from "@/lib/cloud-sync";
 
 export const Route = createFileRoute("/book")({
   beforeLoad: () => {
@@ -98,10 +98,25 @@ export function BookPage() {
   const [time, setTime] = useState("");
 
   useEffect(() => {
-    if (role === "client" && user?.email) {
-      setCustomer((current) => current.email ? current : { ...current, email: user.email ?? "" });
-    }
-  }, [role, user?.email]);
+    if (role !== "client") return;
+    const accountName = [user?.givenName, user?.familyName].filter(Boolean).join(" ");
+    setCustomer((current) => ({
+      ...current,
+      fullName: current.fullName || accountName,
+      email: current.email || user?.email || "",
+    }));
+
+    let cancelled = false;
+    void getClientProfile()
+      .then((profile) => {
+        if (cancelled) return;
+        const accountEmail = user?.email?.trim().toLowerCase();
+        const previousBookingPhone = bookingStore.all().find((booking) => booking.customer.email.trim().toLowerCase() === accountEmail)?.customer.phone;
+        setCustomer((current) => current.phone ? current : { ...current, phone: profile.phone || previousBookingPhone || "" });
+      })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [role, user?.email, user?.familyName, user?.givenName]);
 
   useEffect(() => {
     const reloadStores = () => {
@@ -580,7 +595,7 @@ Observaciones: ${customer.notes || "Ninguna"}`;
       <main className="mx-auto flex w-full max-w-7xl flex-col px-4 py-10 sm:px-6">
         {step === 0 && <section
           className={cn(
-            "mb-4 rounded-2xl border border-gold/30 bg-card p-4 sm:p-5",
+            "mb-4 rounded-3xl border border-gold/30 bg-card p-6",
             (!selectedStoreCode || !selectedStore) && "cursor-pointer transition-colors hover:bg-gold/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold",
           )}
           role={!selectedStoreCode || !selectedStore ? "button" : undefined}
@@ -599,7 +614,7 @@ Observaciones: ${customer.notes || "Ninguna"}`;
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
               <p className="text-xs uppercase tracking-widest text-gold">{selectedStore ? "Sucursal seleccionada" : "Antes de reservar"}</p>
-              <h2 className="mt-1 flex flex-wrap items-baseline gap-x-2 font-display text-xl font-semibold">
+              <h2 className="mt-1 flex flex-wrap items-baseline gap-x-2 font-display text-2xl font-semibold">
                 {selectedStore ? (
                   <>
                     <span>{selectedStore?.name ?? "Sucursal no disponible"}</span>
@@ -609,7 +624,7 @@ Observaciones: ${customer.notes || "Ninguna"}`;
               </h2>
             </div>
             <div className="flex items-center gap-3">
-              {selectedStore && <Button type="button" size="sm" className="bg-gold text-primary-foreground hover:bg-gold-soft" onClick={() => setStorePickerOpen(true)}>Cambiar sucursal</Button>}
+              {selectedStore && <Button type="button" className="h-10 px-4 text-sm bg-gold text-primary-foreground hover:bg-gold-soft" onClick={() => setStorePickerOpen(true)}>Cambiar sucursal</Button>}
             </div>
           </div>
         </section>}

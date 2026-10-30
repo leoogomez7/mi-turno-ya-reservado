@@ -175,7 +175,7 @@ export function AgendaManager() {
     <div className="min-h-screen bg-gradient-dark">
       <SiteHeader />
       <main className="mx-auto w-full max-w-7xl px-4 py-10 sm:px-6">
-        <section className="w-full rounded-2xl border border-gold/30 bg-card p-4 sm:p-5">
+        <section className="w-full rounded-3xl border border-gold/30 bg-card p-6">
           <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
             <div>
               <p className="text-xs uppercase tracking-widest text-gold">Control</p>
