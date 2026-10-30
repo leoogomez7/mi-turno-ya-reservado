@@ -1,15 +1,17 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
+import { CalendarDays, Clock3, Pencil, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { SiteHeader } from "@/components/site-header";
 import { AuthRequired } from "@/components/auth-required";
 import { useAppAuth } from "@/lib/auth";
 import type { Booking } from "@/lib/booking-store";
-import type { Professional } from "@/lib/professional-store";
-import { confirmClientBooking, getClientBookings } from "@/lib/cloud-sync";
+import { getAvailableSlotsForDate, type Professional } from "@/lib/professional-store";
+import { deleteClientBooking, getClientBookings, reportClientPayment, updateClientBooking } from "@/lib/cloud-sync";
 import { toast } from "sonner";
 import { LoadingScreen } from "@/components/loading-screen";
 
@@ -23,7 +25,34 @@ function MyBookingsPage() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [professionals, setProfessionals] = useState<Professional[]>([]);
   const [loadingBookings, setLoadingBookings] = useState(true);
-  const [confirmationBusyId, setConfirmationBusyId] = useState<string | null>(null);
+  const [busyBookingId, setBusyBookingId] = useState<string | null>(null);
+  const [editingBooking, setEditingBooking] = useState<Booking | null>(null);
+  const [editedDate, setEditedDate] = useState("");
+  const [editedTime, setEditedTime] = useState("");
+
+  const editingProfessional = editingBooking
+    ? professionals.find((item) => item.id === editingBooking.barberId && item.storeCode === editingBooking.storeCode)
+      ?? professionals.find((item) => item.id === editingBooking.barberId)
+    : undefined;
+  const availableEditSlots = useMemo(() => {
+    if (!editingProfessional || !editedDate) return [];
+    const date = parseISO(`${editedDate}T12:00:00`);
+    if (Number.isNaN(date.getTime())) return [];
+    const today = format(new Date(), "yyyy-MM-dd");
+    if (editedDate < today) return [];
+    const slots = getAvailableSlotsForDate(editingProfessional, date);
+    const neededIntervals = Math.ceil((editingBooking?.duration ?? 0) / 15);
+    return slots.filter((slot) => {
+      const [hours, minutes] = slot.split(":").map(Number);
+      const start = hours * 60 + minutes;
+      for (let interval = 0; interval < neededIntervals; interval += 1) {
+        const minute = start + interval * 15;
+        const nextSlot = `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`;
+        if (!slots.includes(nextSlot)) return false;
+      }
+      return true;
+    });
+  }, [editedDate, editingBooking?.duration, editingProfessional]);
 
   const reload = useCallback(async () => {
     try {
@@ -44,17 +73,50 @@ function MyBookingsPage() {
     return () => window.removeEventListener("focus", reload);
   }, [isAuthenticated, reload, role]);
 
-  async function confirmBooking(bookingId: string) {
-    if (confirmationBusyId) return;
-    setConfirmationBusyId(bookingId);
+  async function reportPayment(booking: Booking) {
+    if (busyBookingId) return;
+    setBusyBookingId(booking.id);
     try {
-      const result = await confirmClientBooking(bookingId);
-      setBookings((current) => current.map((booking) => booking.id === bookingId ? result.booking : booking));
-      toast.success("Confirmaste tu turno.");
+      const result = await reportClientPayment(booking.id);
+      setBookings((current) => current.map((item) => item.id === booking.id ? result.booking : item));
+      toast.success("Aviso enviado. El profesional verificará el pago.");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "No se pudo guardar la confirmación.");
+      toast.error(error instanceof Error ? error.message : "No se pudo avisar al profesional.");
     } finally {
-      setConfirmationBusyId(null);
+      setBusyBookingId(null);
+    }
+  }
+
+  async function saveBookingTime() {
+    if (!editingBooking || busyBookingId) return;
+    if (!editedDate || !availableEditSlots.includes(editedTime)) {
+      toast.error("Elegí una fecha y un horario disponibles.");
+      return;
+    }
+    setBusyBookingId(editingBooking.id);
+    try {
+      const result = await updateClientBooking(editingBooking.id, editedDate, editedTime);
+      setBookings((current) => current.map((item) => item.id === editingBooking.id ? result.booking : item));
+      setEditingBooking(null);
+      toast.success("Turno modificado.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo modificar el turno.");
+    } finally {
+      setBusyBookingId(null);
+    }
+  }
+
+  async function deleteBooking(booking: Booking) {
+    if (busyBookingId) return;
+    setBusyBookingId(booking.id);
+    try {
+      await deleteClientBooking(booking.id);
+      setBookings((current) => current.filter((item) => item.id !== booking.id));
+      toast.success("Turno eliminado.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo eliminar el turno.");
+    } finally {
+      setBusyBookingId(null);
     }
   }
 
@@ -91,6 +153,18 @@ function MyBookingsPage() {
               const appointmentDate = parseISO(`${booking.date}T${booking.time}`);
               const statusLabel = booking.status === "pending-payment" ? "Pago pendiente" : booking.status === "completed" ? "Asistió" : booking.status === "no-show" ? "No asistió" : booking.status === "cancelled" ? "Cancelado" : "Reservado";
               const statusClass = booking.status === "completed" ? "border-emerald-300 text-emerald-400" : booking.status === "cancelled" || booking.status === "no-show" ? "border-red-500/30 bg-red-500/10 text-red-300" : "border-gold/40 text-gold";
+              const paymentMethodLabel = booking.customer.paymentMethod === "efectivo"
+                ? "Efectivo"
+                : booking.customer.paymentMethod === "transferencia"
+                  ? "Transferencia bancaria"
+                  : booking.customer.paymentMethod === "tarjeta o mercado pago"
+                    ? "Tarjeta o Mercado Pago"
+                    : "No especificado";
+              const isActiveBooking = booking.status === "confirmed" || booking.status === "pending-payment";
+              const canDelete = isActiveBooking && (
+                booking.customer.paymentMethod === "efectivo"
+                || (booking.customer.paymentMethod === "transferencia" && booking.paymentStatus !== "approved")
+              );
               return (
                 <article key={booking.id} className="flex flex-wrap items-center gap-4 rounded-xl border border-gold/30 bg-card p-4">
                   <div className="flex w-20 shrink-0 flex-col items-center rounded-lg bg-gold/10 px-2 py-2 text-gold">
@@ -103,17 +177,16 @@ function MyBookingsPage() {
                     <div className="truncate text-sm text-muted-foreground">{serviceNames || "Servicio"} · {booking.duration} min</div>
                     <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                       <Badge variant="outline" className={statusClass}>{statusLabel}</Badge>
-                      {booking.appointmentConfirmation && <Badge variant="outline" className="border-sky-300 text-sky-300">{booking.appointmentConfirmation === "confirmed" ? "Confirmaste el turno" : "Sin confirmar"}</Badge>}
+                      <Badge variant="outline" className="border-gold/30 text-gold">Abono · {paymentMethodLabel}</Badge>
+                      {booking.paymentReportedAt && booking.paymentStatus !== "approved" && <Badge variant="outline" className="border-amber-300 text-amber-300">Avisaste que pagaste</Badge>}
                     </div>
                   </div>
                   <div className="font-display text-lg font-semibold text-gold">${booking.totalPrice.toLocaleString("es-AR")}</div>
-                  <div className="flex flex-wrap gap-2">
-                    {booking.status === "confirmed" && booking.appointmentConfirmation !== "confirmed" && (
-                      <Button size="sm" disabled={confirmationBusyId !== null} className="bg-gold text-primary-foreground hover:bg-gold-soft disabled:opacity-60" onClick={() => void confirmBooking(booking.id)}>
-                        {confirmationBusyId === booking.id ? "Procesando..." : "Confirmar turno"}
-                      </Button>
-                    )}
-                  </div>
+                  {isActiveBooking && <div className="flex flex-wrap gap-2">
+                    {booking.paymentStatus !== "approved" && !booking.paymentReportedAt && <Button size="sm" disabled={busyBookingId !== null} className="bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-60" onClick={() => void reportPayment(booking)}>{busyBookingId === booking.id ? "Confirmando..." : "Confirmar pago"}</Button>}
+                    <Button size="sm" variant="outline" disabled={busyBookingId !== null} onClick={() => { setEditingBooking(booking); setEditedDate(booking.date); setEditedTime(booking.time); }}><Pencil className="mr-1 h-3.5 w-3.5" />Modificar turno</Button>
+                    {canDelete && <Button size="sm" variant="destructive" disabled={busyBookingId !== null} className={busyBookingId === booking.id ? "opacity-60" : undefined} onClick={() => void deleteBooking(booking)}><Trash2 className="mr-1 h-3.5 w-3.5" />{busyBookingId === booking.id ? "Borrando..." : "Borrar turno"}</Button>}
+                  </div>}
                 </article>
               );
             })}
@@ -121,6 +194,32 @@ function MyBookingsPage() {
         )}
         </section>
       </main>
+      <Dialog open={editingBooking !== null} onOpenChange={(open) => { if (!open && !busyBookingId) setEditingBooking(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Modificar turno</DialogTitle>
+            <DialogDescription>Podés cambiar solamente el día y el horario. La disponibilidad se verifica antes de guardar.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-3">
+            <label className="space-y-2 text-sm text-muted-foreground">
+              <span className="flex items-center gap-2"><CalendarDays className="h-4 w-4 text-gold" />Día</span>
+              <input type="date" min={format(new Date(), "yyyy-MM-dd")} value={editedDate} onChange={(event) => { setEditedDate(event.target.value); setEditedTime(""); }} className="block w-full rounded-lg border border-border bg-background px-3 py-2 text-foreground" />
+            </label>
+            <label className="space-y-2 text-sm text-muted-foreground">
+              <span className="flex items-center gap-2"><Clock3 className="h-4 w-4 text-gold" />Horario</span>
+              <select value={editedTime} onChange={(event) => setEditedTime(event.target.value)} className="block w-full rounded-lg border border-border bg-background px-3 py-2 text-foreground" disabled={!editedDate || !editingProfessional}>
+                <option value="">Seleccionar horario</option>
+                {availableEditSlots.map((slot) => <option key={slot} value={slot}>{slot}</option>)}
+              </select>
+              {editedDate && !availableEditSlots.length && <span className="block text-xs">No hay horarios disponibles para ese día.</span>}
+            </label>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" disabled={busyBookingId !== null} onClick={() => setEditingBooking(null)}>Cancelar</Button>
+            <Button type="button" disabled={!editingBooking || busyBookingId !== null} className="bg-gold text-primary-foreground hover:bg-gold-soft" onClick={() => void saveBookingTime()}>{busyBookingId === editingBooking?.id ? "Guardando..." : "Guardar cambios"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

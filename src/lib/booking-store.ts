@@ -21,6 +21,7 @@ export interface Booking {
   totalPrice: number;
   status: "pending-payment" | "confirmed" | "cancelled" | "completed" | "no-show";
   paymentStatus?: "pending" | "approved";
+  paymentReportedAt?: string;
   appointmentConfirmation?: "confirmed" | "pending";
   cancellationToken?: string;
   createdAt: string;

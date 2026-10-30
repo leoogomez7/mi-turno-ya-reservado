@@ -701,7 +701,7 @@ export default async function handler(request, response) {
     return response.status(400).json({ error: "El cuerpo JSON no es válido." });
   }
   if (request.method === "POST") {
-    if (user && (body?.action === "get-client-bookings" || body?.action === "confirm-client-booking")) {
+    if (user && ["get-client-bookings", "confirm-client-booking", "report-client-payment", "update-client-booking", "delete-client-booking"].includes(body?.action)) {
       try {
         if (!user.emailVerified) return response.status(403).json({ error: "Verificá tu correo para consultar tus turnos." });
         const roleResult = await db.execute({ sql: "SELECT role FROM account_roles WHERE user_id = ?", args: [user.id] });
@@ -732,18 +732,61 @@ export default async function handler(request, response) {
         if (!storedBooking.rows[0]) return response.status(404).json({ error: "No encontramos ese turno." });
         const booking = JSON.parse(String(storedBooking.rows[0].value));
         if (booking.customer?.email?.trim().toLowerCase() !== user.email) {
-          return response.status(403).json({ error: "Solo puedes confirmar tus propios turnos." });
+          return response.status(403).json({ error: "Solo puedes gestionar tus propios turnos." });
         }
-        if (booking.status !== "confirmed") return response.status(400).json({ error: "Este turno todavía no se puede confirmar." });
-        booking.appointmentConfirmation = "confirmed";
-        await db.execute({
-          sql: "UPDATE bookings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-          args: [JSON.stringify(booking), bookingId],
-        });
-        return response.status(200).json({ booking });
+
+        if (body.action === "confirm-client-booking") {
+          if (booking.status !== "confirmed") return response.status(400).json({ error: "Este turno todavía no se puede confirmar." });
+          booking.appointmentConfirmation = "confirmed";
+          await db.execute({ sql: "UPDATE bookings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", args: [JSON.stringify(booking), bookingId] });
+          return response.status(200).json({ booking });
+        }
+
+        if (body.action === "report-client-payment") {
+          if (!["confirmed", "pending-payment"].includes(booking.status) || booking.paymentStatus === "approved") {
+            return response.status(409).json({ error: "Este turno no está pendiente de informar un pago." });
+          }
+          booking.paymentReportedAt = new Date().toISOString();
+          await db.execute({ sql: "UPDATE bookings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", args: [JSON.stringify(booking), bookingId] });
+          return response.status(200).json({ booking });
+        }
+
+        if (body.action === "update-client-booking") {
+          if (!["confirmed", "pending-payment"].includes(booking.status) || booking.paymentStatus === "approved") {
+            return response.status(409).json({ error: "Este turno ya no se puede modificar desde tu cuenta." });
+          }
+          const date = typeof body.date === "string" ? body.date : "";
+          const time = typeof body.time === "string" ? body.time : "";
+          const candidate = { ...booking, date, time };
+          const transaction = await db.transaction("write");
+          try {
+            const availabilityError = await validateBookingAvailability(transaction, candidate, normalizeStoreCode(booking.storeCode), bookingId);
+            if (availabilityError) {
+              await transaction.rollback();
+              return response.status(409).json({ error: availabilityError });
+            }
+            booking.date = date;
+            booking.time = time;
+            await transaction.execute({ sql: "UPDATE bookings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", args: [JSON.stringify(booking), bookingId] });
+            await transaction.commit();
+            return response.status(200).json({ booking });
+          } catch (error) {
+            await transaction.rollback().catch(() => undefined);
+            throw error;
+          }
+        }
+
+        const method = booking.customer?.paymentMethod;
+        const canDelete = method === "efectivo"
+          || (method === "transferencia" && booking.paymentStatus !== "approved");
+        if (!canDelete || !["confirmed", "pending-payment"].includes(booking.status)) {
+          return response.status(403).json({ error: "Este turno no se puede borrar porque el método de pago no lo permite." });
+        }
+        await db.execute({ sql: "DELETE FROM bookings WHERE id = ?", args: [bookingId] });
+        return response.status(200).json({ ok: true, bookingId });
       } catch (error) {
-        console.error("No se pudieron consultar o confirmar los turnos del cliente", error);
-        return response.status(500).json({ error: "No se pudieron cargar o confirmar tus turnos." });
+        console.error("No se pudieron gestionar los turnos del cliente", error);
+        return response.status(500).json({ error: "No se pudieron gestionar tus turnos." });
       }
     }
     if (user && (body?.action === "get-client-profile" || body?.action === "save-client-profile")) {
@@ -1348,7 +1391,7 @@ export default async function handler(request, response) {
           if (prior.customer?.email?.trim().toLowerCase() !== user.email) {
             return response.status(403).json({ error: "No puedes modificar un turno de otra persona." });
           }
-          const immutableFields = ["id", "customer", "barberId", "serviceIds", "date", "time", "duration", "totalPrice", "status", "createdAt", "isTest"];
+          const immutableFields = ["id", "customer", "barberId", "serviceIds", "date", "time", "duration", "totalPrice", "status", "paymentReportedAt", "createdAt", "isTest"];
           if (immutableFields.some((field) => JSON.stringify(prior[field]) !== JSON.stringify(record[field]))) {
             return response.status(403).json({ error: "Solo puedes confirmar tu turno; los datos de la reserva no se pueden modificar desde la cuenta cliente." });
           }

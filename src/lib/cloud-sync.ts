@@ -246,6 +246,18 @@ export async function confirmClientBooking(bookingId: string) {
   return request<{ booking: Booking }>("POST", { action: "confirm-client-booking", bookingId });
 }
 
+export async function reportClientPayment(bookingId: string) {
+  return request<{ booking: Booking }>("POST", { action: "report-client-payment", bookingId });
+}
+
+export async function updateClientBooking(bookingId: string, date: string, time: string) {
+  return request<{ booking: Booking }>("POST", { action: "update-client-booking", bookingId, date, time });
+}
+
+export async function deleteClientBooking(bookingId: string) {
+  return request<{ ok: boolean; bookingId: string }>("POST", { action: "delete-client-booking", bookingId });
+}
+
 export async function getStoreMercadoPagoCredentials() {
   return request<StoreMercadoPagoCredentials>("POST", { action: "get-store-payment-credentials" });
 }

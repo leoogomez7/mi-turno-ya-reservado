@@ -196,6 +196,13 @@ export function AgendaManager() {
               const professional = getBarber(booking.barberId);
               const services = booking.serviceIds.map((id) => getProfessionalService(booking.barberId, id)?.name).filter(Boolean).join(", ");
               const date = parseISO(`${booking.date}T${booking.time}`);
+              const paymentMethodLabel = booking.customer.paymentMethod === "efectivo"
+                ? "Efectivo"
+                : booking.customer.paymentMethod === "transferencia"
+                  ? "Transferencia bancaria"
+                  : booking.customer.paymentMethod === "tarjeta o mercado pago"
+                    ? "Tarjeta o Mercado Pago"
+                    : "No especificado";
               return (
                 <div key={booking.id} className="flex flex-wrap items-center gap-4 rounded-xl border border-gold/30 bg-card p-4">
                   <div className="flex w-20 shrink-0 flex-col items-center rounded-lg bg-gold/10 px-2 py-2 text-gold">
@@ -214,16 +221,18 @@ export function AgendaManager() {
                       <Badge variant="outline" className="border-gold/30 text-gold">
                         {professional?.name}{professional?.specialty ? ` · ${professional.specialty}` : ""}
                       </Badge>
+                      <Badge variant="outline" className="border-gold/30 text-gold">Abono · {paymentMethodLabel}</Badge>
                       {booking.isTest && <Badge variant="outline" className="border-emerald-300 text-emerald-400">Turno de prueba</Badge>}
-                      {booking.status === "pending-payment" && <Badge variant="outline" className="border-amber-300 text-amber-300">Pago pendiente · {booking.customer.paymentMethod}</Badge>}
-                      {booking.paymentStatus === "approved" && <Badge variant="outline" className="border-emerald-300 text-emerald-400">Pagado · {booking.customer.paymentMethod === "tarjeta o mercado pago" ? "Mercado Pago" : "Transferencia"}</Badge>}
+                      {booking.status === "pending-payment" && <Badge variant="outline" className="border-amber-300 text-amber-300">Pago pendiente</Badge>}
+                      {booking.paymentReportedAt && booking.paymentStatus !== "approved" && <Badge variant="outline" className="border-amber-300 text-amber-300">Cliente avisó que pagó</Badge>}
+                      {booking.paymentStatus === "approved" && <Badge variant="outline" className="border-emerald-300 text-emerald-400">Pagado · {booking.customer.paymentMethod === "tarjeta o mercado pago" ? "Mercado Pago" : booking.customer.paymentMethod === "transferencia" ? "Transferencia" : "Efectivo"}</Badge>}
                       {booking.status === "completed" && <Badge variant="outline" className="border-emerald-300 text-emerald-400">Asistió</Badge>}
                       {booking.status === "no-show" && <Badge variant="outline" className="border-red-500/30 bg-red-500/10 text-red-300">No asistió</Badge>}
                     </div>
                   </div>
                   <div className="font-display text-lg font-semibold text-gold">${booking.totalPrice.toLocaleString("es-AR")}</div>
                   <div className="flex flex-wrap gap-2">
-                    {booking.status === "pending-payment" && <Button size="sm" disabled={processingBookingId !== null} onClick={() => openDialog(booking, "payment")} className="bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-60">Indicar pago</Button>}
+                    {(booking.status === "pending-payment" || (booking.paymentReportedAt && booking.paymentStatus !== "approved")) && <Button size="sm" disabled={processingBookingId !== null} onClick={() => openDialog(booking, "payment")} className="bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-60">{booking.paymentReportedAt ? "Revisar pago" : "Indicar pago"}</Button>}
                     {booking.status === "confirmed" && <Button size="sm" variant="outline" onClick={() => openDialog(booking, "attendance")}>Indicar asistencia</Button>}
                     <Button size="sm" variant="outline" onClick={() => openDialog(booking, "turno")}>Modificar turno</Button>
                     <Button size="sm" variant="destructive" disabled={booking.isTest || deletingBookingId === booking.id} className={deletingBookingId === booking.id ? "opacity-60" : undefined} onClick={() => void removeBooking(booking.id)}>{deletingBookingId === booking.id ? "Borrando..." : "Borrar turno"}</Button>
