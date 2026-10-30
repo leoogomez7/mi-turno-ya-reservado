@@ -38,16 +38,23 @@ function MyBookingsPage() {
     <div className="min-h-screen bg-gradient-dark">
       <SiteHeader />
       <main className="mx-auto w-full max-w-7xl px-4 py-10 sm:px-6">
-        <p className="text-xs uppercase tracking-widest text-gold">Cuenta de cliente</p>
-        <h1 className="font-display text-4xl font-semibold">Mis turnos</h1>
-        <p className="mt-2 text-sm text-muted-foreground">Turnos asociados a {user?.email}.</p>
-        {bookings.length === 0 ? (
-          <section className="mt-8 rounded-2xl border border-dashed border-border p-10 text-center">
-            <p className="text-muted-foreground">Todavía no hay turnos asociados a esta cuenta.</p>
-            <Button asChild className="mt-4 bg-gold text-primary-foreground hover:bg-gold-soft"><Link to="/reserva">Reservar un turno</Link></Button>
-          </section>
-        ) : (
-          <div className="mt-8 space-y-3">
+        <section className="w-full rounded-3xl border border-gold/30 bg-card p-6">
+          <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <p className="text-xs uppercase tracking-widest text-gold">Cuenta de cliente</p>
+              <h1 className="mt-1 font-display text-2xl font-semibold">Mis turnos</h1>
+            </div>
+            <Link
+              to="/reserva"
+              className="inline-flex h-10 items-center rounded-md bg-gold px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-gold-soft"
+            >
+              Nuevo turno
+            </Link>
+          </div>
+          {!bookings.length ? (
+            <p className="text-sm text-muted-foreground">Todavía no hay turnos asociados a esta cuenta.</p>
+          ) : (
+            <div className="space-y-2">
             {bookings.map((booking) => {
               const professional = getProfessional(booking.barberId);
               const serviceNames = booking.serviceIds.map((id) => getProfessionalService(booking.barberId, id)?.name).filter(Boolean).join(", ");
@@ -55,15 +62,22 @@ function MyBookingsPage() {
               const statusLabel = booking.status === "pending-payment" ? "Pago pendiente" : booking.status === "completed" ? "Asistió" : booking.status === "no-show" ? "No asistió" : booking.status === "cancelled" ? "Cancelado" : "Reservado";
               const statusClass = booking.status === "completed" ? "border-emerald-300 text-emerald-400" : booking.status === "cancelled" || booking.status === "no-show" ? "border-red-500/30 bg-red-500/10 text-red-300" : "border-gold/40 text-gold";
               return (
-                <article key={booking.id} className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-border bg-card p-5">
-                  <div>
-                    <p className="font-semibold">{format(appointmentDate, "EEEE d 'de' MMMM", { locale: es })} · {booking.time}</p>
-                    <p className="mt-1 text-sm text-muted-foreground">{professional?.name ?? "Profesional"} · {serviceNames}</p>
+                <article key={booking.id} className="flex flex-wrap items-center gap-4 rounded-xl border border-gold/30 bg-card p-4">
+                  <div className="flex w-20 shrink-0 flex-col items-center rounded-lg bg-gold/10 px-2 py-2 text-gold">
+                    <span className="text-[10px] uppercase tracking-widest">{format(appointmentDate, "EEE", { locale: es })}</span>
+                    <span className="font-display text-2xl font-semibold">{format(appointmentDate, "d")}</span>
+                    <span className="text-[10px]">{booking.time}</span>
                   </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Badge variant="outline" className={statusClass}>{statusLabel}</Badge>
-                    {booking.appointmentConfirmation && <Badge variant="outline" className="border-sky-300 text-sky-300">{booking.appointmentConfirmation === "confirmed" ? "Confirmaste el turno" : "Sin confirmar"}</Badge>}
-                    <span className="font-semibold text-gold">${booking.totalPrice.toLocaleString("es-AR")}</span>
+                  <div className="min-w-0 flex-1">
+                    <div className="font-medium">{professional?.name ?? "Profesional"}</div>
+                    <div className="truncate text-sm text-muted-foreground">{serviceNames} · {booking.duration} min</div>
+                    <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                      <Badge variant="outline" className={statusClass}>{statusLabel}</Badge>
+                      {booking.appointmentConfirmation && <Badge variant="outline" className="border-sky-300 text-sky-300">{booking.appointmentConfirmation === "confirmed" ? "Confirmaste el turno" : "Sin confirmar"}</Badge>}
+                    </div>
+                  </div>
+                  <div className="font-display text-lg font-semibold text-gold">${booking.totalPrice.toLocaleString("es-AR")}</div>
+                  <div className="flex flex-wrap gap-2">
                     {booking.status === "confirmed" && booking.appointmentConfirmation !== "confirmed" && (
                       <Button size="sm" className="bg-gold text-primary-foreground hover:bg-gold-soft" onClick={() => {
                         void bookingStore.update(booking.id, { appointmentConfirmation: "confirmed" })
@@ -79,6 +93,7 @@ function MyBookingsPage() {
             })}
           </div>
         )}
+        </section>
       </main>
     </div>
   );
