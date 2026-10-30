@@ -841,7 +841,7 @@ function StepBarber({ professionals, value, onChange }: { professionals: Profess
       <SectionTitle icon={Briefcase} title="Paso 2" subtitle="Elegí tu profesional" />
       {professionals.length === 0 ? (
         <div className="rounded-2xl border border-border bg-card p-6 text-sm text-muted-foreground">
-          No hay profesionales cargados. Crealos en <Link to="/configuracion" className="text-gold underline">Configuración</Link>.
+          No hay profesionales cargados.
         </div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2">
