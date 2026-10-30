@@ -92,7 +92,8 @@
   html {
     box-sizing: border-box;
     overflow-x: hidden;
-    scrollbar-gutter: stable;
+    scrollbar-gutter: auto;
+    scrollbar-width: none;
   }
 
   *, *::before, *::after {
@@ -113,24 +114,13 @@
   }
   body {
     overflow-x: hidden;
+    scrollbar-width: none;
   }
-  html {
-    scrollbar-color: var(--gold) var(--background);
-    scrollbar-width: auto;
-  }
-  html::-webkit-scrollbar {
-    width: 16px;
-  }
-  html::-webkit-scrollbar-track {
-    background: var(--background);
-  }
-  html::-webkit-scrollbar-thumb {
-    border: 4px solid var(--background);
-    border-radius: 9999px;
-    background: var(--gold);
-  }
-  html::-webkit-scrollbar-thumb:hover {
-    background: var(--gold-soft);
+  html::-webkit-scrollbar,
+  body::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
   }
   input[type="date"]::-webkit-calendar-picker-indicator {
     filter: invert(1) brightness(1.4);

@@ -12,6 +12,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import appCss from "../styles.css?url";
 import { reportAppError } from "../lib/error-reporting";
 import { Toaster } from "@/components/ui/sonner";
+import { OverlayScrollbar } from "@/components/overlay-scrollbar";
 import { LoadingScreen } from "@/components/loading-screen";
 import { AccountSetup } from "@/components/account-setup";
 import { AuthProvider, useAppAuth } from "@/lib/auth";
@@ -144,6 +145,7 @@ function RootComponent() {
         <CloudDataBootstrap>
           <Outlet />
           <Toaster theme="dark" position="top-center" />
+          <OverlayScrollbar />
         </CloudDataBootstrap>
       </AuthProvider>
     </QueryClientProvider>
