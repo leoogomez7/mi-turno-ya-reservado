@@ -69,6 +69,7 @@ export function ProfessionalsManager() {
   const [savingSettings, setSavingSettings] = useState(false);
   const [mercadoPagoPublicKey, setMercadoPagoPublicKey] = useState("");
   const [mercadoPagoAccessToken, setMercadoPagoAccessToken] = useState("");
+  const [mercadoPagoPublicKeyConfigured, setMercadoPagoPublicKeyConfigured] = useState(false);
   const [mercadoPagoAccessTokenConfigured, setMercadoPagoAccessTokenConfigured] = useState(false);
   const [loadingMercadoPagoCredentials, setLoadingMercadoPagoCredentials] = useState(true);
   const [savingMercadoPagoCredentials, setSavingMercadoPagoCredentials] = useState(false);
@@ -104,6 +105,7 @@ export function ProfessionalsManager() {
     if (!currentStoreCode || role !== "admin") {
       setMercadoPagoPublicKey("");
       setMercadoPagoAccessToken("");
+      setMercadoPagoPublicKeyConfigured(false);
       setMercadoPagoAccessTokenConfigured(false);
       setLoadingMercadoPagoCredentials(false);
       return;
@@ -112,8 +114,9 @@ export function ProfessionalsManager() {
     void getStoreMercadoPagoCredentials()
       .then((credentials) => {
         if (cancelled) return;
-        setMercadoPagoPublicKey(credentials.publicKey);
+        setMercadoPagoPublicKey("");
         setMercadoPagoAccessToken("");
+        setMercadoPagoPublicKeyConfigured(credentials.publicKeyConfigured);
         setMercadoPagoAccessTokenConfigured(credentials.accessTokenConfigured);
       })
       .catch((error: unknown) => {
@@ -179,7 +182,7 @@ export function ProfessionalsManager() {
   }
 
   async function saveMercadoPagoCredentials() {
-    if (!mercadoPagoPublicKey.trim()) {
+    if (!mercadoPagoPublicKey.trim() && !mercadoPagoPublicKeyConfigured) {
       toast.error("Ingresá la Public Key de Mercado Pago.");
       return;
     }
@@ -190,8 +193,9 @@ export function ProfessionalsManager() {
     setSavingMercadoPagoCredentials(true);
     try {
       const saved = await saveStoreMercadoPagoCredentials(mercadoPagoPublicKey, mercadoPagoAccessToken);
-      setMercadoPagoPublicKey(saved.publicKey);
+      setMercadoPagoPublicKey("");
       setMercadoPagoAccessToken("");
+      setMercadoPagoPublicKeyConfigured(saved.publicKeyConfigured);
       setMercadoPagoAccessTokenConfigured(saved.accessTokenConfigured);
       toast.success("Credenciales de Mercado Pago guardadas para esta sucursal.");
     } catch (error) {
@@ -756,16 +760,18 @@ export function ProfessionalsManager() {
             <div className="grid gap-4">
               <Field label="Public Key">
                 <Input
+                  type="password"
                   disabled={loadingMercadoPagoCredentials || savingMercadoPagoCredentials || !currentStoreCode}
                   value={mercadoPagoPublicKey}
                   onChange={(event) => setMercadoPagoPublicKey(event.target.value)}
                   maxLength={500}
-                  autoComplete="off"
-                  placeholder={loadingMercadoPagoCredentials ? "Cargando…" : "APP_USR-..."}
+                  autoComplete="new-password"
+                  placeholder={loadingMercadoPagoCredentials ? "Cargando…" : mercadoPagoPublicKeyConfigured ? "Public Key guardada; completá solo para reemplazarla" : "APP_USR-..."}
                 />
                 <p className="mt-1 text-xs text-muted-foreground">
                   Configuración → Integraciones → Tus Integraciones → Credenciales de producción → Public Key
                 </p>
+                {mercadoPagoPublicKeyConfigured && <p className="mt-1 text-xs text-emerald-400">Hay una Public Key guardada para esta sucursal. Por seguridad, no se vuelve a mostrar.</p>}
               </Field>
               <Field label="Token">
                 <Input

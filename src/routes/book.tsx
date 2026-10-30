@@ -254,6 +254,12 @@ export function BookPage() {
   const selectedStore = activeStores.find((store) => store.code === selectedStoreCode);
   const storeSettings = selectedStore?.settings;
 
+  useEffect(() => {
+    if (customer.paymentMethod === "tarjeta o mercado pago" && !selectedStore?.mercadoPagoConfigured) {
+      setCustomer((current) => ({ ...current, paymentMethod: undefined }));
+    }
+  }, [customer.paymentMethod, selectedStore?.mercadoPagoConfigured]);
+
   async function chooseStore(store: Store) {
     setStoreLoading(true);
     try {
@@ -636,7 +642,7 @@ Observaciones: ${customer.notes || "Ninguna"}`;
         <Stepper step={step} />
 
         <div className="mt-4 rounded-2xl border border-gold/30 bg-card p-5 sm:p-6">
-          {step === 0 && <StepCustomer customer={customer} setCustomer={setCustomer} />}
+          {step === 0 && <StepCustomer customer={customer} setCustomer={setCustomer} mercadoPagoAvailable={Boolean(selectedStore?.mercadoPagoConfigured)} />}
           {step === 1 && <StepBarber professionals={reservationProfessionals} value={barberId} onChange={setBarberId} />}
           {step === 2 && <StepServices professional={selectedProfessional} value={serviceIds} onChange={setServiceIds} />}
           {step === 3 && <StepDateTime professional={selectedProfessional} bookings={reservationBookings} date={date} setDate={setDate} time={time} setTime={setTime} barberId={barberId} duration={duration} />}
@@ -788,7 +794,7 @@ function SectionTitle({ icon: Icon, title, subtitle }: { icon: any; title: strin
   );
 }
 
-function StepCustomer({ customer, setCustomer }: { customer: Customer; setCustomer: (c: Customer) => void }) {
+function StepCustomer({ customer, setCustomer, mercadoPagoAvailable }: { customer: Customer; setCustomer: (c: Customer) => void; mercadoPagoAvailable: boolean }) {
   return (
     <div>
       <SectionTitle icon={User} title="Paso 1" subtitle="Tus datos" />
@@ -806,8 +812,9 @@ function StepCustomer({ customer, setCustomer }: { customer: Customer; setCustom
             <option value="" disabled>Seleccioná un método de pago</option>
             <option value="efectivo">Efectivo</option>
             <option value="transferencia">Transferencia Bancaria</option>
-            <option value="tarjeta o mercado pago">Tarjeta o MercadoPago</option>
+            {mercadoPagoAvailable && <option value="tarjeta o mercado pago">Tarjeta o MercadoPago</option>}
           </select>
+          {!mercadoPagoAvailable && <p className="mt-1 text-xs text-muted-foreground">Tarjeta o Mercado Pago no está disponible en esta sucursal.</p>}
         </Field>
         <div className="sm:col-span-2">
           <Field label="Observaciones">

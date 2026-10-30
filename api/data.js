@@ -639,7 +639,13 @@ export default async function handler(request, response) {
       const [bookingRows, professionalRows, storesResult] = await Promise.all([
         db.execute("SELECT id, value FROM bookings ORDER BY updated_at DESC"),
         db.execute("SELECT id, value FROM professionals ORDER BY updated_at DESC"),
-        db.execute("SELECT code, name, owner_id, settings, subscription_expires_at, subscription_plan_type FROM stores ORDER BY name COLLATE NOCASE"),
+        db.execute(`SELECT stores.code, stores.name, stores.owner_id, stores.settings,
+          stores.subscription_expires_at, stores.subscription_plan_type,
+          EXISTS(SELECT 1 FROM store_payment_credentials credentials
+            WHERE credentials.store_code = stores.code
+              AND credentials.public_key != ''
+              AND credentials.encrypted_access_token != '') AS mercado_pago_configured
+          FROM stores ORDER BY stores.name COLLATE NOCASE`),
       ]);
       const allBookings = bookingRows.rows.map((row) => JSON.parse(String(row.value)));
       const storeBookings = userStoreCode
@@ -671,6 +677,7 @@ export default async function handler(request, response) {
           code: String(row.code),
           name: String(row.name),
           settings: parseStoreSettings(row.settings),
+          mercadoPagoConfigured: Boolean(row.mercado_pago_configured),
           subscriptionExpiresAt: row.subscription_expires_at ? String(row.subscription_expires_at) : null,
           subscriptionActive: isSubscriptionActive(row.subscription_expires_at),
           subscriptionPlanType: String(row.subscription_plan_type ?? ""),
@@ -705,7 +712,7 @@ export default async function handler(request, response) {
         const current = currentResult.rows[0];
         if (body.action === "get-store-payment-credentials") {
           return response.status(200).json({
-            publicKey: current ? String(current.public_key) : "",
+            publicKeyConfigured: Boolean(current?.public_key),
             accessTokenConfigured: Boolean(current?.encrypted_access_token),
           });
         }
@@ -715,20 +722,21 @@ export default async function handler(request, response) {
         if (publicKey.length > 500 || accessToken.length > 10000) {
           return response.status(400).json({ error: "Las credenciales superan el tamaño permitido." });
         }
-        if (!publicKey) return response.status(400).json({ error: "Ingresá la Public Key de Mercado Pago." });
+        if (!publicKey && !current?.public_key) return response.status(400).json({ error: "Ingresá la Public Key de Mercado Pago." });
         if (!accessToken && !current?.encrypted_access_token) {
           return response.status(400).json({ error: "Ingresá el Access Token de Mercado Pago." });
         }
 
+        const nextPublicKey = publicKey || String(current.public_key);
         const encryptedAccessToken = accessToken ? encryptPaymentAccessToken(accessToken) : String(current.encrypted_access_token);
         await db.execute({
           sql: `INSERT INTO store_payment_credentials (store_code, public_key, encrypted_access_token, updated_at)
             VALUES (?, ?, ?, CURRENT_TIMESTAMP)
             ON CONFLICT(store_code) DO UPDATE SET public_key = excluded.public_key,
               encrypted_access_token = excluded.encrypted_access_token, updated_at = CURRENT_TIMESTAMP`,
-          args: [storeCode, publicKey, encryptedAccessToken],
+          args: [storeCode, nextPublicKey, encryptedAccessToken],
         });
-        return response.status(200).json({ publicKey, accessTokenConfigured: true });
+        return response.status(200).json({ publicKeyConfigured: true, accessTokenConfigured: true });
       } catch (error) {
         console.error("No se pudieron guardar las credenciales de Mercado Pago", error);
         return response.status(500).json({ error: error instanceof Error ? error.message : "No se pudieron guardar las credenciales de Mercado Pago." });

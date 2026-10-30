@@ -19,13 +19,14 @@ export type StoreSettings = {
 };
 export type StoreContactSettings = Pick<StoreSettings, "street" | "height" | "city" | "province" | "postalCode" | "whatsapp" | "instagram">;
 export type StoreMercadoPagoCredentials = {
-  publicKey: string;
+  publicKeyConfigured: boolean;
   accessTokenConfigured: boolean;
 };
 export type Store = {
   code: string;
   name: string;
   settings: StoreSettings;
+  mercadoPagoConfigured?: boolean;
   subscriptionExpiresAt?: string | null;
   subscriptionActive?: boolean;
   subscriptionPlanType?: "trial" | "paid" | "promo" | string;
@@ -230,11 +231,17 @@ export async function getStoreMercadoPagoCredentials() {
 }
 
 export async function saveStoreMercadoPagoCredentials(publicKey: string, accessToken: string) {
-  return request<StoreMercadoPagoCredentials>("POST", {
+  const saved = await request<StoreMercadoPagoCredentials>("POST", {
     action: "save-store-payment-credentials",
     publicKey,
     accessToken,
   });
+  const currentStoreCode = getCurrentStoreCode();
+  availableStores = availableStores.map((store) => store.code === currentStoreCode
+    ? { ...store, mercadoPagoConfigured: saved.publicKeyConfigured && saved.accessTokenConfigured }
+    : store);
+  window.dispatchEvent(new Event("mi-turno-ya:store-changed"));
+  return saved;
 }
 
 export async function createSubscriptionCheckout(planId: string, promoCode?: string) {
