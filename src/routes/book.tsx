@@ -154,10 +154,14 @@ export function BookPage() {
     }
     const needsStore = !currentCode || !hasActiveStore;
     if (needsStore) {
-      setStorePickerOpen(true);
+      setStorePickerOpen(step === 0);
+      if (step !== 0) {
+        setStep(0);
+        void navigate({ to: "/reserva", replace: true });
+      }
       setStepError(step > 0 ? "Elegí una sucursal para poder continuar con la reserva." : null);
     }
-  }, [cloudDataReady, selectedStoreCode, stores, step]);
+  }, [cloudDataReady, navigate, selectedStoreCode, stores, step]);
 
   useEffect(() => {
     if (!cloudDataReady || !selectedStoreCode) return;
@@ -497,7 +501,12 @@ Observaciones: ${customer.notes || "Ninguna"}`;
     if (!selectedStoreCode || !selectedStore) {
       const message = "Elegí una sucursal para poder continuar con la reserva.";
       setStepError(message);
-      setStorePickerOpen(true);
+      if (step === 0) {
+        setStorePickerOpen(true);
+      } else {
+        setStep(0);
+        void navigate({ to: "/reserva", replace: true });
+      }
       toast.error(message);
       return;
     }
@@ -547,7 +556,7 @@ Observaciones: ${customer.notes || "Ninguna"}`;
     <div className="min-h-screen bg-gradient-dark">
       <SiteHeader />
       <main className="mx-auto flex w-full max-w-7xl flex-col px-4 py-10 sm:px-6">
-        <section
+        {step === 0 && <section
           className={cn(
             "mb-4 rounded-2xl border border-gold/30 bg-card p-4 sm:p-5",
             (!selectedStoreCode || !selectedStore) && "cursor-pointer transition-colors hover:bg-gold/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold",
@@ -581,8 +590,8 @@ Observaciones: ${customer.notes || "Ninguna"}`;
               {selectedStore && <Button type="button" size="sm" className="bg-gold text-primary-foreground hover:bg-gold-soft" onClick={() => setStorePickerOpen(true)}>Cambiar sucursal</Button>}
             </div>
           </div>
-        </section>
-        <Dialog open={storePickerOpen} onOpenChange={(open) => {
+        </section>}
+        {step === 0 && <Dialog open={storePickerOpen} onOpenChange={(open) => {
           setStorePickerOpen(open);
         }}>
           <DialogContent className="max-h-[85vh] overflow-y-auto">
@@ -638,7 +647,7 @@ Observaciones: ${customer.notes || "Ninguna"}`;
               {storeSearchSubmitted && storeNotFound && <p role="status" className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">No encontramos sucursales con ese nombre o código.</p>}
             </div>
           </DialogContent>
-        </Dialog>
+        </Dialog>}
         <Stepper step={step} />
 
         <div className="mt-4 rounded-2xl border border-gold/30 bg-card p-5 sm:p-6">
