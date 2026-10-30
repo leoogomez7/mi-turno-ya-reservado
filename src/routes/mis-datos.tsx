@@ -70,7 +70,7 @@ function MyDataPage() {
     <div className="min-h-screen bg-gradient-dark">
       <SiteHeader />
       <main className="mx-auto w-full max-w-7xl px-4 py-10 sm:px-6">
-        <section className="space-y-5 rounded-3xl border border-gold/30 bg-card p-6">
+        <section className="w-full space-y-5 rounded-3xl border border-gold/30 bg-card p-6">
           <div>
             <p className="text-xs uppercase tracking-widest text-gold">Cuenta de cliente</p>
             <h1 className="mt-1 font-display text-2xl font-semibold">Mis datos</h1>
