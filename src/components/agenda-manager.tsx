@@ -26,7 +26,9 @@ export function AgendaManager() {
   const [editedProfessionalId, setEditedProfessionalId] = useState("");
   const [editedServiceId, setEditedServiceId] = useState("");
   const [savingEdit, setSavingEdit] = useState(false);
-  const [confirmingPaymentId, setConfirmingPaymentId] = useState<string | null>(null);
+  const [processingBookingId, setProcessingBookingId] = useState<string | null>(null);
+  const [processingBookingStatus, setProcessingBookingStatus] = useState<Booking["status"] | null>(null);
+  const [deletingBookingId, setDeletingBookingId] = useState<string | null>(null);
 
   useEffect(() => {
     const reload = () => setBookings(bookingStore.all());
@@ -134,11 +136,9 @@ export function AgendaManager() {
   }
 
   async function updateBooking(id: string, patch: Partial<Booking>, success: string) {
-    const resolvingPayment = selectedBooking?.id === id
-      && selectedBooking.status === "pending-payment"
-      && (patch.status === "confirmed" || patch.status === "cancelled");
-    if (resolvingPayment && confirmingPaymentId) return;
-    if (resolvingPayment) setConfirmingPaymentId(id);
+    if (processingBookingId) return;
+    setProcessingBookingId(id);
+    setProcessingBookingStatus(patch.status ?? null);
     try {
       await bookingStore.update(id, patch);
       toast.success(success);
@@ -146,16 +146,21 @@ export function AgendaManager() {
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "No se pudo actualizar el turno.");
     } finally {
-      if (resolvingPayment) setConfirmingPaymentId(null);
+      setProcessingBookingId(null);
+      setProcessingBookingStatus(null);
     }
   }
 
   async function removeBooking(id: string) {
+    if (deletingBookingId) return;
+    setDeletingBookingId(id);
     try {
       await bookingStore.remove(id);
       toast("Turno eliminado.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "No se pudo eliminar el turno.");
+    } finally {
+      setDeletingBookingId(null);
     }
   }
 
@@ -218,10 +223,10 @@ export function AgendaManager() {
                   </div>
                   <div className="font-display text-lg font-semibold text-gold">${booking.totalPrice.toLocaleString("es-AR")}</div>
                   <div className="flex flex-wrap gap-2">
-                    {booking.status === "pending-payment" && <Button size="sm" disabled={confirmingPaymentId !== null} onClick={() => openDialog(booking, "payment")} className="bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-60">Indicar pago</Button>}
+                    {booking.status === "pending-payment" && <Button size="sm" disabled={processingBookingId !== null} onClick={() => openDialog(booking, "payment")} className="bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-60">Indicar pago</Button>}
                     {booking.status === "confirmed" && <Button size="sm" variant="outline" onClick={() => openDialog(booking, "attendance")}>Indicar asistencia</Button>}
                     <Button size="sm" variant="outline" onClick={() => openDialog(booking, "turno")}>Modificar turno</Button>
-                    <Button size="sm" variant="destructive" disabled={booking.isTest} onClick={() => void removeBooking(booking.id)}>Borrar turno</Button>
+                    <Button size="sm" variant="destructive" disabled={booking.isTest || deletingBookingId !== null} onClick={() => void removeBooking(booking.id)}>{deletingBookingId === booking.id ? "Borrando..." : "Borrar turno"}</Button>
                   </div>
                 </div>
               );
@@ -239,22 +244,22 @@ export function AgendaManager() {
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
-              {editMode === "attendance" && <div className="grid gap-3 sm:grid-cols-2"><Button className="bg-emerald-500 text-white" onClick={() => selectedBooking && void updateBooking(selectedBooking.id, { status: "completed" }, "Asistencia registrada")}>Sí asistió</Button><Button className="border border-red-500/30 bg-red-500/10 text-red-300 hover:bg-red-500/20" onClick={() => selectedBooking && void updateBooking(selectedBooking.id, { status: "no-show" }, "Turno indicado como no asistió")}>No asistió</Button></div>}
+              {editMode === "attendance" && <div className="grid gap-3 sm:grid-cols-2"><Button disabled={processingBookingId !== null} className="bg-emerald-500 text-white disabled:opacity-60" onClick={() => selectedBooking && void updateBooking(selectedBooking.id, { status: "completed" }, "Asistencia registrada")}>{processingBookingId === selectedBooking?.id && processingBookingStatus === "completed" ? "Procesando..." : "Sí asistió"}</Button><Button disabled={processingBookingId !== null} className="border border-red-500/30 bg-red-500/10 text-red-300 hover:bg-red-500/20 disabled:opacity-60" onClick={() => selectedBooking && void updateBooking(selectedBooking.id, { status: "no-show" }, "Turno indicado como no asistió")}>{processingBookingId === selectedBooking?.id && processingBookingStatus === "no-show" ? "Procesando..." : "No asistió"}</Button></div>}
               {editMode === "payment" && (
                 <div className="grid gap-3 sm:grid-cols-2">
                   <Button
-                    disabled={confirmingPaymentId !== null}
+                    disabled={processingBookingId !== null}
                     className="bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-60"
                     onClick={() => selectedBooking && void updateBooking(selectedBooking.id, { status: "confirmed", paymentStatus: "approved" }, "Pago confirmado y turno reservado")}
                   >
-                    {confirmingPaymentId === selectedBooking?.id ? "Procesando..." : "Sí pagó"}
+                    {processingBookingId === selectedBooking?.id && processingBookingStatus === "confirmed" ? "Procesando..." : "Sí pagó"}
                   </Button>
                   <Button
-                    disabled={confirmingPaymentId !== null}
+                    disabled={processingBookingId !== null}
                     className="border border-red-500/40 bg-red-500/10 text-red-300 hover:bg-red-500/20 disabled:opacity-60"
                     onClick={() => selectedBooking && void updateBooking(selectedBooking.id, { status: "cancelled" }, "Pago no recibido; turno cancelado y horario liberado")}
                   >
-                    {confirmingPaymentId === selectedBooking?.id ? "Procesando..." : "No pagó"}
+                    {processingBookingId === selectedBooking?.id && processingBookingStatus === "cancelled" ? "Procesando..." : "No pagó"}
                   </Button>
                 </div>
               )}
@@ -273,7 +278,7 @@ export function AgendaManager() {
                 </div>
               )}
             </div>
-            {editMode === "turno" && <DialogFooter><Button variant="outline" disabled={savingEdit} onClick={closeDialog}>Cancelar</Button><Button className="bg-gold text-primary-foreground hover:bg-gold-soft" disabled={savingEdit} onClick={() => void saveBookingEdit()}>{savingEdit ? "Guardando..." : "Guardar cambios"}</Button></DialogFooter>}
+            {editMode === "turno" && <DialogFooter><Button variant="outline" disabled={savingEdit} onClick={closeDialog}>Cancelar</Button><Button className="bg-gold text-primary-foreground hover:bg-gold-soft" disabled={savingEdit} onClick={() => void saveBookingEdit()}>{savingEdit ? "Procesando..." : "Guardar cambios"}</Button></DialogFooter>}
           </DialogContent>
         </Dialog>
       </main>
