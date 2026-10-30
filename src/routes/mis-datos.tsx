@@ -77,8 +77,11 @@ function MyDataPage() {
           </div>
           <div>
             <label className="mb-2 block text-sm text-muted-foreground" htmlFor="profile-name">Nombre y apellido</label>
-            <Input id="profile-name" value={fullName || "No informado en Kinde"} readOnly className="cursor-not-allowed bg-muted/40 text-muted-foreground" title="El nombre se administra desde tu cuenta de Kinde." />
-            <p className="mt-1 text-xs text-muted-foreground">El nombre se obtiene de tu perfil de Kinde.</p>
+            <div className="relative">
+              <Input id="profile-name" value={fullName || "No informado en Kinde"} readOnly aria-readonly="true" className="cursor-not-allowed bg-muted/40 pr-10 text-muted-foreground" title="El nombre se administra desde tu cuenta de Kinde." />
+              <LockKeyhole aria-hidden="true" className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">El nombre y apellido asociado a tu cuenta no se puede modificar desde aquí.</p>
           </div>
           <div>
             <label className="mb-2 block text-sm text-muted-foreground" htmlFor="profile-email">Correo electrónico</label>
@@ -86,7 +89,7 @@ function MyDataPage() {
               <Input id="profile-email" type="email" value={user?.email ?? ""} readOnly aria-readonly="true" className="cursor-not-allowed bg-muted/40 pr-10 text-muted-foreground" title="El correo electrónico no se puede modificar." />
               <LockKeyhole aria-hidden="true" className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             </div>
-            <p className="mt-1 text-xs text-muted-foreground">El correo asociado a tu cuenta no se puede modificar desde aquí.</p>
+            <p className="mt-1 text-xs text-muted-foreground">El correo electrónico asociado a tu cuenta no se puede modificar desde aquí.</p>
           </div>
           <div>
             <label className="mb-2 block text-sm text-muted-foreground" htmlFor="profile-phone">Teléfono</label>
