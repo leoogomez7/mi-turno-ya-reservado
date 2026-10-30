@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { Menu, X } from "lucide-react";
 import logo from "../../logo.png";
 import { Button } from "@/components/ui/button";
@@ -8,6 +8,7 @@ import { AUTH_CONFIGURED } from "@/lib/env";
 import { rememberAuthReturnPath, rememberSignupRole, useAppAuth, type AccountRole } from "@/lib/auth";
 import { useLocation } from "@tanstack/react-router";
 import { getAvailableStores, getCurrentStoreCode } from "@/lib/cloud-sync";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 export function SiteHeader() {
   const [open, setOpen] = useState(false);
@@ -15,6 +16,7 @@ export function SiteHeader() {
   const [registrationDialogOpen, setRegistrationDialogOpen] = useState(false);
   const { isAuthenticated, user, role, login, register, logout } = useAppAuth();
   const location = useLocation();
+  const navigate = useNavigate();
   const [branchInfo, setBranchInfo] = useState(() => ({
     name: getAvailableStores().find((store) => store.code === getCurrentStoreCode())?.name ?? "Cargando...",
     code: getCurrentStoreCode(),
@@ -46,6 +48,12 @@ export function SiteHeader() {
     await register(accountRole);
   }
 
+  async function handleLogout() {
+    setOpen(false);
+    await logout();
+    await navigate({ to: "/reserva", replace: true });
+  }
+
   return (
     <header className="sticky top-0 z-40 border-b border-border/60 bg-background/80 backdrop-blur-xl">
       <div className="relative flex w-full flex-wrap items-center justify-between gap-2 px-3 py-2.5 md:px-4 lg:px-5">
@@ -71,20 +79,16 @@ export function SiteHeader() {
           {role === "admin" && <Link to="/plan" className="px-3 py-2 text-muted-foreground hover:text-foreground [&.active]:text-gold">Plan</Link>}
           {role === "admin" && <Link to="/configuracion" className="px-3 py-2 text-muted-foreground hover:text-foreground [&.active]:text-gold">Configuración</Link>}
           {isAuthenticated && role === "client" && <Link to="/mis-turnos" className="px-3 py-2 text-muted-foreground hover:text-foreground [&.active]:text-gold">Mis turnos</Link>}
-          {isAuthenticated && role === "admin" ? (
-            <Link to="/configuracion" className="inline-flex h-9 items-center rounded-md border border-gold/30 bg-background px-3 text-xs font-medium text-foreground transition-colors hover:bg-accent hover:text-accent-foreground">
-              {user?.email || "Configuración"}
-            </Link>
-          ) : isAuthenticated && role === "client" ? (
-            <Link to="/mis-turnos" className="inline-flex h-9 items-center rounded-md border border-gold/30 bg-background px-3 text-xs font-medium text-foreground transition-colors hover:bg-accent hover:text-accent-foreground">
-              {user?.email || "Mis turnos"}
-            </Link>
-          ) : isAuthenticated && !role ? (
-            <Link to="/configuracion" className="inline-flex h-9 items-center rounded-md border border-gold/30 bg-background px-3 text-xs font-medium text-foreground transition-colors hover:bg-accent hover:text-accent-foreground">
-              {user?.email || "Configuración"}
-            </Link>
-          ) : isAuthenticated ? (
-            <Button size="sm" variant="outline" className="border-gold/30" disabled>{user?.email || "Cuenta"}</Button>
+          {isAuthenticated && role === "client" && <Link to="/mis-datos" className="px-3 py-2 text-muted-foreground hover:text-foreground [&.active]:text-gold">Mis datos</Link>}
+          {isAuthenticated ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button size="sm" variant="outline" className="max-w-48 truncate border-gold/30">{user?.email || "Cuenta"}</Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onSelect={() => void handleLogout()}>Cerrar sesión</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           ) : (
             <button type="button" className="px-3 py-2 text-sm text-muted-foreground hover:text-foreground" onClick={() => setAuthDialogOpen(true)}>Ingresar</button>
           )}
@@ -126,8 +130,13 @@ export function SiteHeader() {
                   Mis turnos
                 </Link>
               )}
+              {isAuthenticated && role === "client" && (
+                <Link to="/mis-datos" onClick={() => setOpen(false)} className="block rounded-2xl px-4 py-3 text-foreground hover:bg-border/10 [&.active]:bg-gold/10 [&.active]:text-gold">
+                  Mis datos
+                </Link>
+              )}
               {isAuthenticated ? (
-                <button type="button" onClick={() => { setOpen(false); void logout(); }} className="rounded-2xl px-4 py-3 text-left text-foreground hover:bg-border/10">Cerrar sesión</button>
+                <button type="button" onClick={() => void handleLogout()} className="rounded-2xl px-4 py-3 text-left text-foreground hover:bg-border/10">Cerrar sesión</button>
               ) : (
                 <button type="button" onClick={() => { setOpen(false); setAuthDialogOpen(true); }} className="rounded-2xl px-4 py-3 text-left text-foreground hover:bg-border/10">Ingresar / Crear cuenta</button>
               )}

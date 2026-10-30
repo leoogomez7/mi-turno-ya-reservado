@@ -54,9 +54,10 @@ function paymentMethodLabel(paymentMethod: Customer["paymentMethod"] | undefined
 }
 
 type ReservationResult = {
-  kind: "confirmed" | "transfer-pending" | "payment-success" | "payment-pending" | "payment-failure";
+  kind: "confirmed" | "payment-success" | "payment-pending" | "payment-failure";
   date: string;
   time: string;
+  paymentMethod?: Customer["paymentMethod"];
 };
 
 const PENDING_PAYMENT_SESSION_KEY = "mi-turno-ya:pending-payment-booking";
@@ -71,7 +72,9 @@ export function BookPage() {
   const [step, setStep] = useState<number>(Number(initialStep));
   const [stepError, setStepError] = useState<string | null>(null);
   const [confirmingBooking, setConfirmingBooking] = useState(false);
+  const [startingPayment, setStartingPayment] = useState(false);
   const [paymentDialog, setPaymentDialog] = useState<"transfer" | null>(null);
+  const [pendingTransferReturn, setPendingTransferReturn] = useState<Pick<ReservationResult, "date" | "time"> | null>(null);
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [reservationResult, setReservationResult] = useState<ReservationResult | null>(null);
   const [stores, setStores] = useState<Store[]>(getAvailableStores());
@@ -188,15 +191,13 @@ export function BookPage() {
 
   useEffect(() => {
     if (!paymentReturn) return;
-    let pendingPayment: { bookingId?: string; cancellationToken?: string; storeCode?: string; date?: string; time?: string } = {};
+    let pendingPayment: { bookingId?: string; cancellationToken?: string; storeCode?: string; date?: string; time?: string; paymentMethod?: Customer["paymentMethod"]; whatsappMessage?: string } = {};
     try {
       const saved = window.localStorage.getItem(PENDING_PAYMENT_SESSION_KEY);
       if (saved) pendingPayment = JSON.parse(saved) as typeof pendingPayment;
     } catch {
       pendingPayment = {};
     }
-    window.localStorage.removeItem(PENDING_PAYMENT_SESSION_KEY);
-
     let cancelled = false;
     void (async () => {
       let resultKind: ReservationResult["kind"] = paymentReturn === "pending" ? "payment-pending" : "payment-failure";
@@ -222,7 +223,13 @@ export function BookPage() {
         }
       }
       if (cancelled) return;
-      setReservationResult({ kind: resultKind, date: pendingPayment.date ?? "", time: pendingPayment.time ?? "" });
+      if (resultKind !== "payment-pending") window.localStorage.removeItem(PENDING_PAYMENT_SESSION_KEY);
+      setReservationResult({
+        kind: resultKind,
+        date: pendingPayment.date ?? "",
+        time: pendingPayment.time ?? "",
+        paymentMethod: pendingPayment.paymentMethod,
+      });
       void navigate({ to: "/reserva", replace: true });
     })();
     return () => { cancelled = true; };
@@ -307,6 +314,7 @@ export function BookPage() {
       .join(", ");
     const message = `Hola! Quiero confirmar un turno.
 Sucursal: ${selectedStore?.name ?? ""}
+Dirección: ${selectedStore?.settings.address || "No especificada"}
 Cliente: ${customer.fullName}
 Teléfono: ${customer.phone}
 Email: ${customer.email}
@@ -362,11 +370,6 @@ Observaciones: ${customer.notes || "Ninguna"}`;
 
     setConfirmingBooking(true);
     try {
-    const serviceNames = selectedServices
-      .filter((service) => serviceIds.includes(service.id))
-      .map((service) => service.name)
-      .join(", ");
-
     if (customer.paymentMethod === "transferencia") {
       try {
         await saveBooking({
@@ -375,7 +378,12 @@ Observaciones: ${customer.notes || "Ninguna"}`;
         date: format(date, "yyyy-MM-dd"),
         time, duration, totalPrice: price, status: "pending-payment",
         });
-        setPaymentDialog("transfer");
+        setReservationResult({
+          kind: "payment-pending",
+          date: format(date, "yyyy-MM-dd"),
+          time,
+          paymentMethod: "transferencia",
+        });
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "No se pudo guardar el turno.");
       }
@@ -384,14 +392,6 @@ Observaciones: ${customer.notes || "Ninguna"}`;
 
     if (customer.paymentMethod === "tarjeta o mercado pago") {
       setPaymentError(null);
-      const paymentWindow = window.open("about:blank", "_blank");
-      if (!paymentWindow) {
-        setPaymentError("El navegador bloqueó la nueva pestaña. Permití las ventanas emergentes para continuar con Mercado Pago.");
-        return;
-      }
-      paymentWindow.opener = null;
-      const whatsappWindow = storeSettings?.whatsapp ? window.open("about:blank", "_blank") : null;
-      if (whatsappWindow) whatsappWindow.opener = null;
       let pendingBooking: Booking | null = null;
       try {
         pendingBooking = await saveBooking({
@@ -406,29 +406,16 @@ Observaciones: ${customer.notes || "Ninguna"}`;
           storeCode: selectedStoreCode,
           date: format(date, "yyyy-MM-dd"),
           time,
+          paymentMethod: customer.paymentMethod,
+          whatsappMessage: createBookingWhatsAppMessage(true),
         }));
         setReservationResult({
           kind: "payment-pending",
           date: format(date, "yyyy-MM-dd"),
           time,
+          paymentMethod: customer.paymentMethod,
         });
-        const response = await fetch("/api/mercadopago/preference", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ bookingId: pendingBooking.id, cancellationToken: pendingBooking.cancellationToken }),
-        });
-        const result = await response.json() as { initPoint?: string; error?: string };
-        if (!response.ok || !result.initPoint) {
-          throw new Error(result.error || "No se pudo preparar el pago.");
-        }
-        paymentWindow.location.href = result.initPoint;
-        if (whatsappWindow && storeSettings?.whatsapp) {
-          const whatsappUrl = `https://wa.me/${storeSettings.whatsapp.replace(/\D/g, "")}?text=${encodeURIComponent(createBookingWhatsAppMessage(true))}`;
-          whatsappWindow.location.href = whatsappUrl;
-        }
       } catch (error) {
-        paymentWindow.close();
-        whatsappWindow?.close();
         setReservationResult(null);
         if (pendingBooking) {
           try {
@@ -456,10 +443,6 @@ Observaciones: ${customer.notes || "Ninguna"}`;
         status: "confirmed",
       });
       setReservationResult({ kind: "confirmed", date: format(date, "yyyy-MM-dd"), time });
-      if (storeSettings?.whatsapp) {
-        const whatsappUrl = `https://wa.me/${storeSettings.whatsapp.replace(/\D/g, "")}?text=${encodeURIComponent(createBookingWhatsAppMessage(false))}`;
-        window.open(whatsappUrl, "_blank");
-      }
       toast.success("¡Turno confirmado!");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "No se pudo guardar el turno.");
@@ -469,23 +452,61 @@ Observaciones: ${customer.notes || "Ninguna"}`;
     }
   }
 
-  function sendTransferConfirmation() {
+  async function startMercadoPagoPayment() {
+    if (startingPayment) return;
+    setStartingPayment(true);
+    try {
+      const saved = window.localStorage.getItem(PENDING_PAYMENT_SESSION_KEY);
+      const pendingPayment = saved ? JSON.parse(saved) as { bookingId?: string; cancellationToken?: string } : null;
+      if (!pendingPayment?.bookingId) throw new Error("No encontramos el turno pendiente para iniciar el pago.");
+
+      const response = await fetch("/api/mercadopago/preference", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bookingId: pendingPayment.bookingId, cancellationToken: pendingPayment.cancellationToken }),
+      });
+      const result = await response.json() as { initPoint?: string; error?: string };
+      if (!response.ok || !result.initPoint) throw new Error(result.error || "No se pudo preparar el pago.");
+      window.location.assign(result.initPoint);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo iniciar el pago.");
+      setStartingPayment(false);
+    }
+  }
+
+  function sendPendingBookingWhatsApp() {
     if (!storeSettings?.whatsapp) {
       toast.error("La sucursal todavía no configuró su WhatsApp.");
       return;
     }
-    const message = createBookingWhatsAppMessage(true);
+    let message = createBookingWhatsAppMessage(true);
+    try {
+      const saved = window.localStorage.getItem(PENDING_PAYMENT_SESSION_KEY);
+      const pendingPayment = saved ? JSON.parse(saved) as { whatsappMessage?: string } : null;
+      if (pendingPayment?.whatsappMessage) message = pendingPayment.whatsappMessage;
+    } catch {
+      // Uses the current form data if no saved message is available.
+    }
     const whatsappUrl = `https://wa.me/${storeSettings.whatsapp.replace(/\D/g, "")}?text=${encodeURIComponent(message)}`;
+    window.open(whatsappUrl, "_blank", "noopener,noreferrer");
+  }
 
+  function openTransferPaymentDetails(result: ReservationResult) {
+    setPendingTransferReturn({ date: result.date, time: result.time });
+    setReservationResult(null);
+    setPaymentDialog("transfer");
+  }
+
+  function closeTransferPaymentDetails() {
     setPaymentDialog(null);
-    setReservationResult({
-      kind: "transfer-pending",
-      date: date ? format(date, "yyyy-MM-dd") : "",
-      time,
-    });
-    window.setTimeout(() => {
-      window.open(whatsappUrl, "_blank", "noopener,noreferrer");
-    }, 150);
+    if (pendingTransferReturn) {
+      setReservationResult({
+        kind: "payment-pending",
+        ...pendingTransferReturn,
+        paymentMethod: "transferencia",
+      });
+      setPendingTransferReturn(null);
+    }
   }
 
   async function copyTransferValue(value: string) {
@@ -544,6 +565,7 @@ Observaciones: ${customer.notes || "Ninguna"}`;
     setReservationResult(null);
     setPaymentDialog(null);
     setPaymentError(null);
+    window.localStorage.removeItem(PENDING_PAYMENT_SESSION_KEY);
     setCustomer(EMPTY_CUSTOMER);
     setBarberId("");
     setServiceIds([]);
@@ -655,7 +677,7 @@ Observaciones: ${customer.notes || "Ninguna"}`;
           {step === 1 && <StepBarber professionals={reservationProfessionals} value={barberId} onChange={setBarberId} />}
           {step === 2 && <StepServices professional={selectedProfessional} value={serviceIds} onChange={setServiceIds} />}
           {step === 3 && <StepDateTime professional={selectedProfessional} bookings={reservationBookings} date={date} setDate={setDate} time={time} setTime={setTime} barberId={barberId} duration={duration} />}
-          {step === 4 && (date ? <StepConfirm professional={selectedProfessional} storeName={stores.find((store) => store.code === selectedStoreCode)?.name ?? selectedStoreCode} storeCode={selectedStoreCode} customer={customer} serviceIds={serviceIds} date={date} time={time} duration={duration} price={price} /> : <p className="py-8 text-center text-sm text-muted-foreground">Seleccioná fecha y horario para ver el resumen.</p>)}
+          {step === 4 && (date ? <StepConfirm professional={selectedProfessional} storeName={selectedStore?.name ?? selectedStoreCode} storeCode={selectedStoreCode} storeAddress={storeSettings?.address ?? ""} customer={customer} serviceIds={serviceIds} date={date} time={time} duration={duration} price={price} /> : <p className="py-8 text-center text-sm text-muted-foreground">Seleccioná fecha y horario para ver el resumen.</p>)}
         </div>
 
         {stepError && (
@@ -690,15 +712,12 @@ Observaciones: ${customer.notes || "Ninguna"}`;
           )}
         </div>
       </main>
-      <Dialog open={paymentDialog === "transfer"} onOpenChange={(open) => { if (!open) setPaymentDialog(null); }}>
+      <Dialog open={paymentDialog === "transfer"} onOpenChange={(open) => { if (!open) closeTransferPaymentDetails(); }}>
         <DialogContent>
           {paymentDialog === "transfer" && (
             <>
               <DialogHeader>
                 <DialogTitle>Turno reservado · Transferencia pendiente</DialogTitle>
-                <DialogDescription>
-                  Fecha: {date ? format(date, "EEEE d 'de' MMMM yyyy", { locale: es }) : ""} · Hora: {time}. Transferí ${price.toLocaleString("es-AR")} y envianos el comprobante.
-                </DialogDescription>
               </DialogHeader>
               <div className="space-y-3 rounded-xl border border-border bg-card p-4 text-sm">
                 <TransferDetail label="Titular" value={storeSettings?.transferHolder ?? ""} onCopy={copyTransferValue} />
@@ -707,7 +726,7 @@ Observaciones: ${customer.notes || "Ninguna"}`;
                 <TransferDetail label="Alias" value={storeSettings?.transferAlias ?? ""} onCopy={copyTransferValue} />
               </div>
               <DialogFooter>
-                <Button onClick={sendTransferConfirmation} className="bg-gold text-primary-foreground hover:bg-gold-soft">Enviar comprobante por WhatsApp</Button>
+                <Button onClick={closeTransferPaymentDetails} className="bg-gold text-primary-foreground hover:bg-gold-soft">Volver a la reserva</Button>
               </DialogFooter>
             </>
           )}
@@ -723,32 +742,87 @@ Observaciones: ${customer.notes || "Ninguna"}`;
           <DialogHeader>
             <DialogTitle>
               {reservationResult?.kind === "confirmed" ? "¡Turno confirmado!"
-                : reservationResult?.kind === "transfer-pending" ? "Turno reservado · Pago pendiente"
-                  : reservationResult?.kind === "payment-success" ? "¡Turno confirmado y pagado!"
+                : reservationResult?.kind === "payment-success" ? "¡Turno confirmado y pagado!"
                     : reservationResult?.kind === "payment-pending" ? "Turno reservado · Pago pendiente"
                       : "Turno no confirmado"}
             </DialogTitle>
             <DialogDescription>
               {reservationResult?.kind === "confirmed" ? "Tu reserva quedó confirmada."
-                : reservationResult?.kind === "transfer-pending" ? "La sucursal confirmará el turno cuando verifique la transferencia."
-                  : reservationResult?.kind === "payment-success" ? "Mercado Pago confirmó el pago y el turno ya figura como pagado en la agenda de la sucursal."
-                    : reservationResult?.kind === "payment-pending" ? "El turno quedó reservado y el pago está pendiente. La agenda se actualizará automáticamente cuando Mercado Pago lo apruebe."
+                : reservationResult?.kind === "payment-success" ? "Mercado Pago confirmó el pago y el turno ya figura como pagado en la agenda de la sucursal."
+                  : reservationResult?.kind === "payment-pending" ? reservationResult.paymentMethod === "transferencia"
+                    ? "La sucursal confirmará el turno cuando verifique la transferencia."
+                    : "El turno quedó reservado y el pago está pendiente. La agenda se actualizará automáticamente cuando Mercado Pago lo apruebe."
                       : "El pago no se completó y el horario fue liberado. Podés volver a elegir fecha y hora."}
             </DialogDescription>
           </DialogHeader>
           {reservationResult?.date && reservationResult.time && (
             <div className="rounded-xl border border-border bg-card p-4 text-sm">
+              {storeSettings?.address && <p className="mb-1"><span className="text-muted-foreground">Dirección: </span>{storeSettings.address}</p>}
               <p><span className="text-muted-foreground">Fecha: </span>{format(parseISO(reservationResult.date), "EEEE d 'de' MMMM yyyy", { locale: es })}</p>
               <p className="mt-1"><span className="text-muted-foreground">Horario: </span>{reservationResult.time}</p>
             </div>
           )}
-          <DialogFooter>
-            <Button
-              onClick={() => reservationResult?.kind === "payment-pending" ? setReservationResult(null) : startNewBooking()}
-              className="bg-gold text-primary-foreground hover:bg-gold-soft"
-            >
-              {reservationResult?.kind === "payment-pending" ? "Entendido" : reservationResult?.kind === "payment-failure" ? "Sacar turno nuevamente" : "Reservar otro turno"}
-            </Button>
+          <DialogFooter className={reservationResult?.kind === "payment-pending" ? "flex-wrap sm:flex-row sm:justify-end" : reservationResult?.kind === "confirmed" && customer.paymentMethod === "efectivo" ? "sm:justify-between" : undefined}>
+            {reservationResult?.kind === "payment-pending" && (
+              <>
+                <Button
+                  type="button"
+                  onClick={startNewBooking}
+                  className="bg-gold text-primary-foreground hover:bg-gold-soft"
+                >
+                  Reservar otro turno
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={sendPendingBookingWhatsApp}
+                >
+                  Enviar comprobante por WhatsApp
+                </Button>
+                {reservationResult.paymentMethod === "transferencia" ? (
+                  <Button
+                    type="button"
+                    onClick={() => openTransferPaymentDetails(reservationResult)}
+                    className="bg-gold text-primary-foreground hover:bg-gold-soft"
+                  >
+                    Pagar
+                  </Button>
+                ) : reservationResult.paymentMethod === "tarjeta o mercado pago" ? (
+                  <Button
+                    type="button"
+                    disabled={startingPayment}
+                    onClick={() => void startMercadoPagoPayment()}
+                    className="bg-gold text-primary-foreground hover:bg-gold-soft"
+                  >
+                    {startingPayment ? "Preparando pago..." : "Pagar"}
+                  </Button>
+                ) : null}
+              </>
+            )}
+            {reservationResult?.kind === "confirmed" && customer.paymentMethod === "efectivo" && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  if (!storeSettings?.whatsapp) {
+                    toast.error("La sucursal todavía no configuró su WhatsApp.");
+                    return;
+                  }
+                  const whatsappUrl = `https://wa.me/${storeSettings.whatsapp.replace(/\D/g, "")}?text=${encodeURIComponent(createBookingWhatsAppMessage(false))}`;
+                  window.open(whatsappUrl, "_blank", "noopener,noreferrer");
+                }}
+              >
+                Avisar reserva por WhatsApp
+              </Button>
+            )}
+            {reservationResult?.kind !== "payment-pending" && (
+              <Button
+                onClick={startNewBooking}
+                className="bg-gold text-primary-foreground hover:bg-gold-soft"
+              >
+                {reservationResult?.kind === "payment-failure" ? "Sacar turno nuevamente" : "Reservar otro turno"}
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -873,7 +947,7 @@ function StepBarber({ professionals, value, onChange }: { professionals: Profess
                   <div className="font-display text-lg font-semibold">{b.name}</div>
                   <div className="text-sm text-muted-foreground">{b.specialty}</div>
                   {b.address && <div className="text-sm text-muted-foreground">{b.address}</div>}
-                  <div className="mt-1 text-xs text-muted-foreground">{b.scheduleDates?.length ?? b.availableSlots.length} fechas disponibles · {b.services.length} servicios</div>
+                  <div className="mt-1 text-xs text-muted-foreground">{b.services.length} servicios</div>
                 </div>
                 {selected && <Check className="h-5 w-5 text-gold" />}
               </button>
@@ -1096,10 +1170,10 @@ function StepDateTime({
 }
 
 function StepConfirm({
-  professional, storeName, storeCode, customer, serviceIds, date, time, duration, price,
+  professional, storeName, storeCode, storeAddress, customer, serviceIds, date, time, duration, price,
 }: {
   professional?: Professional;
-  storeName: string; storeCode: string;
+  storeName: string; storeCode: string; storeAddress: string;
   customer: Customer; serviceIds: string[];
   date: Date; time: string; duration: number; price: number;
 }) {
@@ -1112,6 +1186,7 @@ function StepConfirm({
       <SectionTitle icon={Check} title="Paso 5" subtitle="Resumen de tu turno" />
       <div className="grid gap-3 text-sm">
         <Row label="Sucursal" value={`${storeName} · ${storeCode}`} />
+        {storeAddress && <Row label="Dirección" value={storeAddress} />}
         <Row label="Cliente" value={customer.fullName} />
         <Row label="Contacto" value={`${customer.email} · ${customer.phone}`} />
         <Row label="Profesional" value={professional?.name ?? "-"} />

@@ -22,6 +22,7 @@ export type StoreMercadoPagoCredentials = {
   publicKeyConfigured: boolean;
   accessTokenConfigured: boolean;
 };
+export type ClientProfile = { phone: string };
 export type Store = {
   code: string;
   name: string;
@@ -73,17 +74,18 @@ async function request<T>(method: "GET" | "PUT" | "POST", body?: unknown, reques
   return result;
 }
 
-async function writeRecords(collection: "bookings" | "professionals", records: Array<Booking | Professional>, deleteIds: string[] = []) {
+async function writeRecords(collection: "bookings" | "professionals", records: Array<Booking | Professional>, deleteIds: string[] = [], requestedStoreCode?: string) {
+  const targetStoreCode = requestedStoreCode?.trim().toUpperCase() || undefined;
   for (let offset = 0; offset < records.length; offset += 100) {
     await request("PUT", {
       collection,
       records: records.slice(offset, offset + 100),
       ...(offset === 0 && deleteIds.length ? { deleteIds } : {}),
-    });
+    }, targetStoreCode);
   }
   if (records.length === 0 && deleteIds.length) {
     for (let offset = 0; offset < deleteIds.length; offset += 100) {
-      await request("PUT", { collection, records: [], deleteIds: deleteIds.slice(offset, offset + 100) });
+      await request("PUT", { collection, records: [], deleteIds: deleteIds.slice(offset, offset + 100) }, targetStoreCode);
     }
   }
 }
@@ -135,14 +137,15 @@ export function isCloudInitialized() {
   return initialized;
 }
 
-export async function persistCloudCollection(collection: "bookings" | "professionals", records: Array<Booking | Professional>) {
+export async function persistCloudCollection(collection: "bookings" | "professionals", records: Array<Booking | Professional>, requestedStoreCode?: string) {
   if (!activeAccount || !initialized) throw new Error("La base todavía no está cargada. Reintentá en unos segundos.");
+  const targetStoreCode = requestedStoreCode?.trim().toUpperCase() || storeCode;
   if (!tokenGetter) {
     if (activeAccount === "guest" && collection === "bookings") {
       const booking = records[records.length - 1] as Booking | undefined;
       if (!booking) return;
-      await request("POST", { action: "guest-booking", booking: { ...booking, storeCode } });
-      const result = await request<{ data: CloudSnapshot; stores: Store[] }>("GET");
+      await request("POST", { action: "guest-booking", booking: { ...booking, storeCode: targetStoreCode } }, targetStoreCode);
+      const result = await request<{ data: CloudSnapshot; stores: Store[] }>("GET", undefined, targetStoreCode);
       if (!result.data || !Array.isArray(result.stores)) throw new Error("Se devolvió una respuesta incompleta.");
       availableStores = result.stores;
       setSnapshot(result.data);
@@ -155,11 +158,11 @@ export async function persistCloudCollection(collection: "bookings" | "professio
   const deleteIds = [...oldIds].filter((id) => !nextIds.has(id));
   const recordsCopy = records
     .filter((record) => collection !== "bookings" || activeRole === "admin" || (record as Booking).customer?.email?.trim().toLowerCase() === activeAccount)
-    .map((record) => ({ ...record, storeCode }));
+    .map((record) => ({ ...record, storeCode: targetStoreCode }));
   const accountAtWrite = activeAccount;
-  await writeRecords(collection, recordsCopy, deleteIds);
+  await writeRecords(collection, recordsCopy, deleteIds, targetStoreCode);
   if (activeAccount !== accountAtWrite) throw new Error("Cambió la cuenta activa; vuelve a cargar los datos.");
-  const result = await request<{ data: CloudSnapshot; stores: Store[] }>("GET");
+  const result = await request<{ data: CloudSnapshot; stores: Store[] }>("GET", undefined, targetStoreCode);
   if (!result.data || !Array.isArray(result.stores)) throw new Error("Se devolvión una respuesta incompleta.");
   availableStores = result.stores;
   setSnapshot(result.data);
@@ -224,6 +227,14 @@ export async function updateStoreContact(contact: StoreContactSettings) {
   availableStores = availableStores.map((store) => store.code === response.code ? { ...store, settings: response.settings } : store);
   window.dispatchEvent(new Event("mi-turno-ya:store-changed"));
   return response.settings;
+}
+
+export async function getClientProfile() {
+  return request<ClientProfile>("POST", { action: "get-client-profile" });
+}
+
+export async function saveClientProfile(phone: string) {
+  return request<ClientProfile>("POST", { action: "save-client-profile", phone });
 }
 
 export async function getStoreMercadoPagoCredentials() {

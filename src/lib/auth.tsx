@@ -41,7 +41,7 @@ const AuthContext = createContext<AuthContextValue>(unavailableAuth);
 
 export function rememberAuthReturnPath(path: string) {
   if (typeof window === "undefined") return;
-  const allowedPaths = ["/admin", "/agenda", "/estadisticas", "/plan", "/configuracion", "/profesionales", "/mis-turnos", "/reserva"];
+  const allowedPaths = ["/admin", "/agenda", "/estadisticas", "/plan", "/configuracion", "/profesionales", "/mis-turnos", "/mis-datos", "/reserva"];
   if (allowedPaths.includes(path)) {
     window.sessionStorage.setItem("kinde-auth-return-path", path);
   }
@@ -61,7 +61,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const domain = /^https?:\/\//i.test(cleanedDomain) ? cleanedDomain : `https://${cleanedDomain}`;
 
   return (
-    <KindeProvider clientId={AUTH_CONFIG.clientId} domain={domain} redirectUri={appOrigin} logoutUri={appOrigin}>
+    <KindeProvider clientId={AUTH_CONFIG.clientId} domain={domain} redirectUri={appOrigin} logoutUri={`${appOrigin}/reserva`}>
       <KindeSession>{children}</KindeSession>
     </KindeProvider>
   );

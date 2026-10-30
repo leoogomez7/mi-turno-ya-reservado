@@ -31,8 +31,8 @@ function read(): Booking[] {
   return isCloudInitialized() ? getCloudRecords("bookings") : [];
 }
 
-async function write(list: Booking[]) {
-  await persistCloudCollection("bookings", list);
+async function write(list: Booking[], storeCode?: string) {
+  await persistCloudCollection("bookings", list, storeCode);
 }
 
 export const bookingStore = {
@@ -46,17 +46,20 @@ export const bookingStore = {
       ...(input.status === "pending-payment" ? { cancellationToken: crypto.randomUUID() } : {}),
       createdAt: new Date().toISOString(),
     };
-    await write([...read(), booking]);
+    await write([...read(), booking], booking.storeCode);
     return booking;
   },
   async update(id: string, patch: Partial<Booking>) {
     const current = read();
+    const targetStoreCode = current.find((booking) => booking.id === id)?.storeCode;
     const updated = current.map((booking) => booking.id === id ? { ...booking, ...patch } : booking);
     if (!updated.some((booking) => booking.id === id)) throw new Error("No encontramos ese turno.");
-    await write(updated);
+    await write(updated, targetStoreCode);
   },
   async remove(id: string) {
-    await write(read().filter((booking) => booking.id !== id));
+    const current = read();
+    const targetStoreCode = current.find((booking) => booking.id === id)?.storeCode;
+    await write(current.filter((booking) => booking.id !== id), targetStoreCode);
   },
   remainingCapacity(date: string, barberId: string, time: string, duration: number, capacity: number): number {
     const [hours, minutes] = time.split(":").map(Number);

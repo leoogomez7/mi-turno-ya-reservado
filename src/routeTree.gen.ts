@@ -15,6 +15,7 @@ import { Route as AgendaRouteImport } from './routes/agenda'
 import { Route as BookRouteImport } from './routes/book'
 import { Route as ConfiguracionRouteImport } from './routes/configuracion'
 import { Route as EstadisticasRouteImport } from './routes/estadisticas'
+import { Route as MisDatosRouteImport } from './routes/mis-datos'
 import { Route as MisTurnosRouteImport } from './routes/mis-turnos'
 import { Route as PlanRouteImport } from './routes/plan'
 import { Route as ProfesionalesRouteImport } from './routes/profesionales'
@@ -53,6 +54,11 @@ const ConfiguracionRoute = ConfiguracionRouteImport.update({
 const EstadisticasRoute = EstadisticasRouteImport.update({
   id: '/estadisticas',
   path: '/estadisticas',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MisDatosRoute = MisDatosRouteImport.update({
+  id: '/mis-datos',
+  path: '/mis-datos',
   getParentRoute: () => rootRouteImport,
 } as any)
 const MisTurnosRoute = MisTurnosRouteImport.update({
@@ -108,6 +114,7 @@ export interface FileRoutesByFullPath {
   '/book': typeof BookRouteWithChildren
   '/configuracion': typeof ConfiguracionRoute
   '/estadisticas': typeof EstadisticasRoute
+  '/mis-datos': typeof MisDatosRoute
   '/mis-turnos': typeof MisTurnosRoute
   '/plan': typeof PlanRoute
   '/profesionales': typeof ProfesionalesRoute
@@ -125,6 +132,7 @@ export interface FileRoutesByTo {
   '/book': typeof BookRouteWithChildren
   '/configuracion': typeof ConfiguracionRoute
   '/estadisticas': typeof EstadisticasRoute
+  '/mis-datos': typeof MisDatosRoute
   '/mis-turnos': typeof MisTurnosRoute
   '/plan': typeof PlanRoute
   '/profesionales': typeof ProfesionalesRoute
@@ -143,6 +151,7 @@ export interface FileRoutesById {
   '/book': typeof BookRouteWithChildren
   '/configuracion': typeof ConfiguracionRoute
   '/estadisticas': typeof EstadisticasRoute
+  '/mis-datos': typeof MisDatosRoute
   '/mis-turnos': typeof MisTurnosRoute
   '/plan': typeof PlanRoute
   '/profesionales': typeof ProfesionalesRoute
@@ -162,6 +171,7 @@ export interface FileRouteTypes {
     | '/book'
     | '/configuracion'
     | '/estadisticas'
+    | '/mis-datos'
     | '/mis-turnos'
     | '/plan'
     | '/profesionales'
@@ -179,6 +189,7 @@ export interface FileRouteTypes {
     | '/book'
     | '/configuracion'
     | '/estadisticas'
+    | '/mis-datos'
     | '/mis-turnos'
     | '/plan'
     | '/profesionales'
@@ -196,6 +207,7 @@ export interface FileRouteTypes {
     | '/book'
     | '/configuracion'
     | '/estadisticas'
+    | '/mis-datos'
     | '/mis-turnos'
     | '/plan'
     | '/profesionales'
@@ -214,6 +226,7 @@ export interface RootRouteChildren {
   BookRoute: typeof BookRouteWithChildren
   ConfiguracionRoute: typeof ConfiguracionRoute
   EstadisticasRoute: typeof EstadisticasRoute
+  MisDatosRoute: typeof MisDatosRoute
   MisTurnosRoute: typeof MisTurnosRoute
   PlanRoute: typeof PlanRoute
   ProfesionalesRoute: typeof ProfesionalesRoute
@@ -262,6 +275,13 @@ declare module '@tanstack/react-router' {
       path: '/estadisticas'
       fullPath: '/estadisticas'
       preLoaderRoute: typeof EstadisticasRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/mis-datos': {
+      id: '/mis-datos'
+      path: '/mis-datos'
+      fullPath: '/mis-datos'
+      preLoaderRoute: typeof MisDatosRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/mis-turnos': {
@@ -364,6 +384,7 @@ const rootRouteChildren: RootRouteChildren = {
   BookRoute: BookRouteWithChildren,
   ConfiguracionRoute: ConfiguracionRoute,
   EstadisticasRoute: EstadisticasRoute,
+  MisDatosRoute: MisDatosRoute,
   MisTurnosRoute: MisTurnosRoute,
   PlanRoute: PlanRoute,
   ProfesionalesRoute: ProfesionalesRoute,

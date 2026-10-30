@@ -230,6 +230,11 @@ async function database() {
       store_code TEXT,
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     )`,
+    `CREATE TABLE IF NOT EXISTS client_profiles (
+      user_id TEXT PRIMARY KEY,
+      phone TEXT NOT NULL DEFAULT '',
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )`,
     `CREATE TABLE IF NOT EXISTS stores (
       code TEXT PRIMARY KEY,
       name TEXT NOT NULL,
@@ -696,6 +701,32 @@ export default async function handler(request, response) {
     return response.status(400).json({ error: "El cuerpo JSON no es válido." });
   }
   if (request.method === "POST") {
+    if (user && (body?.action === "get-client-profile" || body?.action === "save-client-profile")) {
+      try {
+        if (!user.emailVerified) return response.status(403).json({ error: "Verificá tu correo para acceder a tus datos." });
+        const roleResult = await db.execute({ sql: "SELECT role FROM account_roles WHERE user_id = ?", args: [user.id] });
+        if (roleResult.rows[0]?.role !== "client") return response.status(403).json({ error: "Esta sección es solo para cuentas de cliente." });
+
+        if (body.action === "get-client-profile") {
+          const profile = await db.execute({ sql: "SELECT phone FROM client_profiles WHERE user_id = ?", args: [user.id] });
+          return response.status(200).json({ phone: String(profile.rows[0]?.phone ?? "") });
+        }
+
+        const phone = typeof body.phone === "string" ? body.phone.trim() : "";
+        if (phone && (phone.length < 6 || phone.length > 40)) {
+          return response.status(400).json({ error: "El teléfono debe tener entre 6 y 40 caracteres." });
+        }
+        await db.execute({
+          sql: `INSERT INTO client_profiles (user_id, phone, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(user_id) DO UPDATE SET phone = excluded.phone, updated_at = CURRENT_TIMESTAMP`,
+          args: [user.id, phone],
+        });
+        return response.status(200).json({ phone });
+      } catch (error) {
+        console.error("No se pudieron guardar los datos del cliente", error);
+        return response.status(500).json({ error: "No se pudieron guardar tus datos." });
+      }
+    }
     if (user && (body?.action === "get-store-payment-credentials" || body?.action === "save-store-payment-credentials")) {
       try {
         if (!user.emailVerified) return response.status(403).json({ error: "Verificá tu email antes de configurar los pagos." });
