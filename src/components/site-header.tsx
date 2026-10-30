@@ -10,6 +10,10 @@ import { useLocation } from "@tanstack/react-router";
 import { getAvailableStores, getCurrentStoreCode } from "@/lib/cloud-sync";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
+function preloadStatsCharts() {
+  void import("@/components/admin-charts");
+}
+
 export function SiteHeader() {
   const [open, setOpen] = useState(false);
   const [authDialogOpen, setAuthDialogOpen] = useState(false);
@@ -75,8 +79,8 @@ export function SiteHeader() {
           )}
           <Link to="/reserva" className="px-3 py-2 text-muted-foreground hover:text-foreground [&.active]:text-gold">Reservar</Link>
           {role === "admin" && <Link to="/agenda" className="px-3 py-2 text-muted-foreground hover:text-foreground [&.active]:text-gold">Agenda</Link>}
-          {role === "admin" && <Link to="/estadisticas" className="px-3 py-2 text-muted-foreground hover:text-foreground [&.active]:text-gold">Estadísticas</Link>}
-          {role === "admin" && <Link to="/plan" className="px-3 py-2 text-muted-foreground hover:text-foreground [&.active]:text-gold">Plan</Link>}
+          {role === "admin" && <Link to="/estadisticas" preload="intent" onPointerEnter={preloadStatsCharts} onFocus={preloadStatsCharts} className="px-3 py-2 text-muted-foreground hover:text-foreground [&.active]:text-gold">Estadísticas</Link>}
+          {role === "admin" && <Link to="/plan" preload="intent" className="px-3 py-2 text-muted-foreground hover:text-foreground [&.active]:text-gold">Plan</Link>}
           {role === "admin" && <Link to="/configuracion" className="px-3 py-2 text-muted-foreground hover:text-foreground [&.active]:text-gold">Configuración</Link>}
           {isAuthenticated && role === "client" && <Link to="/mis-turnos" className="px-3 py-2 text-muted-foreground hover:text-foreground [&.active]:text-gold">Mis turnos</Link>}
           {isAuthenticated && role === "client" && <Link to="/mis-datos" className="px-3 py-2 text-muted-foreground hover:text-foreground [&.active]:text-gold">Mis datos</Link>}
@@ -122,8 +126,8 @@ export function SiteHeader() {
                 Reservar
               </Link>
               {role === "admin" && <Link to="/agenda" onClick={() => setOpen(false)} className="block rounded-2xl px-4 py-3 text-foreground hover:bg-border/10 [&.active]:bg-gold/10 [&.active]:text-gold">Agenda</Link>}
-              {role === "admin" && <Link to="/estadisticas" onClick={() => setOpen(false)} className="block rounded-2xl px-4 py-3 text-foreground hover:bg-border/10 [&.active]:bg-gold/10 [&.active]:text-gold">Estadísticas</Link>}
-              {role === "admin" && <Link to="/plan" onClick={() => setOpen(false)} className="block rounded-2xl px-4 py-3 text-foreground hover:bg-border/10 [&.active]:bg-gold/10 [&.active]:text-gold">Plan</Link>}
+              {role === "admin" && <Link to="/estadisticas" preload="intent" onPointerEnter={preloadStatsCharts} onFocus={preloadStatsCharts} onClick={() => setOpen(false)} className="block rounded-2xl px-4 py-3 text-foreground hover:bg-border/10 [&.active]:bg-gold/10 [&.active]:text-gold">Estadísticas</Link>}
+              {role === "admin" && <Link to="/plan" preload="intent" onClick={() => setOpen(false)} className="block rounded-2xl px-4 py-3 text-foreground hover:bg-border/10 [&.active]:bg-gold/10 [&.active]:text-gold">Plan</Link>}
               {role === "admin" && <Link to="/configuracion" onClick={() => setOpen(false)} className="block rounded-2xl px-4 py-3 text-foreground hover:bg-border/10 [&.active]:bg-gold/10 [&.active]:text-gold">Configuración</Link>}
               {isAuthenticated && role === "client" && (
                 <Link to="/mis-turnos" onClick={() => setOpen(false)} className="block rounded-2xl px-4 py-3 text-foreground hover:bg-border/10 [&.active]:bg-gold/10 [&.active]:text-gold">

@@ -592,10 +592,10 @@ Observaciones: ${customer.notes || "Ninguna"}`;
   return (
     <div className="min-h-screen bg-gradient-dark">
       <SiteHeader />
-      <main className="mx-auto flex w-full max-w-7xl flex-col px-4 py-10 sm:px-6">
+      <main className="mx-auto w-full max-w-7xl px-4 py-10 sm:px-6">
         {step === 0 && <section
           className={cn(
-            "mb-4 rounded-3xl border border-gold/30 bg-card p-6",
+            "mb-4 w-full rounded-3xl border border-gold/30 bg-card p-6",
             (!selectedStoreCode || !selectedStore) && "cursor-pointer transition-colors hover:bg-gold/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold",
           )}
           role={!selectedStoreCode || !selectedStore ? "button" : undefined}
@@ -687,7 +687,7 @@ Observaciones: ${customer.notes || "Ninguna"}`;
         </Dialog>}
         <Stepper step={step} />
 
-        <div className="mt-4 rounded-2xl border border-gold/30 bg-card p-5 sm:p-6">
+        <div className="mt-4 w-full rounded-2xl border border-gold/30 bg-card p-5 sm:p-6">
           {step === 0 && <StepCustomer customer={customer} setCustomer={setCustomer} mercadoPagoAvailable={Boolean(selectedStore?.mercadoPagoConfigured)} />}
           {step === 1 && <StepBarber professionals={reservationProfessionals} value={barberId} onChange={setBarberId} />}
           {step === 2 && <StepServices professional={selectedProfessional} value={serviceIds} onChange={setServiceIds} />}
