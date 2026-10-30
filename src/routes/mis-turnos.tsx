@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 import { Badge } from "@/components/ui/badge";
@@ -7,8 +7,9 @@ import { Button } from "@/components/ui/button";
 import { SiteHeader } from "@/components/site-header";
 import { AuthRequired } from "@/components/auth-required";
 import { useAppAuth } from "@/lib/auth";
-import { bookingStore, type Booking } from "@/lib/booking-store";
-import { getProfessional, getProfessionalService } from "@/lib/professional-store";
+import type { Booking } from "@/lib/booking-store";
+import type { Professional } from "@/lib/professional-store";
+import { confirmClientBooking, getClientBookings } from "@/lib/cloud-sync";
 import { toast } from "sonner";
 import { LoadingScreen } from "@/components/loading-screen";
 
@@ -20,16 +21,42 @@ export const Route = createFileRoute("/mis-turnos")({
 function MyBookingsPage() {
   const { isAuthenticated, isLoading, role, user } = useAppAuth();
   const [bookings, setBookings] = useState<Booking[]>([]);
+  const [professionals, setProfessionals] = useState<Professional[]>([]);
+  const [loadingBookings, setLoadingBookings] = useState(true);
+  const [confirmationBusyId, setConfirmationBusyId] = useState<string | null>(null);
+
+  const reload = useCallback(async () => {
+    try {
+      const result = await getClientBookings();
+      setBookings(result.bookings);
+      setProfessionals(result.professionals);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudieron cargar tus turnos.");
+    } finally {
+      setLoadingBookings(false);
+    }
+  }, []);
 
   useEffect(() => {
-    const reload = () => {
-      const email = user?.email?.trim().toLowerCase();
-      setBookings(email ? bookingStore.all().filter((booking) => booking.customer.email.trim().toLowerCase() === email) : []);
-    };
-    reload();
-    window.addEventListener("bookings:changed", reload);
-    return () => window.removeEventListener("bookings:changed", reload);
-  }, [user?.email]);
+    if (!isAuthenticated || role !== "client") return;
+    void reload();
+    window.addEventListener("focus", reload);
+    return () => window.removeEventListener("focus", reload);
+  }, [isAuthenticated, reload, role]);
+
+  async function confirmBooking(bookingId: string) {
+    if (confirmationBusyId) return;
+    setConfirmationBusyId(bookingId);
+    try {
+      const result = await confirmClientBooking(bookingId);
+      setBookings((current) => current.map((booking) => booking.id === bookingId ? result.booking : booking));
+      toast.success("Confirmaste tu turno.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo guardar la confirmación.");
+    } finally {
+      setConfirmationBusyId(null);
+    }
+  }
 
   if (isLoading) return <LoadingScreen message="Buscando tus turnos" />;
   if (!isAuthenticated || role !== "client") return <><SiteHeader /><AuthRequired role="client" title="Mis turnos" /></>;
@@ -51,13 +78,16 @@ function MyBookingsPage() {
               Nuevo turno
             </Link>
           </div>
-          {!bookings.length ? (
+          {loadingBookings ? (
+            <p className="text-sm text-muted-foreground">Cargando tus turnos…</p>
+          ) : !bookings.length ? (
             <p className="text-sm text-muted-foreground">Todavía no hay turnos asociados a esta cuenta.</p>
           ) : (
             <div className="space-y-2">
             {bookings.map((booking) => {
-              const professional = getProfessional(booking.barberId);
-              const serviceNames = booking.serviceIds.map((id) => getProfessionalService(booking.barberId, id)?.name).filter(Boolean).join(", ");
+              const professional = professionals.find((item) => item.id === booking.barberId && item.storeCode === booking.storeCode)
+                ?? professionals.find((item) => item.id === booking.barberId);
+              const serviceNames = booking.serviceIds.map((id) => professional?.services.find((service) => service.id === id)?.name).filter(Boolean).join(", ");
               const appointmentDate = parseISO(`${booking.date}T${booking.time}`);
               const statusLabel = booking.status === "pending-payment" ? "Pago pendiente" : booking.status === "completed" ? "Asistió" : booking.status === "no-show" ? "No asistió" : booking.status === "cancelled" ? "Cancelado" : "Reservado";
               const statusClass = booking.status === "completed" ? "border-emerald-300 text-emerald-400" : booking.status === "cancelled" || booking.status === "no-show" ? "border-red-500/30 bg-red-500/10 text-red-300" : "border-gold/40 text-gold";
@@ -70,7 +100,7 @@ function MyBookingsPage() {
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="font-medium">{professional?.name ?? "Profesional"}</div>
-                    <div className="truncate text-sm text-muted-foreground">{serviceNames} · {booking.duration} min</div>
+                    <div className="truncate text-sm text-muted-foreground">{serviceNames || "Servicio"} · {booking.duration} min</div>
                     <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                       <Badge variant="outline" className={statusClass}>{statusLabel}</Badge>
                       {booking.appointmentConfirmation && <Badge variant="outline" className="border-sky-300 text-sky-300">{booking.appointmentConfirmation === "confirmed" ? "Confirmaste el turno" : "Sin confirmar"}</Badge>}
@@ -79,12 +109,8 @@ function MyBookingsPage() {
                   <div className="font-display text-lg font-semibold text-gold">${booking.totalPrice.toLocaleString("es-AR")}</div>
                   <div className="flex flex-wrap gap-2">
                     {booking.status === "confirmed" && booking.appointmentConfirmation !== "confirmed" && (
-                      <Button size="sm" className="bg-gold text-primary-foreground hover:bg-gold-soft" onClick={() => {
-                        void bookingStore.update(booking.id, { appointmentConfirmation: "confirmed" })
-                          .then(() => toast.success("Confirmaste tu turno."))
-                          .catch((error: unknown) => toast.error(error instanceof Error ? error.message : "No se pudo guardar la confirmación en la base."));
-                      }}>
-                        Confirmar turno
+                      <Button size="sm" disabled={confirmationBusyId !== null} className="bg-gold text-primary-foreground hover:bg-gold-soft disabled:opacity-60" onClick={() => void confirmBooking(booking.id)}>
+                        {confirmationBusyId === booking.id ? "Procesando..." : "Confirmar turno"}
                       </Button>
                     )}
                   </div>

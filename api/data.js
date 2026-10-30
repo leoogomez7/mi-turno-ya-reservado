@@ -701,6 +701,51 @@ export default async function handler(request, response) {
     return response.status(400).json({ error: "El cuerpo JSON no es válido." });
   }
   if (request.method === "POST") {
+    if (user && (body?.action === "get-client-bookings" || body?.action === "confirm-client-booking")) {
+      try {
+        if (!user.emailVerified) return response.status(403).json({ error: "Verificá tu correo para consultar tus turnos." });
+        const roleResult = await db.execute({ sql: "SELECT role FROM account_roles WHERE user_id = ?", args: [user.id] });
+        if (roleResult.rows[0]?.role !== "client") return response.status(403).json({ error: "Esta acción es solo para cuentas de cliente." });
+
+        if (body.action === "get-client-bookings") {
+          const bookingRows = await db.execute("SELECT id, value FROM bookings ORDER BY updated_at DESC");
+          const bookings = bookingRows.rows
+            .map((row) => JSON.parse(String(row.value)))
+            .filter((booking) => booking.customer?.email?.trim().toLowerCase() === user.email);
+          const storeCodes = new Set(bookings.map((booking) => normalizeStoreCode(booking.storeCode)).filter(Boolean));
+          const professionalRows = storeCodes.size
+            ? await db.execute("SELECT id, value FROM professionals ORDER BY updated_at DESC")
+            : { rows: [] };
+          const professionals = professionalRows.rows
+            .filter((row) => [...storeCodes].some((code) => String(row.id).startsWith(`${code}:`)))
+            .map((row) => {
+              const databaseId = String(row.id);
+              const storeCode = [...storeCodes].find((code) => databaseId.startsWith(`${code}:`)) ?? "";
+              return { ...JSON.parse(String(row.value)), id: databaseId.slice(storeCode.length + 1), storeCode };
+            });
+          return response.status(200).json({ bookings, professionals });
+        }
+
+        const bookingId = typeof body.bookingId === "string" ? body.bookingId.trim() : "";
+        if (!bookingId || bookingId.length > 200) return response.status(400).json({ error: "Identificador de turno inválido." });
+        const storedBooking = await db.execute({ sql: "SELECT value FROM bookings WHERE id = ?", args: [bookingId] });
+        if (!storedBooking.rows[0]) return response.status(404).json({ error: "No encontramos ese turno." });
+        const booking = JSON.parse(String(storedBooking.rows[0].value));
+        if (booking.customer?.email?.trim().toLowerCase() !== user.email) {
+          return response.status(403).json({ error: "Solo puedes confirmar tus propios turnos." });
+        }
+        if (booking.status !== "confirmed") return response.status(400).json({ error: "Este turno todavía no se puede confirmar." });
+        booking.appointmentConfirmation = "confirmed";
+        await db.execute({
+          sql: "UPDATE bookings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+          args: [JSON.stringify(booking), bookingId],
+        });
+        return response.status(200).json({ booking });
+      } catch (error) {
+        console.error("No se pudieron consultar o confirmar los turnos del cliente", error);
+        return response.status(500).json({ error: "No se pudieron cargar o confirmar tus turnos." });
+      }
+    }
     if (user && (body?.action === "get-client-profile" || body?.action === "save-client-profile")) {
       try {
         if (!user.emailVerified) return response.status(403).json({ error: "Verificá tu correo para acceder a tus datos." });

@@ -23,6 +23,7 @@ export type StoreMercadoPagoCredentials = {
   accessTokenConfigured: boolean;
 };
 export type ClientProfile = { phone: string };
+export type ClientBookings = { bookings: Booking[]; professionals: Professional[] };
 export type Store = {
   code: string;
   name: string;
@@ -235,6 +236,14 @@ export async function getClientProfile() {
 
 export async function saveClientProfile(phone: string) {
   return request<ClientProfile>("POST", { action: "save-client-profile", phone });
+}
+
+export async function getClientBookings() {
+  return request<ClientBookings>("POST", { action: "get-client-bookings" });
+}
+
+export async function confirmClientBooking(bookingId: string) {
+  return request<{ booking: Booking }>("POST", { action: "confirm-client-booking", bookingId });
 }
 
 export async function getStoreMercadoPagoCredentials() {

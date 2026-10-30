@@ -16,8 +16,16 @@ export default defineConfig(({ mode }) => {
     },
     build: {
       rollupOptions: {
+        onwarn(warning, defaultHandler) {
+          if (warning.code === "UNUSED_EXTERNAL_IMPORT" && warning.message.includes('@tanstack/router-core')) return;
+          defaultHandler(warning);
+        },
         output: {
           manualChunks(id) {
+            if (id.includes("/node_modules/react/") || id.includes("/node_modules/react-dom/") || id.includes("/node_modules/scheduler/")) return "react-vendor";
+            if (id.includes("/node_modules/@tanstack/")) return "tanstack-vendor";
+            if (id.includes("/node_modules/@radix-ui/")) return "radix-vendor";
+            if (id.includes("/node_modules/recharts/") || id.includes("/node_modules/d3-")) return "charts-vendor";
             if (id.includes("/node_modules/lucide-react/")) return "icons";
             if (id.includes("/node_modules/date-fns/")) return "date-utils";
             if (id.includes("/node_modules/@kinde-oss/kinde-auth-react/")) return "authentication";
