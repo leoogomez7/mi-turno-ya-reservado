@@ -230,6 +230,15 @@ export function ProfessionalsManager() {
     () => professionals.find((p) => p.id === editingId) ?? null,
     [professionals, editingId]
   );
+  const hasProfessionalChanges = Boolean(
+    selectedProfessional
+    && JSON.stringify(professionalPayload(form)) !== JSON.stringify(professionalPayload(selectedProfessional)),
+  );
+  const canSaveProfessional = Boolean(
+    form.name?.trim()
+    && form.specialty?.trim()
+    && (!editingId || hasProfessionalChanges),
+  );
 
   useEffect(() => {
     if (selectedProfessional) {
@@ -359,6 +368,7 @@ export function ProfessionalsManager() {
       toast.error("Completá nombre y rubro.");
       return;
     }
+    if (editingId && !hasProfessionalChanges) return;
     const identity = { name: form.name.trim(), specialty: form.specialty.trim() };
     if (editingId) {
       await professionalStore.update(editingId, identity);
@@ -863,7 +873,7 @@ export function ProfessionalsManager() {
                   <Button variant="outline" disabled={savingProfessional || Boolean(deletingProfessionalId)} onClick={() => setShowForm(false)} className="min-w-0 flex-1 px-2 text-xs sm:text-sm">
                     Cancelar
                   </Button>
-                  <Button disabled={savingProfessional || Boolean(deletingProfessionalId)} onClick={() => void saveProfessional()} className="min-w-0 flex-1 bg-gold px-2 text-xs text-primary-foreground hover:bg-gold-soft sm:text-sm">
+                  <Button disabled={savingProfessional || Boolean(deletingProfessionalId) || !canSaveProfessional} onClick={() => void saveProfessional()} className="min-w-0 flex-1 bg-gold px-2 text-xs text-primary-foreground hover:bg-gold-soft sm:text-sm">
                     {savingProfessional ? "Guardando…" : "Guardar profesional"}
                   </Button>
                 </div>
