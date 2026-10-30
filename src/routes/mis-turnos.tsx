@@ -41,7 +41,7 @@ function MyBookingsPage() {
         <section className="w-full rounded-3xl border border-gold/30 bg-card p-6">
           <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
             <div>
-              <p className="text-xs uppercase tracking-widest text-gold">Cuenta de cliente</p>
+              <p className="text-xs uppercase tracking-widest text-gold">Reservar</p>
               <h1 className="mt-1 font-display text-2xl font-semibold">Mis turnos</h1>
             </div>
             <Link
