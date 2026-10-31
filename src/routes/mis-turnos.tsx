@@ -191,14 +191,14 @@ function MyBookingsPage() {
                     <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                       <Badge variant="outline" className={statusClass}>{statusLabel}</Badge>
                       <Badge variant="outline" className="border-gold/30 text-gold">Pago · {paymentMethodLabel}</Badge>
-                      {booking.paymentReportedAt && booking.paymentStatus !== "approved" && <Badge variant="outline" className="border-amber-300 text-amber-300">Avisaste que pagaste · Podés modificar hasta que lo verifique el profesional</Badge>}
+                      {booking.paymentReportedAt && booking.paymentStatus !== "approved" && <Badge variant="outline" className="border-amber-300 text-amber-300">Avisaste que pagaste · Podés modificar el turno hasta que lo verifique el profesional</Badge>}
                       {booking.paymentStatus === "approved" && <Badge variant="outline" className="border-emerald-300 text-emerald-400">Pago confirmado · Solo el profesional puede modificarlo</Badge>}
                     </div>
                   </div>
                   <div className="font-display text-lg font-semibold text-gold">${booking.totalPrice.toLocaleString("es-AR")}</div>
                   {isActiveBooking && <div className="flex flex-wrap gap-2">
                     {booking.paymentStatus !== "approved" && !booking.paymentReportedAt && <Button size="sm" disabled={busyBookingId !== null} className="bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-60" onClick={() => void reportPayment(booking)}>{busyBookingId === booking.id ? "Confirmando..." : "Confirmar pago"}</Button>}
-                    <Button size="sm" variant="outline" disabled={busyBookingId !== null} onClick={() => {
+                    {booking.paymentStatus !== "approved" && <Button size="sm" variant="outline" disabled={busyBookingId !== null} onClick={() => {
                       if (booking.paymentStatus === "approved") {
                         toast.error("El profesional ya confirmó el pago. Solo él puede modificar este turno.");
                         return;
@@ -206,7 +206,7 @@ function MyBookingsPage() {
                       setEditingBooking(booking);
                       setEditedDate(booking.date);
                       setEditedTime(booking.time);
-                    }}>Modificar turno</Button>
+                    }}>Modificar turno</Button>}
                     {canDelete && <Button size="sm" variant="destructive" disabled={busyBookingId !== null} className={busyBookingId === booking.id ? "opacity-60" : undefined} onClick={() => void deleteBooking(booking)}>{busyBookingId === booking.id ? "Borrando..." : "Borrar turno"}</Button>}
                   </div>}
                 </article>
