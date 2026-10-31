@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
-import { CalendarDays, Clock3, Pencil, Trash2 } from "lucide-react";
+import { CalendarDays, Clock3 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -10,7 +10,7 @@ import { SiteHeader } from "@/components/site-header";
 import { AuthRequired } from "@/components/auth-required";
 import { useAppAuth } from "@/lib/auth";
 import type { Booking } from "@/lib/booking-store";
-import { getAvailableSlotsForDate, type Professional } from "@/lib/professional-store";
+import { getAvailableSlotsForDate, getScheduleForDate, type Professional } from "@/lib/professional-store";
 import { deleteClientBooking, getClientBookings, reportClientPayment, updateClientBooking } from "@/lib/cloud-sync";
 import { toast } from "sonner";
 import { LoadingScreen } from "@/components/loading-screen";
@@ -24,6 +24,7 @@ function MyBookingsPage() {
   const { isAuthenticated, isLoading, role, user } = useAppAuth();
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [professionals, setProfessionals] = useState<Professional[]>([]);
+  const [occupiedSlots, setOccupiedSlots] = useState<Pick<Booking, "id" | "storeCode" | "barberId" | "date" | "time" | "duration" | "status">[]>([]);
   const [loadingBookings, setLoadingBookings] = useState(true);
   const [busyBookingId, setBusyBookingId] = useState<string | null>(null);
   const [editingBooking, setEditingBooking] = useState<Booking | null>(null);
@@ -41,6 +42,7 @@ function MyBookingsPage() {
     const today = format(new Date(), "yyyy-MM-dd");
     if (editedDate < today) return [];
     const slots = getAvailableSlotsForDate(editingProfessional, date);
+    const capacity = getScheduleForDate(editingProfessional, date)?.capacity ?? 1;
     const neededIntervals = Math.ceil((editingBooking?.duration ?? 0) / 15);
     return slots.filter((slot) => {
       const [hours, minutes] = slot.split(":").map(Number);
@@ -49,16 +51,27 @@ function MyBookingsPage() {
         const minute = start + interval * 15;
         const nextSlot = `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`;
         if (!slots.includes(nextSlot)) return false;
+        const overlapping = occupiedSlots.filter((booking) => {
+          if (booking.id === editingBooking?.id || booking.storeCode !== editingBooking?.storeCode
+            || booking.barberId !== editingProfessional.id || booking.date !== editedDate
+            || booking.status === "cancelled") return false;
+          const [bookingHours, bookingMinutes] = booking.time.split(":").map(Number);
+          const bookingStart = bookingHours * 60 + bookingMinutes;
+          const bookingEnd = bookingStart + booking.duration;
+          return minute < bookingEnd && bookingStart < minute + 15;
+        }).length;
+        if (overlapping >= capacity) return false;
       }
       return true;
     });
-  }, [editedDate, editingBooking?.duration, editingProfessional]);
+  }, [editedDate, editingBooking, editingProfessional, occupiedSlots]);
 
   const reload = useCallback(async () => {
     try {
       const result = await getClientBookings();
       setBookings(result.bookings);
       setProfessionals(result.professionals);
+      setOccupiedSlots(result.occupiedSlots);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "No se pudieron cargar tus turnos.");
     } finally {
@@ -177,15 +190,24 @@ function MyBookingsPage() {
                     <div className="truncate text-sm text-muted-foreground">{serviceNames || "Servicio"} · {booking.duration} min</div>
                     <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                       <Badge variant="outline" className={statusClass}>{statusLabel}</Badge>
-                      <Badge variant="outline" className="border-gold/30 text-gold">Abono · {paymentMethodLabel}</Badge>
-                      {booking.paymentReportedAt && booking.paymentStatus !== "approved" && <Badge variant="outline" className="border-amber-300 text-amber-300">Avisaste que pagaste</Badge>}
+                      <Badge variant="outline" className="border-gold/30 text-gold">Pago · {paymentMethodLabel}</Badge>
+                      {booking.paymentReportedAt && booking.paymentStatus !== "approved" && <Badge variant="outline" className="border-amber-300 text-amber-300">Avisaste que pagaste · Podés modificar hasta que lo verifique el profesional</Badge>}
+                      {booking.paymentStatus === "approved" && <Badge variant="outline" className="border-emerald-300 text-emerald-400">Pago confirmado · Solo el profesional puede modificarlo</Badge>}
                     </div>
                   </div>
                   <div className="font-display text-lg font-semibold text-gold">${booking.totalPrice.toLocaleString("es-AR")}</div>
                   {isActiveBooking && <div className="flex flex-wrap gap-2">
                     {booking.paymentStatus !== "approved" && !booking.paymentReportedAt && <Button size="sm" disabled={busyBookingId !== null} className="bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-60" onClick={() => void reportPayment(booking)}>{busyBookingId === booking.id ? "Confirmando..." : "Confirmar pago"}</Button>}
-                    <Button size="sm" variant="outline" disabled={busyBookingId !== null} onClick={() => { setEditingBooking(booking); setEditedDate(booking.date); setEditedTime(booking.time); }}><Pencil className="mr-1 h-3.5 w-3.5" />Modificar turno</Button>
-                    {canDelete && <Button size="sm" variant="destructive" disabled={busyBookingId !== null} className={busyBookingId === booking.id ? "opacity-60" : undefined} onClick={() => void deleteBooking(booking)}><Trash2 className="mr-1 h-3.5 w-3.5" />{busyBookingId === booking.id ? "Borrando..." : "Borrar turno"}</Button>}
+                    <Button size="sm" variant="outline" disabled={busyBookingId !== null} onClick={() => {
+                      if (booking.paymentStatus === "approved") {
+                        toast.error("El profesional ya confirmó el pago. Solo él puede modificar este turno.");
+                        return;
+                      }
+                      setEditingBooking(booking);
+                      setEditedDate(booking.date);
+                      setEditedTime(booking.time);
+                    }}>Modificar turno</Button>
+                    {canDelete && <Button size="sm" variant="destructive" disabled={busyBookingId !== null} className={busyBookingId === booking.id ? "opacity-60" : undefined} onClick={() => void deleteBooking(booking)}>{busyBookingId === booking.id ? "Borrando..." : "Borrar turno"}</Button>}
                   </div>}
                 </article>
               );

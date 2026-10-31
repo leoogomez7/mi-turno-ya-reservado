@@ -221,7 +221,7 @@ export function AgendaManager() {
                       <Badge variant="outline" className="border-gold/30 text-gold">
                         {professional?.name}{professional?.specialty ? ` · ${professional.specialty}` : ""}
                       </Badge>
-                      <Badge variant="outline" className="border-gold/30 text-gold">Abono · {paymentMethodLabel}</Badge>
+                      <Badge variant="outline" className="border-gold/30 text-gold">Pago · {paymentMethodLabel}</Badge>
                       {booking.isTest && <Badge variant="outline" className="border-emerald-300 text-emerald-400">Turno de prueba</Badge>}
                       {booking.status === "pending-payment" && <Badge variant="outline" className="border-amber-300 text-amber-300">Pago pendiente</Badge>}
                       {booking.paymentReportedAt && booking.paymentStatus !== "approved" && <Badge variant="outline" className="border-amber-300 text-amber-300">Cliente avisó que pagó</Badge>}

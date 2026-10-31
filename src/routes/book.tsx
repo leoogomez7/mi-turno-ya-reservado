@@ -92,13 +92,19 @@ export function BookPage() {
   const paymentReturn = new URLSearchParams(location.searchStr).get("payment");
 
   const [customer, setCustomer] = useState<Customer>(EMPTY_CUSTOMER);
+  const [clientProfileLoaded, setClientProfileLoaded] = useState(false);
+  const [profileReloadKey, setProfileReloadKey] = useState(0);
   const [barberId, setBarberId] = useState("");
   const [serviceIds, setServiceIds] = useState<string[]>([]);
   const [date, setDate] = useState<Date | null>(null);
   const [time, setTime] = useState("");
 
   useEffect(() => {
-    if (role !== "client") return;
+    if (role !== "client") {
+      setClientProfileLoaded(true);
+      return;
+    }
+    setClientProfileLoaded(false);
     const accountName = [user?.givenName, user?.familyName].filter(Boolean).join(" ");
     setCustomer((current) => ({
       ...current,
@@ -114,9 +120,17 @@ export function BookPage() {
         const previousBookingPhone = bookingStore.all().find((booking) => booking.customer.email.trim().toLowerCase() === accountEmail)?.customer.phone;
         setCustomer((current) => current.phone ? current : { ...current, phone: profile.phone || previousBookingPhone || "" });
       })
-      .catch(() => undefined);
+      .catch(() => {
+        if (cancelled) return;
+        const accountEmail = user?.email?.trim().toLowerCase();
+        const previousBookingPhone = bookingStore.all().find((booking) => booking.customer.email.trim().toLowerCase() === accountEmail)?.customer.phone;
+        setCustomer((current) => current.phone ? current : { ...current, phone: previousBookingPhone || "" });
+      })
+      .finally(() => {
+        if (!cancelled) setClientProfileLoaded(true);
+      });
     return () => { cancelled = true; };
-  }, [role, user?.email, user?.familyName, user?.givenName]);
+  }, [profileReloadKey, role, user?.email, user?.familyName, user?.givenName]);
 
   useEffect(() => {
     const reloadStores = () => {
@@ -582,6 +596,8 @@ Observaciones: ${customer.notes || "Ninguna"}`;
     setPaymentError(null);
     window.localStorage.removeItem(PENDING_PAYMENT_SESSION_KEY);
     setCustomer(EMPTY_CUSTOMER);
+    setClientProfileLoaded(role !== "client");
+    setProfileReloadKey((key) => key + 1);
     setBarberId("");
     setServiceIds([]);
     setDate(null);
@@ -688,7 +704,7 @@ Observaciones: ${customer.notes || "Ninguna"}`;
         <Stepper step={step} />
 
         <div className="mt-4 w-full rounded-2xl border border-gold/30 bg-card p-5 sm:p-6">
-          {step === 0 && <StepCustomer customer={customer} setCustomer={setCustomer} mercadoPagoAvailable={Boolean(selectedStore?.mercadoPagoConfigured)} />}
+          {step === 0 && <StepCustomer customer={customer} setCustomer={setCustomer} mercadoPagoAvailable={Boolean(selectedStore?.mercadoPagoConfigured)} phoneLoading={role === "client" && !clientProfileLoaded} />}
           {step === 1 && <StepBarber professionals={reservationProfessionals} value={barberId} onChange={setBarberId} />}
           {step === 2 && <StepServices professional={selectedProfessional} value={serviceIds} onChange={setServiceIds} />}
           {step === 3 && <StepDateTime professional={selectedProfessional} bookings={reservationBookings} date={date} setDate={setDate} time={time} setTime={setTime} barberId={barberId} duration={duration} />}
@@ -748,12 +764,9 @@ Observaciones: ${customer.notes || "Ninguna"}`;
         </DialogContent>
       </Dialog>
       <Dialog open={reservationResult !== null} onOpenChange={(open) => {
-        if (!open) {
-          if (reservationResult?.kind === "payment-pending") setReservationResult(null);
-          else startNewBooking();
-        }
+        if (!open) startNewBooking();
       }}>
-        <DialogContent>
+        <DialogContent className={reservationResult?.kind === "payment-pending" ? "sm:max-w-2xl" : undefined}>
           <DialogHeader>
             <DialogTitle>
               {reservationResult?.kind === "confirmed" ? "¡Turno confirmado!"
@@ -777,19 +790,13 @@ Observaciones: ${customer.notes || "Ninguna"}`;
               <p className="mt-1"><span className="text-muted-foreground">Horario: </span>{reservationResult.time}</p>
             </div>
           )}
-          <DialogFooter className={reservationResult?.kind === "payment-pending" ? "flex-wrap sm:flex-row sm:justify-end" : reservationResult?.kind === "confirmed" && customer.paymentMethod === "efectivo" ? "sm:justify-between" : undefined}>
+          <DialogFooter className={reservationResult?.kind === "payment-pending" ? "flex-wrap gap-2 sm:flex-nowrap sm:flex-row sm:justify-end" : reservationResult?.kind === "confirmed" && customer.paymentMethod === "efectivo" ? "sm:justify-end" : undefined}>
             {reservationResult?.kind === "payment-pending" && (
               <>
                 <Button
                   type="button"
-                  onClick={startNewBooking}
-                  className="bg-gold text-primary-foreground hover:bg-gold-soft"
-                >
-                  Reservar otro turno
-                </Button>
-                <Button
-                  type="button"
                   variant="outline"
+                  className="shrink-0 whitespace-nowrap px-3 text-sm"
                   onClick={sendPendingBookingWhatsApp}
                 >
                   Enviar comprobante por WhatsApp
@@ -797,8 +804,8 @@ Observaciones: ${customer.notes || "Ninguna"}`;
                 {reservationResult.paymentMethod === "transferencia" ? (
                   <Button
                     type="button"
+                    className="shrink-0 bg-emerald-500 px-4 text-white hover:bg-emerald-600"
                     onClick={() => openTransferPaymentDetails(reservationResult)}
-                    className="bg-gold text-primary-foreground hover:bg-gold-soft"
                   >
                     Pagar
                   </Button>
@@ -807,11 +814,18 @@ Observaciones: ${customer.notes || "Ninguna"}`;
                     type="button"
                     disabled={startingPayment}
                     onClick={() => void startMercadoPagoPayment()}
-                    className="bg-gold text-primary-foreground hover:bg-gold-soft"
+                    className="shrink-0 bg-emerald-500 px-4 text-white hover:bg-emerald-600"
                   >
                     {startingPayment ? "Preparando pago..." : "Pagar"}
                   </Button>
                 ) : null}
+                <Button
+                  type="button"
+                  onClick={startNewBooking}
+                  className="shrink-0 whitespace-nowrap bg-gold px-3 text-sm text-primary-foreground hover:bg-gold-soft"
+                >
+                  Reservar turno
+                </Button>
               </>
             )}
             {reservationResult?.kind === "confirmed" && customer.paymentMethod === "efectivo" && (
@@ -892,13 +906,13 @@ function SectionTitle({ icon: Icon, title, subtitle }: { icon: any; title: strin
   );
 }
 
-function StepCustomer({ customer, setCustomer, mercadoPagoAvailable }: { customer: Customer; setCustomer: (c: Customer) => void; mercadoPagoAvailable: boolean }) {
+function StepCustomer({ customer, setCustomer, mercadoPagoAvailable, phoneLoading }: { customer: Customer; setCustomer: (c: Customer) => void; mercadoPagoAvailable: boolean; phoneLoading: boolean }) {
   return (
     <div>
       <SectionTitle icon={User} title="Paso 1" subtitle="Tus datos" />
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Nombre completo *"><Input required value={customer.fullName} onChange={(e) => setCustomer({ ...customer, fullName: e.target.value })} /></Field>
-        <Field label="Teléfono *"><Input required value={customer.phone} onChange={(e) => setCustomer({ ...customer, phone: e.target.value })} /></Field>
+        <Field label="Teléfono *"><Input required value={customer.phone} onChange={(e) => setCustomer({ ...customer, phone: e.target.value })} disabled={phoneLoading} placeholder={phoneLoading ? "Cargando..." : ""} /></Field>
         <Field label="Correo electrónico *"><Input required type="email" value={customer.email} onChange={(e) => setCustomer({ ...customer, email: e.target.value })} /></Field>
         <Field label="Método de pago *">
           <select

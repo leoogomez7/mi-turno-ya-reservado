@@ -709,10 +709,13 @@ export default async function handler(request, response) {
 
         if (body.action === "get-client-bookings") {
           const bookingRows = await db.execute("SELECT id, value FROM bookings ORDER BY updated_at DESC");
-          const bookings = bookingRows.rows
-            .map((row) => JSON.parse(String(row.value)))
+          const allBookings = bookingRows.rows.map((row) => JSON.parse(String(row.value)));
+          const bookings = allBookings
             .filter((booking) => booking.customer?.email?.trim().toLowerCase() === user.email);
           const storeCodes = new Set(bookings.map((booking) => normalizeStoreCode(booking.storeCode)).filter(Boolean));
+          const occupiedSlots = allBookings
+            .filter((booking) => storeCodes.has(normalizeStoreCode(booking.storeCode)) && booking.status !== "cancelled")
+            .map(({ id, storeCode, barberId, date, time, duration, status }) => ({ id, storeCode, barberId, date, time, duration, status }));
           const professionalRows = storeCodes.size
             ? await db.execute("SELECT id, value FROM professionals ORDER BY updated_at DESC")
             : { rows: [] };
@@ -723,7 +726,7 @@ export default async function handler(request, response) {
               const storeCode = [...storeCodes].find((code) => databaseId.startsWith(`${code}:`)) ?? "";
               return { ...JSON.parse(String(row.value)), id: databaseId.slice(storeCode.length + 1), storeCode };
             });
-          return response.status(200).json({ bookings, professionals });
+          return response.status(200).json({ bookings, professionals, occupiedSlots });
         }
 
         const bookingId = typeof body.bookingId === "string" ? body.bookingId.trim() : "";
@@ -752,7 +755,10 @@ export default async function handler(request, response) {
         }
 
         if (body.action === "update-client-booking") {
-          if (!["confirmed", "pending-payment"].includes(booking.status) || booking.paymentStatus === "approved") {
+          if (booking.paymentStatus === "approved") {
+            return response.status(409).json({ error: "No se puede modificar el turno porque el profesional ya confirmó el pago." });
+          }
+          if (!["confirmed", "pending-payment"].includes(booking.status)) {
             return response.status(409).json({ error: "Este turno ya no se puede modificar desde tu cuenta." });
           }
           const date = typeof body.date === "string" ? body.date : "";

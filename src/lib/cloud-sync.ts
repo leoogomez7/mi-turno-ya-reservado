@@ -23,7 +23,11 @@ export type StoreMercadoPagoCredentials = {
   accessTokenConfigured: boolean;
 };
 export type ClientProfile = { phone: string };
-export type ClientBookings = { bookings: Booking[]; professionals: Professional[] };
+export type ClientBookings = {
+  bookings: Booking[];
+  professionals: Professional[];
+  occupiedSlots: Pick<Booking, "id" | "storeCode" | "barberId" | "date" | "time" | "duration" | "status">[];
+};
 export type Store = {
   code: string;
   name: string;
