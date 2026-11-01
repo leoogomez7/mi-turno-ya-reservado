@@ -134,6 +134,17 @@
   }
 }
 
+@media (max-width: 639px) {
+  .mobile-scrollbar-hidden {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .mobile-scrollbar-hidden::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 input[type="time"]::-webkit-calendar-picker-indicator {
   filter: brightness(0) invert(1);
   opacity: 1;

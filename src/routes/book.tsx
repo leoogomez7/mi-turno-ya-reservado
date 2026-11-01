@@ -57,6 +57,7 @@ type ReservationResult = {
   kind: "confirmed" | "payment-success" | "payment-pending" | "payment-failure";
   date: string;
   time: string;
+  totalPrice?: number;
   paymentMethod?: Customer["paymentMethod"];
 };
 
@@ -74,7 +75,7 @@ export function BookPage() {
   const [confirmingBooking, setConfirmingBooking] = useState(false);
   const [startingPayment, setStartingPayment] = useState(false);
   const [paymentDialog, setPaymentDialog] = useState<"transfer" | null>(null);
-  const [pendingTransferReturn, setPendingTransferReturn] = useState<Pick<ReservationResult, "date" | "time"> | null>(null);
+  const [pendingTransferReturn, setPendingTransferReturn] = useState<Pick<ReservationResult, "date" | "time" | "totalPrice"> | null>(null);
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [reservationResult, setReservationResult] = useState<ReservationResult | null>(null);
   const [stores, setStores] = useState<Store[]>(getAvailableStores());
@@ -407,6 +408,7 @@ Observaciones: ${customer.notes || "Ninguna"}`;
           kind: "payment-pending",
           date: format(date, "yyyy-MM-dd"),
           time,
+          totalPrice: price,
           paymentMethod: "transferencia",
         });
       } catch (error) {
@@ -525,7 +527,7 @@ Observaciones: ${customer.notes || "Ninguna"}`;
   }
 
   function openTransferPaymentDetails(result: ReservationResult) {
-    setPendingTransferReturn({ date: result.date, time: result.time });
+    setPendingTransferReturn({ date: result.date, time: result.time, totalPrice: result.totalPrice });
     setReservationResult(null);
     setPaymentDialog("transfer");
   }
@@ -746,8 +748,9 @@ Observaciones: ${customer.notes || "Ninguna"}`;
               <div className="space-y-3 rounded-xl border border-border bg-card p-4 text-sm">
                 <TransferDetail label="Titular" value={storeSettings?.transferHolder ?? ""} onCopy={copyTransferValue} />
                 <TransferDetail label="Banco" value={storeSettings?.transferBank ?? ""} onCopy={copyTransferValue} />
-                <TransferDetail label="CBU" value={storeSettings?.transferCbu ?? ""} onCopy={copyTransferValue} />
-                <TransferDetail label="Alias" value={storeSettings?.transferAlias ?? ""} onCopy={copyTransferValue} />
+                <TransferDetail label="CBU" value={storeSettings?.transferCbu ?? ""} onCopy={copyTransferValue} copyable={!!storeSettings?.transferCbu.trim()} />
+                <TransferDetail label="Alias" value={storeSettings?.transferAlias ?? ""} onCopy={copyTransferValue} copyable={!storeSettings?.transferCbu.trim() && !!storeSettings?.transferAlias.trim()} />
+                <p className="border-t border-border pt-3 font-semibold text-gold">Importe: ${(pendingTransferReturn?.totalPrice ?? 0).toLocaleString("es-AR")}</p>
               </div>
               <DialogFooter>
                 <Button onClick={closeTransferPaymentDetails} className="bg-gold text-primary-foreground hover:bg-gold-soft">Volver a la reserva</Button>
@@ -852,11 +855,11 @@ Observaciones: ${customer.notes || "Ninguna"}`;
   );
 }
 
-function TransferDetail({ label, value, onCopy }: { label: string; value: string; onCopy: (value: string) => void }) {
+function TransferDetail({ label, value, onCopy, copyable = false }: { label: string; value: string; onCopy: (value: string) => void; copyable?: boolean }) {
   return (
     <div className="flex items-center justify-between gap-3">
-      <div className="min-w-0"><p className="text-xs text-muted-foreground">{label}</p><p className="break-all font-medium">{value}</p></div>
-      <Button type="button" size="icon" variant="ghost" aria-label={`Copiar ${label}`} onClick={() => onCopy(value)}><Copy className="h-4 w-4" /></Button>
+      <div className="min-w-0"><p className="text-xs text-muted-foreground">{label}</p><p className="break-all font-medium">{value || "No informado"}</p></div>
+      {copyable && value.trim() && <Button type="button" size="icon" variant="ghost" aria-label={`Copiar ${label}`} onClick={() => onCopy(value)}><Copy className="h-4 w-4" /></Button>}
     </div>
   );
 }
