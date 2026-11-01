@@ -88,7 +88,7 @@ function computeStats(bookings: Booking[]) {
   active.forEach((b) => b.serviceIds.forEach((id) => { svcCount[id] = (svcCount[id] ?? 0) + 1; }));
   const servicesChart = Object.entries(svcCount)
     .map(([id, v]) => ({
-      name: serviceLookup.get(id)?.split(" ")[0] ?? getProfessionalService("", id)?.name.split(" ")[0] ?? id,
+      name: serviceLookup.get(id) ?? getProfessionalService("", id)?.name ?? id,
       value: v,
     }))
     .sort((a, b) => b.value - a.value).slice(0, 6);
