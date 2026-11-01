@@ -701,7 +701,7 @@ export default async function handler(request, response) {
     return response.status(400).json({ error: "El cuerpo JSON no es válido." });
   }
   if (request.method === "POST") {
-    if (user && ["get-client-bookings", "confirm-client-booking", "report-client-payment", "update-client-booking", "delete-client-booking"].includes(body?.action)) {
+    if (user && ["get-client-bookings", "confirm-client-booking", "report-client-payment", "update-client-booking", "delete-client-booking", "cancel-client-payment", "update-client-payment-method", "create-client-booking-payment-preference"].includes(body?.action)) {
       try {
         if (!user.emailVerified) return response.status(403).json({ error: "Verificá tu correo para consultar tus turnos." });
         const roleResult = await db.execute({ sql: "SELECT role FROM account_roles WHERE user_id = ?", args: [user.id] });
@@ -719,6 +719,9 @@ export default async function handler(request, response) {
           const professionalRows = storeCodes.size
             ? await db.execute("SELECT id, value FROM professionals ORDER BY updated_at DESC")
             : { rows: [] };
+          const storeRows = storeCodes.size
+            ? await db.execute("SELECT code, name, settings FROM stores ORDER BY name")
+            : { rows: [] };
           const professionals = professionalRows.rows
             .filter((row) => [...storeCodes].some((code) => String(row.id).startsWith(`${code}:`)))
             .map((row) => {
@@ -726,7 +729,10 @@ export default async function handler(request, response) {
               const storeCode = [...storeCodes].find((code) => databaseId.startsWith(`${code}:`)) ?? "";
               return { ...JSON.parse(String(row.value)), id: databaseId.slice(storeCode.length + 1), storeCode };
             });
-          return response.status(200).json({ bookings, professionals, occupiedSlots });
+          const stores = storeRows.rows
+            .filter((row) => storeCodes.has(normalizeStoreCode(String(row.code))))
+            .map((row) => ({ code: String(row.code), name: String(row.name), settings: parseStoreSettings(row.settings) }));
+          return response.status(200).json({ bookings, professionals, occupiedSlots, stores });
         }
 
         const bookingId = typeof body.bookingId === "string" ? body.bookingId.trim() : "";
@@ -752,6 +758,60 @@ export default async function handler(request, response) {
           booking.paymentReportedAt = new Date().toISOString();
           await db.execute({ sql: "UPDATE bookings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", args: [JSON.stringify(booking), bookingId] });
           return response.status(200).json({ booking });
+        }
+
+        if (body.action === "cancel-client-payment") {
+          if (booking.paymentStatus === "approved" || !["confirmed", "pending-payment"].includes(booking.status)) {
+            return response.status(409).json({ error: "Este pago ya fue confirmado o el turno ya no se puede cancelar." });
+          }
+          await db.execute({ sql: "DELETE FROM bookings WHERE id = ?", args: [bookingId] });
+          return response.status(200).json({ ok: true, bookingId });
+        }
+
+        if (body.action === "update-client-payment-method") {
+          const paymentMethod = body.paymentMethod;
+          if (booking.paymentStatus === "approved" || !["confirmed", "pending-payment"].includes(booking.status)) {
+            return response.status(409).json({ error: "No se puede cambiar el método porque el pago ya fue confirmado o el turno ya no está activo." });
+          }
+          if (!["efectivo", "transferencia", "tarjeta o mercado pago"].includes(paymentMethod)) {
+            return response.status(400).json({ error: "Método de pago inválido." });
+          }
+          booking.customer.paymentMethod = paymentMethod;
+          booking.status = paymentMethod === "efectivo" ? "confirmed" : "pending-payment";
+          booking.paymentStatus = "pending";
+          delete booking.paymentReportedAt;
+          await db.execute({ sql: "UPDATE bookings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", args: [JSON.stringify(booking), bookingId] });
+          return response.status(200).json({ booking });
+        }
+
+        if (body.action === "create-client-booking-payment-preference") {
+          if (booking.paymentStatus === "approved" || booking.status !== "pending-payment" || booking.customer?.paymentMethod !== "tarjeta o mercado pago") {
+            return response.status(409).json({ error: "El turno no está pendiente de pago con Mercado Pago." });
+          }
+          const credentials = await getStorePaymentCredentials(db, booking.storeCode);
+          const host = request.headers.host || "localhost";
+          const protocol = request.headers["x-forwarded-proto"] || "https";
+          const appUrl = (process.env.PUBLIC_APP_URL || `${protocol}://${host}`).replace(/\/$/, "");
+          const preferenceResponse = await fetch("https://api.mercadopago.com/checkout/preferences", {
+            method: "POST",
+            headers: { Authorization: `Bearer ${credentials.accessToken}`, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              items: [{ id: `booking-${bookingId}`, title: "Reserva de turno", quantity: 1, currency_id: "ARS", unit_price: Number(Number(booking.totalPrice).toFixed(2)) }],
+              payer: { email: booking.customer.email },
+              external_reference: bookingId,
+              notification_url: `${appUrl}/api/mercadopago/webhook?booking_id=${encodeURIComponent(bookingId)}`,
+              metadata: { booking_id: bookingId, store_code: normalizeStoreCode(booking.storeCode) },
+              back_urls: {
+                success: `${appUrl}/mis-turnos?payment=success`,
+                failure: `${appUrl}/mis-turnos?payment=failure`,
+                pending: `${appUrl}/mis-turnos?payment=pending`,
+              },
+              auto_return: "approved",
+            }),
+          });
+          const preference = await preferenceResponse.json();
+          if (!preferenceResponse.ok || !preference.init_point) return response.status(502).json({ error: "Mercado Pago no pudo preparar el pago." });
+          return response.status(200).json({ initPoint: preference.init_point });
         }
 
         if (body.action === "update-client-booking") {
@@ -783,8 +843,8 @@ export default async function handler(request, response) {
         }
 
         const method = booking.customer?.paymentMethod;
-        const canDelete = method === "efectivo"
-          || (method === "transferencia" && booking.paymentStatus !== "approved");
+        const canDelete = booking.paymentStatus !== "approved"
+          && ["efectivo", "transferencia", "tarjeta o mercado pago"].includes(method);
         if (!canDelete || !["confirmed", "pending-payment"].includes(booking.status)) {
           return response.status(403).json({ error: "Este turno no se puede borrar porque el método de pago no lo permite." });
         }

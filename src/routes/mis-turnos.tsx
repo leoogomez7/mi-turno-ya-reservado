@@ -11,7 +11,7 @@ import { AuthRequired } from "@/components/auth-required";
 import { useAppAuth } from "@/lib/auth";
 import type { Booking } from "@/lib/booking-store";
 import { getAvailableSlotsForDate, getScheduleForDate, type Professional } from "@/lib/professional-store";
-import { deleteClientBooking, getClientBookings, reportClientPayment, updateClientBooking } from "@/lib/cloud-sync";
+import { cancelClientPayment, createClientBookingPaymentPreference, deleteClientBooking, getClientBookings, reportClientPayment, updateClientBooking, updateClientPaymentMethod, type Store } from "@/lib/cloud-sync";
 import { toast } from "sonner";
 import { LoadingScreen } from "@/components/loading-screen";
 
@@ -24,12 +24,17 @@ function MyBookingsPage() {
   const { isAuthenticated, isLoading, role, user } = useAppAuth();
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [professionals, setProfessionals] = useState<Professional[]>([]);
+  const [stores, setStores] = useState<Pick<Store, "code" | "name" | "settings">[]>([]);
   const [occupiedSlots, setOccupiedSlots] = useState<Pick<Booking, "id" | "storeCode" | "barberId" | "date" | "time" | "duration" | "status">[]>([]);
   const [loadingBookings, setLoadingBookings] = useState(true);
   const [busyBookingId, setBusyBookingId] = useState<string | null>(null);
   const [editingBooking, setEditingBooking] = useState<Booking | null>(null);
   const [editedDate, setEditedDate] = useState("");
   const [editedTime, setEditedTime] = useState("");
+  const [paymentBooking, setPaymentBooking] = useState<Booking | null>(null);
+  const [showTransferDetails, setShowTransferDetails] = useState(false);
+  const [changingPaymentBooking, setChangingPaymentBooking] = useState<Booking | null>(null);
+  const [newPaymentMethod, setNewPaymentMethod] = useState<NonNullable<Booking["customer"]["paymentMethod"]>>("efectivo");
 
   const editingProfessional = editingBooking
     ? professionals.find((item) => item.id === editingBooking.barberId && item.storeCode === editingBooking.storeCode)
@@ -72,12 +77,20 @@ function MyBookingsPage() {
       setBookings(result.bookings);
       setProfessionals(result.professionals);
       setOccupiedSlots(result.occupiedSlots);
+      setStores(result.stores);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "No se pudieron cargar tus turnos.");
     } finally {
       setLoadingBookings(false);
     }
   }, []);
+
+  async function openEditDialog(booking: Booking) {
+    await reload();
+    setEditingBooking(booking);
+    setEditedDate(booking.date);
+    setEditedTime(booking.time);
+  }
 
   useEffect(() => {
     if (!isAuthenticated || role !== "client") return;
@@ -92,9 +105,67 @@ function MyBookingsPage() {
     try {
       const result = await reportClientPayment(booking.id);
       setBookings((current) => current.map((item) => item.id === booking.id ? result.booking : item));
+      setPaymentBooking(null);
       toast.success("Aviso enviado. El profesional verificará el pago.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "No se pudo avisar al profesional.");
+    } finally {
+      setBusyBookingId(null);
+    }
+  }
+
+  async function payBooking(booking: Booking) {
+    if (busyBookingId || booking.paymentStatus === "approved") return;
+    if (booking.customer.paymentMethod === "efectivo") return;
+    if (booking.customer.paymentMethod === "transferencia") {
+      setShowTransferDetails(true);
+      return;
+    }
+    const paymentTab = window.open("about:blank", "_blank");
+    if (!paymentTab) {
+      toast.error("Permití las ventanas emergentes para abrir el pago en otra pestaña.");
+      return;
+    }
+    paymentTab.opener = null;
+    setBusyBookingId(booking.id);
+    try {
+      const { initPoint } = await createClientBookingPaymentPreference(booking.id);
+      paymentTab.location.href = initPoint;
+    } catch (error) {
+      paymentTab.close();
+      toast.error(error instanceof Error ? error.message : "No se pudo iniciar el pago.");
+    } finally {
+      setBusyBookingId(null);
+    }
+  }
+
+  async function cancelPayment(booking: Booking) {
+    if (busyBookingId || booking.paymentStatus === "approved") return;
+    setBusyBookingId(booking.id);
+    try {
+      await cancelClientPayment(booking.id);
+      setBookings((current) => current.filter((item) => item.id !== booking.id));
+      setPaymentBooking(null);
+      toast.success("Pago cancelado y turno liberado.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo cancelar el pago.");
+    } finally {
+      setBusyBookingId(null);
+    }
+  }
+
+  async function savePaymentMethod() {
+    if (!changingPaymentBooking || busyBookingId) return;
+    setBusyBookingId(changingPaymentBooking.id);
+    try {
+      const result = await updateClientPaymentMethod(changingPaymentBooking.id, newPaymentMethod);
+      setBookings((current) => current.map((item) => item.id === changingPaymentBooking.id ? result.booking : item));
+      setChangingPaymentBooking(null);
+      setPaymentBooking(null);
+      setShowTransferDetails(false);
+      toast.success("Método de pago actualizado.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo cambiar el método de pago.");
     } finally {
       setBusyBookingId(null);
     }
@@ -114,6 +185,7 @@ function MyBookingsPage() {
       toast.success("Turno modificado.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "No se pudo modificar el turno.");
+      await reload();
     } finally {
       setBusyBookingId(null);
     }
@@ -174,7 +246,7 @@ function MyBookingsPage() {
                     ? "Tarjeta o Mercado Pago"
                     : "No especificado";
               const isActiveBooking = booking.status === "confirmed" || booking.status === "pending-payment";
-              const canDelete = isActiveBooking && (
+              const canDelete = isActiveBooking && booking.paymentStatus !== "approved" && (
                 booking.customer.paymentMethod === "efectivo"
                 || (booking.customer.paymentMethod === "transferencia" && booking.paymentStatus !== "approved")
               );
@@ -197,16 +269,8 @@ function MyBookingsPage() {
                   </div>
                   <div className="font-display text-lg font-semibold text-gold">${booking.totalPrice.toLocaleString("es-AR")}</div>
                   {isActiveBooking && <div className="flex flex-wrap gap-2">
-                    {booking.paymentStatus !== "approved" && !booking.paymentReportedAt && <Button size="sm" disabled={busyBookingId !== null} className="bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-60" onClick={() => void reportPayment(booking)}>{busyBookingId === booking.id ? "Confirmando..." : "Confirmar pago"}</Button>}
-                    {booking.paymentStatus !== "approved" && <Button size="sm" variant="outline" disabled={busyBookingId !== null} onClick={() => {
-                      if (booking.paymentStatus === "approved") {
-                        toast.error("El profesional ya confirmó el pago. Solo él puede modificar este turno.");
-                        return;
-                      }
-                      setEditingBooking(booking);
-                      setEditedDate(booking.date);
-                      setEditedTime(booking.time);
-                    }}>Modificar turno</Button>}
+                    <Button size="sm" disabled={busyBookingId !== null} className="bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-60" onClick={() => { setPaymentBooking(booking); setShowTransferDetails(false); }}>{booking.paymentStatus === "approved" ? "Pago confirmado" : "Indicar pago"}</Button>
+                    {booking.paymentStatus !== "approved" && <Button size="sm" variant="outline" disabled={busyBookingId !== null} onClick={() => void openEditDialog(booking)}>Modificar turno</Button>}
                     {canDelete && <Button size="sm" variant="destructive" disabled={busyBookingId !== null} className={busyBookingId === booking.id ? "opacity-60" : undefined} onClick={() => void deleteBooking(booking)}>{busyBookingId === booking.id ? "Borrando..." : "Borrar turno"}</Button>}
                   </div>}
                 </article>
@@ -239,6 +303,79 @@ function MyBookingsPage() {
           <DialogFooter>
             <Button type="button" variant="outline" disabled={busyBookingId !== null} onClick={() => setEditingBooking(null)}>Cancelar</Button>
             <Button type="button" disabled={!editingBooking || busyBookingId !== null} className="bg-gold text-primary-foreground hover:bg-gold-soft" onClick={() => void saveBookingTime()}>{busyBookingId === editingBooking?.id ? "Guardando..." : "Guardar cambios"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={paymentBooking !== null} onOpenChange={(open) => { if (!open && !busyBookingId) { setPaymentBooking(null); setShowTransferDetails(false); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{showTransferDetails ? "Datos para la transferencia" : "Confirmar pago"}</DialogTitle>
+            <DialogDescription>
+              {showTransferDetails
+                ? `Realizá la transferencia para ${stores.find((store) => store.code === paymentBooking?.storeCode)?.name ?? "la sucursal"}.`
+                : "Revisá el método elegido y seleccioná cómo querés continuar."}
+            </DialogDescription>
+          </DialogHeader>
+          {paymentBooking && showTransferDetails ? (
+            <div className="space-y-2 rounded-xl border border-border bg-card p-4 text-sm">
+              {(() => {
+                const settings = stores.find((store) => store.code === paymentBooking.storeCode)?.settings;
+                return <>
+                  <p><span className="text-muted-foreground">Titular: </span>{settings?.transferHolder || "No informado"}</p>
+                  <p><span className="text-muted-foreground">Banco: </span>{settings?.transferBank || "No informado"}</p>
+                  <p><span className="text-muted-foreground">CBU: </span>{settings?.transferCbu || "No informado"}</p>
+                  <p><span className="text-muted-foreground">Alias: </span>{settings?.transferAlias || "No informado"}</p>
+                  <p className="pt-2 font-semibold text-gold">Importe: ${paymentBooking.totalPrice.toLocaleString("es-AR")}</p>
+                </>;
+              })()}
+            </div>
+          ) : paymentBooking ? (
+            <div className="space-y-3 rounded-xl border border-border bg-card p-4 text-sm">
+              <p>Método elegido: <span className="font-medium text-gold">{paymentBooking.customer.paymentMethod ?? "No especificado"}</span></p>
+              <p>Importe: <span className="font-semibold text-gold">${paymentBooking.totalPrice.toLocaleString("es-AR")}</span></p>
+              {paymentBooking.customer.paymentMethod === "efectivo" && <p className="text-muted-foreground">El pago en efectivo se realiza en la sucursal; el pago en línea no está disponible para este método.</p>}
+              {paymentBooking.paymentStatus === "approved" && <p className="text-emerald-400">El profesional ya confirmó este pago.</p>}
+            </div>
+          ) : null}
+          <DialogFooter className="flex-wrap gap-2 sm:flex-row sm:justify-end">
+            {showTransferDetails ? (
+              <>
+                <Button type="button" variant="outline" disabled={busyBookingId !== null} onClick={() => setShowTransferDetails(false)}>Volver</Button>
+                <Button type="button" disabled={!paymentBooking || paymentBooking.paymentStatus === "approved" || busyBookingId !== null} className="bg-emerald-500 text-white hover:bg-emerald-600" onClick={() => paymentBooking && void reportPayment(paymentBooking)}>Indicar que ya pagué</Button>
+              </>
+            ) : paymentBooking ? (
+              <>
+                <Button type="button" variant="outline" disabled={busyBookingId !== null || paymentBooking.paymentStatus === "approved"} onClick={() => void cancelPayment(paymentBooking)}>Cancelar pago</Button>
+                <Button type="button" variant="outline" disabled={busyBookingId !== null || paymentBooking.paymentStatus === "approved"} onClick={() => {
+                  setNewPaymentMethod(paymentBooking.customer.paymentMethod ?? "efectivo");
+                  setChangingPaymentBooking(paymentBooking);
+                }}>Cambiar método de pago</Button>
+                <Button type="button" disabled={busyBookingId !== null || paymentBooking.paymentStatus === "approved" || paymentBooking.customer.paymentMethod === "efectivo"} className="bg-gold text-primary-foreground hover:bg-gold-soft" onClick={() => void payBooking(paymentBooking)}>
+                  {paymentBooking.customer.paymentMethod === "efectivo" ? "Pagar (no disponible)" : busyBookingId === paymentBooking.id ? "Preparando pago…" : "Pagar"}
+                </Button>
+                {!paymentBooking.paymentReportedAt && paymentBooking.paymentStatus !== "approved" && <Button type="button" variant="outline" disabled={busyBookingId !== null} onClick={() => void reportPayment(paymentBooking)}>Indicar pago realizado</Button>}
+              </>
+            ) : null}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={changingPaymentBooking !== null} onOpenChange={(open) => { if (!open && !busyBookingId) setChangingPaymentBooking(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Cambiar método de pago</DialogTitle>
+            <DialogDescription>Podés cambiarlo mientras el profesional no haya confirmado el pago.</DialogDescription>
+          </DialogHeader>
+          <label className="grid gap-2 text-sm text-muted-foreground">
+            <span>Nuevo método</span>
+            <select value={newPaymentMethod} onChange={(event) => setNewPaymentMethod(event.target.value as NonNullable<Booking["customer"]["paymentMethod"]>)} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-foreground">
+              <option value="efectivo">Efectivo</option>
+              <option value="transferencia">Transferencia bancaria</option>
+              <option value="tarjeta o mercado pago">Tarjeta o Mercado Pago</option>
+            </select>
+          </label>
+          <DialogFooter>
+            <Button type="button" variant="outline" disabled={busyBookingId !== null} onClick={() => setChangingPaymentBooking(null)}>Cancelar</Button>
+            <Button type="button" disabled={!changingPaymentBooking || changingPaymentBooking.paymentStatus === "approved" || busyBookingId !== null} className="bg-gold text-primary-foreground hover:bg-gold-soft" onClick={() => void savePaymentMethod()}>{busyBookingId === changingPaymentBooking?.id ? "Guardando…" : "Guardar método"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

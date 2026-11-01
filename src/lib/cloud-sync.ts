@@ -27,6 +27,7 @@ export type ClientBookings = {
   bookings: Booking[];
   professionals: Professional[];
   occupiedSlots: Pick<Booking, "id" | "storeCode" | "barberId" | "date" | "time" | "duration" | "status">[];
+  stores: Pick<Store, "code" | "name" | "settings">[];
 };
 export type Store = {
   code: string;
@@ -252,6 +253,18 @@ export async function confirmClientBooking(bookingId: string) {
 
 export async function reportClientPayment(bookingId: string) {
   return request<{ booking: Booking }>("POST", { action: "report-client-payment", bookingId });
+}
+
+export async function cancelClientPayment(bookingId: string) {
+  return request<{ ok: boolean; bookingId: string }>("POST", { action: "cancel-client-payment", bookingId });
+}
+
+export async function updateClientPaymentMethod(bookingId: string, paymentMethod: NonNullable<Booking["customer"]["paymentMethod"]>) {
+  return request<{ booking: Booking }>("POST", { action: "update-client-payment-method", bookingId, paymentMethod });
+}
+
+export async function createClientBookingPaymentPreference(bookingId: string) {
+  return request<{ initPoint: string }>("POST", { action: "create-client-booking-payment-preference", bookingId });
 }
 
 export async function updateClientBooking(bookingId: string, date: string, time: string) {
