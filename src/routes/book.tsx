@@ -85,8 +85,6 @@ export function BookPage() {
   const [cloudDataReady, setCloudDataReady] = useState(isCloudInitialized);
   const [storePickerOpen, setStorePickerOpen] = useState(false);
   const [storeSearch, setStoreSearch] = useState("");
-  const [storeSearchSubmitted, setStoreSearchSubmitted] = useState(false);
-  const [storeNotFound, setStoreNotFound] = useState(false);
   const [storeLoading, setStoreLoading] = useState(false);
   const navigate = useNavigate();
   const paymentReturn = new URLSearchParams(location.searchStr).get("payment");
@@ -308,8 +306,6 @@ export function BookPage() {
       }
       setSelectedStoreCode(store.code);
       setStorePickerOpen(false);
-      setStoreNotFound(false);
-      setStoreSearchSubmitted(false);
       setStoreSearch("");
       setBarberId("");
       setServiceIds([]);
@@ -659,14 +655,10 @@ Observaciones: ${customer.notes || "Ninguna"}`;
                   value={storeSearch}
                   onChange={(event) => {
                     setStoreSearch(event.target.value);
-                    setStoreNotFound(false);
-                    setStoreSearchSubmitted(false);
                   }}
                   onKeyDown={(event) => {
                     if (event.key === "Enter") {
                       event.preventDefault();
-                      setStoreSearchSubmitted(true);
-                      setStoreNotFound(matchingStores.length === 0);
                       if (matchingStores.length === 1) void chooseStore(matchingStores[0]);
                     }
                   }}
@@ -690,14 +682,7 @@ Observaciones: ${customer.notes || "Ninguna"}`;
                   Agregando sucursal…
                 </p>
               )}
-              <Button type="button" disabled={storeLoading || !storeSearch.trim()} className="w-full bg-gold text-primary-foreground hover:bg-gold-soft" onClick={() => {
-                setStoreSearchSubmitted(true);
-                setStoreNotFound(matchingStores.length === 0);
-                if (matchingStores.length === 1) void chooseStore(matchingStores[0]);
-              }}>
-                {storeLoading ? "Agregando sucursal…" : "Buscar sucursal"}
-              </Button>
-              {storeSearchSubmitted && storeNotFound && <p role="status" className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">No encontramos sucursales con ese nombre o código.</p>}
+              {!storeLoading && storeSearch.trim() && matchingStores.length === 0 && <p role="status" className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">No encontramos sucursales con ese nombre o código.</p>}
             </div>
           </DialogContent>
         </Dialog>}
