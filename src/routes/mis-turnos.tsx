@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 import { CalendarDays, Clock3, Copy } from "lucide-react";
@@ -35,6 +35,7 @@ function MyBookingsPage() {
   const [showTransferDetails, setShowTransferDetails] = useState(false);
   const [changingPaymentBooking, setChangingPaymentBooking] = useState<Booking | null>(null);
   const [newPaymentMethod, setNewPaymentMethod] = useState<NonNullable<Booking["customer"]["paymentMethod"]>>("efectivo");
+  const suppressPaymentClick = useRef(false);
 
   const editingProfessional = editingBooking
     ? professionals.find((item) => item.id === editingBooking.barberId && item.storeCode === editingBooking.storeCode)
@@ -124,7 +125,7 @@ function MyBookingsPage() {
   }
 
   async function payBooking(booking: Booking) {
-    if (busyBookingId || booking.paymentStatus === "approved") return;
+    if (suppressPaymentClick.current || busyBookingId || booking.paymentStatus === "approved") return;
     if (booking.customer.paymentMethod === "efectivo") return;
     if (booking.customer.paymentMethod === "transferencia") {
       setShowTransferDetails(true);
@@ -170,6 +171,8 @@ function MyBookingsPage() {
       const result = await updateClientPaymentMethod(changingPaymentBooking.id, newPaymentMethod);
       setBookings((current) => current.map((item) => item.id === changingPaymentBooking.id ? result.booking : item));
       setPaymentBooking(result.booking);
+      suppressPaymentClick.current = true;
+      window.setTimeout(() => { suppressPaymentClick.current = false; }, 600);
       setChangingPaymentBooking(null);
       setShowTransferDetails(false);
       toast.success("Método de pago actualizado.");
@@ -317,7 +320,7 @@ function MyBookingsPage() {
         </DialogContent>
       </Dialog>
       <Dialog open={paymentBooking !== null} onOpenChange={(open) => { if (!open && !busyBookingId) { setPaymentBooking(null); setShowTransferDetails(false); } }}>
-        <DialogContent className="sm:max-w-3xl">
+        <DialogContent className="sm:max-w-4xl">
           <DialogHeader>
             <DialogTitle>{showTransferDetails ? "Datos para la transferencia" : "Confirmar pago"}</DialogTitle>
             <DialogDescription>
@@ -358,19 +361,16 @@ function MyBookingsPage() {
           ) : null}
           <DialogFooter className="mobile-scrollbar-hidden flex-row flex-nowrap gap-1 overflow-x-auto sm:space-x-0">
             {showTransferDetails ? (
-              <>
-                <Button type="button" variant="outline" disabled={busyBookingId !== null} onClick={() => setShowTransferDetails(false)}>Volver</Button>
-                <Button type="button" disabled={!paymentBooking || paymentBooking.paymentStatus === "approved" || busyBookingId !== null} className="bg-emerald-500 text-white hover:bg-emerald-600" onClick={() => paymentBooking && void reportPayment(paymentBooking)}>Indicar que ya pagué</Button>
-              </>
+              <Button type="button" variant="outline" disabled={busyBookingId !== null} onClick={() => setShowTransferDetails(false)}>Volver</Button>
             ) : paymentBooking ? (
               <>
-                <Button type="button" size="sm" variant="outline" disabled={busyBookingId !== null || paymentBooking.paymentStatus === "approved"} onClick={() => void cancelPayment(paymentBooking)}>Cancelar pago</Button>
-                <Button type="button" size="sm" variant="outline" disabled={busyBookingId !== null || paymentBooking.paymentStatus === "approved"} onClick={() => {
+                <Button type="button" variant="outline" disabled={busyBookingId !== null || paymentBooking.paymentStatus === "approved"} onClick={() => void cancelPayment(paymentBooking)}>Cancelar pago</Button>
+                <Button type="button" variant="outline" disabled={busyBookingId !== null || paymentBooking.paymentStatus === "approved"} onClick={() => {
                   setNewPaymentMethod(paymentBooking.customer.paymentMethod ?? "efectivo");
                   setChangingPaymentBooking(paymentBooking);
                 }}>Cambiar método de pago</Button>
-                <Button type="button" size="sm" variant="outline" disabled={busyBookingId !== null || paymentBooking.paymentStatus === "approved" || !!paymentBooking.paymentReportedAt} className="border-emerald-500 bg-emerald-500 px-2 text-[10px] text-white hover:bg-emerald-600 disabled:opacity-60" onClick={() => void reportPayment(paymentBooking)}>Indicar pago realizado</Button>
-                <Button type="button" size="sm" disabled={busyBookingId !== null || paymentBooking.paymentStatus === "approved" || paymentBooking.customer.paymentMethod === "efectivo"} className="bg-gold px-2 text-[10px] text-primary-foreground hover:bg-gold-soft" onClick={() => void payBooking(paymentBooking)}>
+                <Button type="button" variant="outline" disabled={busyBookingId !== null || paymentBooking.paymentStatus === "approved" || !!paymentBooking.paymentReportedAt} className="border-emerald-500 bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-60" onClick={() => void reportPayment(paymentBooking)}>Indicar pago realizado</Button>
+                <Button type="button" disabled={busyBookingId !== null || paymentBooking.paymentStatus === "approved" || paymentBooking.customer.paymentMethod === "efectivo"} className="bg-gold text-primary-foreground hover:bg-gold-soft" onClick={() => void payBooking(paymentBooking)}>
                   {busyBookingId === paymentBooking.id ? "Preparando pago…" : "Pagar"}
                 </Button>
               </>
