@@ -110,13 +110,21 @@ function PlanPage() {
   if (!isAuthenticated || role !== "admin") return <><SiteHeader /><AuthRequired role="admin" title="Plan" /></>;
 
   async function startSubscriptionCheckout() {
+    const paymentTab = window.open("about:blank", "_blank");
+    if (!paymentTab) {
+      setPaymentNotice("Permití las ventanas emergentes para abrir el pago en otra pestaña.");
+      return;
+    }
+    paymentTab.opener = null;
     setSubscriptionBusy(true);
     setPaymentNotice("");
     try {
       const checkout = await createSubscriptionCheckout(selectedPlanId, appliedPromoCode || undefined);
-      window.location.assign(checkout.checkoutUrl);
+      paymentTab.location.href = checkout.checkoutUrl;
     } catch (error) {
+      paymentTab.close();
       setPaymentNotice(error instanceof Error ? error.message : "No se pudo iniciar el pago del plan.");
+    } finally {
       setSubscriptionBusy(false);
     }
   }
