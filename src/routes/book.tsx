@@ -643,7 +643,7 @@ Observaciones: ${customer.notes || "Ninguna"}`;
         {step === 0 && <Dialog open={storePickerOpen} onOpenChange={(open) => {
           setStorePickerOpen(open);
         }}>
-          <DialogContent className="max-h-[85vh] overflow-y-auto">
+          <DialogContent className="w-[calc(100vw-2rem)] sm:max-w-lg">
             <DialogHeader>
               <DialogTitle className="font-display text-2xl">Elegí una sucursal</DialogTitle>
               <DialogDescription>Buscá por nombre o código.</DialogDescription>
@@ -667,7 +667,7 @@ Observaciones: ${customer.notes || "Ninguna"}`;
                   aria-expanded={Boolean(storeSearch.trim() && matchingStores.length)}
                 />
                 {storeSearch.trim() && matchingStores.length > 0 && (
-                  <div id="store-search-results" role="listbox" aria-label="Sucursales encontradas" className="absolute inset-x-0 top-full z-50 mt-1 max-h-64 overflow-y-auto rounded-xl border border-gold/40 bg-background p-1 shadow-xl">
+                  <div id="store-search-results" role="listbox" aria-label="Sucursales encontradas" className="mt-1 rounded-xl border border-gold/40 bg-background p-1 shadow-xl">
                     {matchingStores.map((store) => (
                       <button key={store.code} type="button" role="option" aria-selected={store.code === selectedStoreCode} disabled={storeLoading} onClick={() => void chooseStore(store)} className="flex w-full items-center justify-between gap-4 rounded-lg px-3 py-2.5 text-left transition hover:bg-gold/10 focus-visible:bg-gold/10 focus-visible:outline-none disabled:opacity-60">
                         <span className="min-w-0 truncate font-medium">{store.name}</span>
