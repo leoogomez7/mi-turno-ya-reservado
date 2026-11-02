@@ -183,7 +183,7 @@ export function NotificationsCenter({ isAuthenticated, role }: { isAuthenticated
     try {
       const { exists } = await notificationBookingExists(notification.id);
       if (!exists) {
-        toast.error("Este turno ya no está disponible. Es posible que haya sido eliminado.");
+        toast.error("Este turno ya no está disponible.");
         void markRead(notification);
         return;
       }
@@ -237,13 +237,16 @@ export function NotificationsCenter({ isAuthenticated, role }: { isAuthenticated
           {error && <p role="alert" className="mb-2 rounded-lg bg-red-500/10 p-2 text-xs text-red-300">{error}</p>}
           {loading ? <p className="py-5 text-center text-sm text-muted-foreground">Cargando…</p>
             : notifications.length === 0 ? <p className="py-5 text-center text-sm text-muted-foreground">Todavía no tenés notificaciones.</p>
-              : <ul className="max-h-[min(65vh,28rem)] space-y-2 overflow-y-auto pr-1">
+              : <ul className="gold-scrollbar max-h-[min(65vh,28rem)] space-y-2 overflow-y-auto pr-1">
                 {notifications.map((notification) => (
                   <li key={notification.id} className={`rounded-xl border p-3 ${notification.readAt ? "border-border bg-card/60" : "border-gold/40 bg-gold/5"}`}>
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
                         <p className="text-sm font-semibold">{notification.title}</p>
                         <p className="mt-1 text-xs leading-5 text-muted-foreground">{notification.message.replace(/\b(\d{4})-(\d{2})-(\d{2})\b/g, "$3/$2/$1")}</p>
+                        <time className="mt-2 block text-[11px] text-muted-foreground" dateTime={parseNotificationTimestamp(notification.createdAt).toISOString()}>
+                          {formatBuenosAiresTimestamp(notification.createdAt)}
+                        </time>
                       </div>
                       <span className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${notification.readAt ? "bg-border" : "bg-gold"}`} aria-label={notification.readAt ? "Leída" : "Sin leer"} />
                     </div>
