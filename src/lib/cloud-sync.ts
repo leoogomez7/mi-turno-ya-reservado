@@ -23,6 +23,15 @@ export type StoreMercadoPagoCredentials = {
   accessTokenConfigured: boolean;
 };
 export type ClientProfile = { phone: string };
+export type BookingNotification = {
+  id: string;
+  bookingId: string;
+  type: string;
+  title: string;
+  message: string;
+  createdAt: string;
+  readAt: string | null;
+};
 export type ClientBookings = {
   bookings: Booking[];
   professionals: Professional[];
@@ -247,6 +256,14 @@ export async function getClientBookings() {
   return request<ClientBookings>("POST", { action: "get-client-bookings" });
 }
 
+export async function getNotifications() {
+  return request<{ notifications: BookingNotification[]; newForPrompt: BookingNotification[] }>("POST", { action: "get-notifications" });
+}
+
+export async function setNotificationRead(notificationId: string, read: boolean) {
+  return request<{ ok: boolean }>("POST", { action: "set-notification-read", notificationId, read });
+}
+
 export async function confirmClientBooking(bookingId: string) {
   return request<{ booking: Booking }>("POST", { action: "confirm-client-booking", bookingId });
 }
@@ -306,6 +323,11 @@ export async function redeemSubscriptionPromo(code: string, planId: string) {
 export async function verifySubscriptionPayment(purchaseId: string) {
   if (!tokenGetter) throw new Error("Iniciá sesión como administrador para verificar el pago.");
   return request<{ approved: boolean; expiresAt?: string | null }>("POST", { action: "verify-subscription-payment", purchaseId });
+}
+
+export async function failSubscriptionPayment(purchaseId: string) {
+  if (!tokenGetter) throw new Error("Iniciá sesión como administrador para revisar el pago.");
+  return request<{ approved: boolean; retryPromoAvailable: boolean }>("POST", { action: "fail-subscription-payment", purchaseId });
 }
 
 export async function cancelPendingBooking(bookingId: string, cancellationToken: string, requestedStoreCode?: string) {

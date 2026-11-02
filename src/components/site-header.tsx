@@ -9,6 +9,7 @@ import { rememberAuthReturnPath, rememberSignupRole, useAppAuth, type AccountRol
 import { useLocation } from "@tanstack/react-router";
 import { getAvailableStores, getCurrentStoreCode } from "@/lib/cloud-sync";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { NotificationsCenter } from "@/components/notifications-center";
 
 function preloadStatsCharts() {
   void import("@/components/admin-charts");
@@ -108,6 +109,8 @@ export function SiteHeader() {
           {open ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
           <span>Menú</span>
         </button>
+
+        <NotificationsCenter isAuthenticated={isAuthenticated} role={role} />
 
         {open && (
           <div className="absolute left-1/2 top-full z-50 mt-2 w-[calc(100vw-2rem)] max-w-xs -translate-x-1/2 rounded-3xl border border-border/60 bg-black p-3 shadow-2xl md:hidden">

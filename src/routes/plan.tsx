@@ -9,7 +9,7 @@ import { AuthRequired } from "@/components/auth-required";
 import { Button } from "@/components/ui/button";
 import { LoadingScreen } from "@/components/loading-screen";
 import { useAppAuth } from "@/lib/auth";
-import { bootstrapCloudData, createSubscriptionCheckout, getAvailableStores, getCurrentStoreCode, isCloudInitialized, redeemSubscriptionPromo, verifySubscriptionPayment, type Store } from "@/lib/cloud-sync";
+import { bootstrapCloudData, createSubscriptionCheckout, failSubscriptionPayment, getAvailableStores, getCurrentStoreCode, isCloudInitialized, redeemSubscriptionPromo, verifySubscriptionPayment, type Store } from "@/lib/cloud-sync";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/plan")({
@@ -67,8 +67,33 @@ function PlanPage() {
     let cancelled = false;
     setPendingPurchaseId(purchaseId);
     setSubscriptionBusy(true);
+    if (status === "failure") {
+      void failSubscriptionPayment(purchaseId)
+        .then((result) => {
+          if (cancelled) return;
+          if (result.approved) {
+            setPendingPurchaseId("");
+            void bootstrapCloudData(user?.email ?? "", getIdToken).then(() => {
+              if (!cancelled) setStoreInfo(getAvailableStores().find((store) => store.code === getCurrentStoreCode()));
+            }).catch((error: unknown) => {
+              if (!cancelled) setPaymentNotice(error instanceof Error ? error.message : "El pago fue aprobado, pero no se pudo actualizar el plan.");
+            });
+            setPaymentNotice("Mercado Pago aprobó el pago. Actualizá el estado para ver tu plan activo.");
+          } else if (result.retryPromoAvailable) {
+            setPendingPurchaseId("");
+            setPaymentNotice("El pago fue rechazado. El código de descuento sigue activo y podés aplicarlo nuevamente para reintentar el pago.");
+          } else {
+            setPaymentNotice("Mercado Pago todavía no confirmó el rechazo. El descuento permanece reservado hasta que informe el resultado.");
+          }
+        })
+        .catch((error: unknown) => {
+          if (!cancelled) setPaymentNotice(error instanceof Error ? error.message : "No se pudo verificar el rechazo del pago.");
+        })
+        .finally(() => { if (!cancelled) setSubscriptionBusy(false); });
+      return () => { cancelled = true; };
+    }
     if (status !== "success") {
-      setPaymentNotice(status === "pending" ? "El pago está pendiente. La sucursal se activará cuando Mercado Pago lo apruebe." : "El pago no se completó. La sucursal sigue sin activar.");
+      setPaymentNotice("El pago está pendiente. La sucursal se activará cuando Mercado Pago lo apruebe.");
       setSubscriptionBusy(false);
       return;
     }
@@ -160,16 +185,19 @@ function PlanPage() {
     if (!pendingPurchaseId) return;
     setSubscriptionBusy(true);
     try {
-      const result = await verifySubscriptionPayment(pendingPurchaseId);
-      if (!result.approved) {
+      const result = await failSubscriptionPayment(pendingPurchaseId);
+      if (result.approved) {
+        await bootstrapCloudData(user?.email ?? "", getIdToken);
+        setStoreInfo(getAvailableStores().find((store) => store.code === getCurrentStoreCode()));
+        setPendingPurchaseId("");
+        setPaymentNotice("Pago aprobado. Tu plan está activo.");
+        toast.success("Pago aprobado; el sistema de turnos quedó activo.");
+      } else if (result.retryPromoAvailable) {
+        setPendingPurchaseId("");
+        setPaymentNotice("El pago fue rechazado. El código de descuento sigue activo y podés aplicarlo nuevamente para reintentar el pago.");
+      } else {
         setPaymentNotice("Mercado Pago todavía no confirmó el pago. Esperá un momento e intentá verificar otra vez.");
-        return;
       }
-      await bootstrapCloudData(user?.email ?? "", getIdToken);
-      setStoreInfo(getAvailableStores().find((store) => store.code === getCurrentStoreCode()));
-      setPendingPurchaseId("");
-      setPaymentNotice("Pago aprobado. Tu plan está activo.");
-      toast.success("Pago aprobado; el sistema de turnos quedó activo.");
     } catch (error) {
       setPaymentNotice(error instanceof Error ? error.message : "No se pudo verificar el pago.");
     } finally {

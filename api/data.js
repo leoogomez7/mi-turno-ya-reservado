@@ -218,6 +218,18 @@ async function database() {
       value TEXT NOT NULL,
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     )`,
+    `CREATE TABLE IF NOT EXISTS notifications (
+      id TEXT PRIMARY KEY,
+      recipient_key TEXT NOT NULL,
+      store_code TEXT NOT NULL,
+      booking_id TEXT NOT NULL,
+      type TEXT NOT NULL,
+      title TEXT NOT NULL,
+      message TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      read_at TEXT,
+      prompted_at TEXT
+    )`,
     `CREATE TABLE IF NOT EXISTS professionals (
       id TEXT PRIMARY KEY,
       value TEXT NOT NULL,
@@ -260,8 +272,18 @@ async function database() {
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       paid_at TEXT
     )`,
+    `CREATE TABLE IF NOT EXISTS subscription_discount_redemptions (
+      owner_id TEXT PRIMARY KEY,
+      promo_code TEXT NOT NULL,
+      store_code TEXT NOT NULL,
+      status TEXT NOT NULL CHECK(status IN ('reserved', 'used')),
+      subscription_order_id TEXT,
+      redeemed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )`,
     "CREATE INDEX IF NOT EXISTS bookings_updated ON bookings(updated_at)",
+    "CREATE INDEX IF NOT EXISTS notifications_recipient ON notifications(recipient_key, created_at)",
     "CREATE INDEX IF NOT EXISTS subscription_orders_store ON subscription_orders(store_code, created_at)",
+    "CREATE INDEX IF NOT EXISTS subscription_discount_code ON subscription_discount_redemptions(promo_code, store_code)",
     "CREATE UNIQUE INDEX IF NOT EXISTS subscription_orders_payment ON subscription_orders(mp_payment_id) WHERE mp_payment_id IS NOT NULL",
     "CREATE INDEX IF NOT EXISTS professionals_updated ON professionals(updated_at)",
   ]).then(() => undefined).catch((error) => {
@@ -381,8 +403,31 @@ async function verifyMercadoPagoPayment(db, paymentId, expectedOwnerId) {
       sql: "UPDATE subscription_orders SET status = 'paid', mp_payment_id = ?, paid_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'pending'",
       args: [String(payment.id), purchaseId],
     });
+    await transaction.execute({
+      sql: "UPDATE subscription_discount_redemptions SET status = 'used' WHERE subscription_order_id = ? AND owner_id = ? AND status = 'reserved'",
+      args: [purchaseId, String(order.owner_id)],
+    });
     await transaction.commit();
     return { approved: true, expiresAt };
+  } catch (error) {
+    await transaction.rollback().catch(() => undefined);
+    throw error;
+  }
+}
+
+async function releaseDiscountReservationForFailedOrder(db, orderId) {
+  if (!orderId) return;
+  const transaction = await db.transaction("write");
+  try {
+    await transaction.execute({
+      sql: "UPDATE subscription_orders SET status = 'failed' WHERE id = ? AND status = 'pending'",
+      args: [orderId],
+    });
+    await transaction.execute({
+      sql: "UPDATE subscription_discount_redemptions SET subscription_order_id = NULL WHERE subscription_order_id = ? AND status = 'reserved'",
+      args: [orderId],
+    });
+    await transaction.commit();
   } catch (error) {
     await transaction.rollback().catch(() => undefined);
     throw error;
@@ -446,7 +491,7 @@ async function verifyBookingPayment(db, bookingId, paymentId) {
       await transaction.commit();
       return { approved: true };
     }
-    if (booking.status !== "pending-payment") {
+    if (!["confirmed", "pending-payment"].includes(booking.status) || booking.paymentStatus === "approved") {
       throw new Error("La reserva ya no está pendiente de pago.");
     }
 
@@ -458,6 +503,10 @@ async function verifyBookingPayment(db, bookingId, paymentId) {
       sql: "UPDATE bookings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
       args: [JSON.stringify(booking), bookingId],
     });
+    const paymentNotice = notificationForClient(booking, "payment_confirmed", "Pago confirmado", "Mercado Pago confirmó el pago de tu turno.");
+    const adminPaymentNotice = notificationForAdmin(booking, "payment_confirmed", "Pago recibido", `Mercado Pago aprobó el pago de ${booking.customer?.fullName || "un cliente"}.`);
+    if (paymentNotice) await transaction.execute(paymentNotice);
+    if (adminPaymentNotice) await transaction.execute(adminPaymentNotice);
     await transaction.commit();
     return { approved: true };
   } catch (error) {
@@ -486,6 +535,42 @@ function recordId(record) {
   return record && typeof record === "object" && !Array.isArray(record)
     && typeof record.id === "string" && record.id.length > 0 && record.id.length <= 200
     ? record.id : null;
+}
+
+function notificationStatement(recipientKey, booking, type, title, message) {
+  return {
+    sql: "INSERT INTO notifications (id, recipient_key, store_code, booking_id, type, title, message) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    args: [randomBytes(16).toString("hex"), recipientKey, normalizeStoreCode(booking.storeCode), String(booking.id), type, title, message],
+  };
+}
+
+function notificationForAdmin(booking, type, title, message) {
+  const storeCode = normalizeStoreCode(booking.storeCode);
+  return storeCode ? notificationStatement(`admin:${storeCode}`, booking, type, title, message) : null;
+}
+
+function notificationForClient(booking, type, title, message) {
+  const email = booking.customer?.email?.trim().toLowerCase();
+  return email ? notificationStatement(`client:${email}`, booking, type, title, message) : null;
+}
+
+function describeAdminBookingChange(previous, next) {
+  if (previous.date !== next.date || previous.time !== next.time) {
+    return ["booking_changed", "Turno modificado", `El profesional modificó el turno para ${next.date} a las ${next.time}.`];
+  }
+  if (previous.status !== next.status && next.status === "cancelled") {
+    return ["booking_cancelled", "Turno cancelado", "El profesional canceló tu turno."];
+  }
+  if (previous.paymentStatus !== "approved" && next.paymentStatus === "approved") {
+    return ["payment_confirmed", "Pago confirmado", "El profesional confirmó el pago de tu turno."];
+  }
+  if (previous.customer?.paymentMethod !== next.customer?.paymentMethod) {
+    return ["payment_method_changed", "Método de pago modificado", `El método de pago cambió a ${next.customer?.paymentMethod ?? "sin especificar"}.`];
+  }
+  if (previous.status !== next.status || previous.appointmentConfirmation !== next.appointmentConfirmation) {
+    return ["booking_status_changed", "Estado del turno actualizado", "El profesional actualizó el estado de tu turno."];
+  }
+  return null;
 }
 
 function scheduleForDate(professional, date) {
@@ -701,6 +786,54 @@ export default async function handler(request, response) {
     return response.status(400).json({ error: "El cuerpo JSON no es válido." });
   }
   if (request.method === "POST") {
+    if (user && ["get-notifications", "set-notification-read"].includes(body?.action)) {
+      try {
+        if (!user.emailVerified) return response.status(403).json({ error: "Verificá tu correo para consultar tus notificaciones." });
+        const account = await db.execute({ sql: "SELECT role, store_code FROM account_roles WHERE user_id = ?", args: [user.id] });
+        const role = String(account.rows[0]?.role ?? "");
+        if (role !== "admin" && role !== "client") return response.status(403).json({ error: "Configurá tu cuenta para consultar notificaciones." });
+        const recipientKey = role === "admin"
+          ? `admin:${normalizeStoreCode(account.rows[0]?.store_code)}`
+          : `client:${user.email}`;
+        if (role === "admin" && recipientKey === "admin:") return response.status(403).json({ error: "La cuenta administradora no tiene una sucursal asignada." });
+
+        if (body.action === "get-notifications") {
+          const result = await db.execute({
+            sql: "SELECT id, booking_id AS bookingId, type, title, message, created_at AS createdAt, read_at AS readAt, prompted_at AS promptedAt FROM notifications WHERE recipient_key = ? ORDER BY created_at DESC LIMIT 100",
+            args: [recipientKey],
+          });
+          const notifications = result.rows.map((row) => ({
+            id: String(row.id), bookingId: String(row.bookingId), type: String(row.type), title: String(row.title),
+            message: String(row.message), createdAt: String(row.createdAt), readAt: row.readAt ? String(row.readAt) : null,
+          }));
+          const newForPrompt = notifications.filter((notification) => {
+            const row = result.rows.find((item) => String(item.id) === notification.id);
+            return !row?.promptedAt;
+          });
+          if (newForPrompt.length) {
+            await db.batch(newForPrompt.map(({ id }) => ({
+              sql: "UPDATE notifications SET prompted_at = CURRENT_TIMESTAMP WHERE id = ? AND recipient_key = ? AND prompted_at IS NULL",
+              args: [id, recipientKey],
+            })), "write");
+          }
+          return response.status(200).json({ notifications, newForPrompt });
+        }
+
+        const notificationId = typeof body.notificationId === "string" ? body.notificationId : "";
+        if (!notificationId || notificationId.length > 100 || typeof body.read !== "boolean") {
+          return response.status(400).json({ error: "La notificación seleccionada no es válida." });
+        }
+        const updated = await db.execute({
+          sql: "UPDATE notifications SET read_at = ? WHERE id = ? AND recipient_key = ?",
+          args: [body.read ? new Date().toISOString() : null, notificationId, recipientKey],
+        });
+        if (!updated.rowsAffected) return response.status(404).json({ error: "No encontramos esa notificación." });
+        return response.status(200).json({ ok: true });
+      } catch (error) {
+        console.error("No se pudieron gestionar las notificaciones", error);
+        return response.status(500).json({ error: "No se pudieron cargar o actualizar las notificaciones." });
+      }
+    }
     if (user && ["get-client-bookings", "confirm-client-booking", "report-client-payment", "update-client-booking", "delete-client-booking", "cancel-client-payment", "update-client-payment-method", "create-client-booking-payment-preference"].includes(body?.action)) {
       try {
         if (!user.emailVerified) return response.status(403).json({ error: "Verificá tu correo para consultar tus turnos." });
@@ -748,6 +881,8 @@ export default async function handler(request, response) {
           if (booking.status !== "confirmed") return response.status(400).json({ error: "Este turno todavía no se puede confirmar." });
           booking.appointmentConfirmation = "confirmed";
           await db.execute({ sql: "UPDATE bookings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", args: [JSON.stringify(booking), bookingId] });
+          const notice = notificationForAdmin(booking, "booking_confirmed_by_client", "Cliente confirmó el turno", `${booking.customer.fullName} confirmó su asistencia al turno.`);
+          if (notice) await db.execute(notice);
           return response.status(200).json({ booking });
         }
 
@@ -757,6 +892,8 @@ export default async function handler(request, response) {
           }
           booking.paymentReportedAt = new Date().toISOString();
           await db.execute({ sql: "UPDATE bookings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", args: [JSON.stringify(booking), bookingId] });
+          const notice = notificationForAdmin(booking, "payment_reported", "Pago informado por el cliente", `${booking.customer.fullName} avisó que realizó el pago.`);
+          if (notice) await db.execute(notice);
           return response.status(200).json({ booking });
         }
 
@@ -764,6 +901,8 @@ export default async function handler(request, response) {
           if (booking.paymentStatus === "approved" || !["confirmed", "pending-payment"].includes(booking.status)) {
             return response.status(409).json({ error: "Este pago ya fue confirmado o el turno ya no se puede cancelar." });
           }
+          const notice = notificationForAdmin(booking, "booking_cancelled_by_client", "Turno cancelado por el cliente", `${booking.customer.fullName} canceló su turno.`);
+          if (notice) await db.execute(notice);
           await db.execute({ sql: "DELETE FROM bookings WHERE id = ?", args: [bookingId] });
           return response.status(200).json({ ok: true, bookingId });
         }
@@ -776,11 +915,16 @@ export default async function handler(request, response) {
           if (!["efectivo", "transferencia", "tarjeta o mercado pago"].includes(paymentMethod)) {
             return response.status(400).json({ error: "Método de pago inválido." });
           }
+          const previousMethod = booking.customer.paymentMethod;
           booking.customer.paymentMethod = paymentMethod;
           booking.status = "confirmed";
           booking.paymentStatus = "pending";
           delete booking.paymentReportedAt;
           await db.execute({ sql: "UPDATE bookings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", args: [JSON.stringify(booking), bookingId] });
+          if (previousMethod !== paymentMethod) {
+            const notice = notificationForAdmin(booking, "payment_method_changed", "Método de pago cambiado", `${booking.customer.fullName} cambió el método de pago a ${paymentMethod}.`);
+            if (notice) await db.execute(notice);
+          }
           return response.status(200).json({ booking });
         }
 
@@ -834,6 +978,8 @@ export default async function handler(request, response) {
             booking.date = date;
             booking.time = time;
             await transaction.execute({ sql: "UPDATE bookings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", args: [JSON.stringify(booking), bookingId] });
+            const notice = notificationForAdmin(booking, "booking_changed_by_client", "Cliente modificó el turno", `${booking.customer.fullName} cambió el turno a ${date} a las ${time}.`);
+            if (notice) await transaction.execute(notice);
             await transaction.commit();
             return response.status(200).json({ booking });
           } catch (error) {
@@ -848,6 +994,8 @@ export default async function handler(request, response) {
         if (!canDelete || !["confirmed", "pending-payment"].includes(booking.status)) {
           return response.status(403).json({ error: "Este turno no se puede borrar porque el método de pago no lo permite." });
         }
+        const notice = notificationForAdmin(booking, "booking_cancelled_by_client", "Turno eliminado por el cliente", `${booking.customer.fullName} eliminó su turno.`);
+        if (notice) await db.execute(notice);
         await db.execute({ sql: "DELETE FROM bookings WHERE id = ?", args: [bookingId] });
         return response.status(200).json({ ok: true, bookingId });
       } catch (error) {
@@ -1033,6 +1181,57 @@ export default async function handler(request, response) {
         return response.status(200).json({ received: true });
       }
     }
+    if (user && body?.action === "fail-subscription-payment") {
+      try {
+        if (!user.emailVerified) return response.status(403).json({ error: "Verificá tu email antes de comprobar el pago." });
+        const purchaseId = typeof body.purchaseId === "string" ? body.purchaseId : "";
+        if (!/^[a-f0-9]{36}$/i.test(purchaseId)) return response.status(400).json({ error: "Identificador de compra inválido." });
+        const orderResult = await db.execute({
+          sql: "SELECT id, owner_id, status FROM subscription_orders WHERE id = ? AND method = 'mercadopago'",
+          args: [purchaseId],
+        });
+        const order = orderResult.rows[0];
+        if (!order || String(order.owner_id) !== user.id) return response.status(404).json({ error: "No encontramos esa compra en tu cuenta." });
+        if (order.status === "paid") return response.status(200).json({ retryPromoAvailable: false, approved: true });
+        if (order.status !== "pending") {
+          const redemption = await db.execute({
+            sql: "SELECT status, subscription_order_id AS subscriptionOrderId FROM subscription_discount_redemptions WHERE owner_id = ?",
+            args: [user.id],
+          });
+          return response.status(200).json({
+            retryPromoAvailable: redemption.rows[0]?.status === "reserved" && !redemption.rows[0]?.subscriptionOrderId,
+            approved: false,
+          });
+        }
+
+        const accessToken = requiredEnv("MERCADOPAGO_ACCESS_TOKEN");
+        const paymentResponse = await fetch(`https://api.mercadopago.com/v1/payments/search?external_reference=${encodeURIComponent(purchaseId)}&sort=date_created&criteria=desc`, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+        if (!paymentResponse.ok) throw new Error("No se pudo verificar el estado del pago en Mercado Pago.");
+        const paymentSearch = await paymentResponse.json();
+        const latestPayment = paymentSearch.results?.[0];
+        if (latestPayment?.status === "approved") {
+          await verifyMercadoPagoPayment(db, String(latestPayment.id), user.id);
+          return response.status(200).json({ retryPromoAvailable: false, approved: true });
+        }
+        if (!latestPayment || !["rejected", "cancelled"].includes(latestPayment.status)) {
+          return response.status(200).json({ retryPromoAvailable: false, approved: false });
+        }
+        await releaseDiscountReservationForFailedOrder(db, purchaseId);
+        const redemption = await db.execute({
+          sql: "SELECT status, subscription_order_id AS subscriptionOrderId FROM subscription_discount_redemptions WHERE owner_id = ?",
+          args: [user.id],
+        });
+        return response.status(200).json({
+          retryPromoAvailable: redemption.rows[0]?.status === "reserved" && !redemption.rows[0]?.subscriptionOrderId,
+          approved: false,
+        });
+      } catch (error) {
+        console.error("No se pudo liberar el intento de pago rechazado", error);
+        return response.status(500).json({ error: error instanceof Error ? error.message : "No se pudo verificar el pago." });
+      }
+    }
     if (user && body?.action === "create-subscription-checkout") {
       let orderId;
       try {
@@ -1054,10 +1253,44 @@ export default async function handler(request, response) {
         const protocol = request.headers["x-forwarded-proto"] || "https";
         const appUrl = (process.env.PUBLIC_APP_URL || `${protocol}://${host}`).replace(/\/$/, "");
         orderId = randomBytes(18).toString("hex");
-        await db.execute({
-          sql: "INSERT INTO subscription_orders (id, store_code, owner_id, months, duration_days, amount, status, method) VALUES (?, ?, ?, ?, ?, ?, 'pending', 'mercadopago')",
-          args: [orderId, storeCode, user.id, plan.months, plan.days, payableAmount],
-        });
+        if (discountPercent === 10) {
+          const transaction = await db.transaction("write");
+          try {
+            const redemption = await transaction.execute({
+              sql: "SELECT promo_code, status, subscription_order_id AS subscriptionOrderId FROM subscription_discount_redemptions WHERE owner_id = ?",
+              args: [user.id],
+            });
+            if (String(redemption.rows[0]?.promo_code ?? "") !== promoCode || redemption.rows[0]?.status !== "reserved") {
+              await transaction.rollback();
+              return response.status(409).json({ error: "Este código del 10% ya fue utilizado o no está aplicado a tu cuenta." });
+            }
+            if (redemption.rows[0]?.subscriptionOrderId) {
+              await transaction.rollback();
+              return response.status(409).json({ error: "Hay un pago con este descuento todavía pendiente. Esperá su resultado antes de iniciar otro." });
+            }
+            const redemptionUpdate = await transaction.execute({
+              sql: "UPDATE subscription_discount_redemptions SET subscription_order_id = ? WHERE owner_id = ? AND promo_code = ? AND status = 'reserved' AND subscription_order_id IS NULL",
+              args: [orderId, user.id, promoCode],
+            });
+            if (!redemptionUpdate.rowsAffected) {
+              await transaction.rollback();
+              return response.status(409).json({ error: "Hay un pago con este descuento todavía pendiente. Esperá su resultado antes de iniciar otro." });
+            }
+            await transaction.execute({
+              sql: "INSERT INTO subscription_orders (id, store_code, owner_id, months, duration_days, amount, status, method) VALUES (?, ?, ?, ?, ?, ?, 'pending', 'mercadopago')",
+              args: [orderId, storeCode, user.id, plan.months, plan.days, payableAmount],
+            });
+            await transaction.commit();
+          } catch (error) {
+            await transaction.rollback().catch(() => undefined);
+            throw error;
+          }
+        } else {
+          await db.execute({
+            sql: "INSERT INTO subscription_orders (id, store_code, owner_id, months, duration_days, amount, status, method) VALUES (?, ?, ?, ?, ?, ?, 'pending', 'mercadopago')",
+            args: [orderId, storeCode, user.id, plan.months, plan.days, payableAmount],
+          });
+        }
         const preferenceResponse = await fetch("https://api.mercadopago.com/checkout/preferences", {
           method: "POST",
           headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
@@ -1076,13 +1309,13 @@ export default async function handler(request, response) {
         });
         const preference = await preferenceResponse.json();
         if (!preferenceResponse.ok || !preference.init_point) {
-          await db.execute({ sql: "UPDATE subscription_orders SET status = 'failed' WHERE id = ? AND status = 'pending'", args: [orderId] });
+          await releaseDiscountReservationForFailedOrder(db, orderId);
           console.error("Mercado Pago subscription preference failed", preferenceResponse.status);
           return response.status(502).json({ error: "Mercado Pago no pudo preparar el pago. Revisá la configuración del token." });
         }
         return response.status(200).json({ checkoutUrl: preference.init_point, purchaseId: orderId });
       } catch (error) {
-        if (orderId) await db.execute({ sql: "UPDATE subscription_orders SET status = 'failed' WHERE id = ? AND status = 'pending'", args: [orderId] }).catch(() => undefined);
+        if (orderId) await releaseDiscountReservationForFailedOrder(db, orderId).catch(() => undefined);
         console.error("No se pudo iniciar el pago del plan", error);
         return response.status(500).json({ error: error instanceof Error ? error.message : "No se pudo iniciar el pago del plan." });
       }
@@ -1102,6 +1335,42 @@ export default async function handler(request, response) {
         const storeCode = normalizeStoreCode(roleResult.rows[0]?.store_code);
         if (roleResult.rows[0]?.role !== "admin" || !storeCode) return response.status(403).json({ error: "Solo el administrador de una sucursal puede aplicar el código." });
         if (discountPercent === 10) {
+          const transaction = await db.transaction("write");
+          try {
+            const existing = await transaction.execute({
+              sql: "SELECT promo_code, status, subscription_order_id AS subscriptionOrderId FROM subscription_discount_redemptions WHERE owner_id = ?",
+              args: [user.id],
+            });
+            if (existing.rows[0]) {
+              const isSameReservedCode = String(existing.rows[0].promo_code) === normalizedCode && existing.rows[0].status === "reserved";
+              await transaction.rollback();
+              if (isSameReservedCode && !existing.rows[0].subscriptionOrderId) {
+                return response.status(200).json({ discountPercent, planLabel: plan.label });
+              }
+              if (isSameReservedCode) {
+                return response.status(409).json({ error: "El descuento sigue activo en un pago pendiente. Esperá que Mercado Pago informe el resultado antes de reintentar." });
+              }
+              return response.status(409).json({ error: existing.rows[0].status === "used"
+                ? "Ya utilizaste una vez el código de descuento del 10%. No se puede volver a activar."
+                : "Ya tenés reservado otro código de descuento para tu cuenta." });
+            }
+            await transaction.execute({
+              sql: "INSERT INTO subscription_discount_redemptions (owner_id, promo_code, store_code, status) VALUES (?, ?, ?, 'reserved') ON CONFLICT(owner_id) DO NOTHING",
+              args: [user.id, normalizedCode, storeCode],
+            });
+            const redeemed = await transaction.execute({
+              sql: "SELECT promo_code FROM subscription_discount_redemptions WHERE owner_id = ?",
+              args: [user.id],
+            });
+            if (String(redeemed.rows[0]?.promo_code ?? "") !== normalizedCode) {
+              await transaction.rollback();
+              return response.status(409).json({ error: "Ya utilizaste una vez el código de descuento del 10%. No se puede volver a activar." });
+            }
+            await transaction.commit();
+          } catch (error) {
+            await transaction.rollback().catch(() => undefined);
+            throw error;
+          }
           return response.status(200).json({ discountPercent, planLabel: plan.label });
         }
         if (discountPercent !== 100) return response.status(400).json({ error: "El código promocional no es válido." });
@@ -1387,6 +1656,8 @@ export default async function handler(request, response) {
         sql: "INSERT INTO bookings (id, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) ON CONFLICT(id) DO NOTHING",
         args: [id, JSON.stringify(booking)],
       });
+      const notice = notificationForAdmin(booking, "new_booking", "Nuevo turno reservado", `${customer.fullName} reservó para el ${booking.date} a las ${booking.time}.`);
+      if (notice) await transaction.execute(notice);
       await transaction.commit();
       return response.status(201).json({ ok: true });
     } catch (error) {
@@ -1496,6 +1767,8 @@ export default async function handler(request, response) {
               sql: "INSERT INTO bookings (id, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) ON CONFLICT(id) DO NOTHING",
               args: [databaseId, JSON.stringify(record)],
             });
+            const notice = notificationForAdmin(record, "new_booking", "Nuevo turno reservado", `${record.customer.fullName} reservó para el ${record.date} a las ${record.time}.`);
+            if (notice) await transaction.execute(notice);
             await transaction.commit();
           } catch (error) {
             await transaction.rollback().catch(() => undefined);
@@ -1509,6 +1782,14 @@ export default async function handler(request, response) {
           ON CONFLICT(id) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP`,
         args: [databaseId, JSON.stringify(record)],
       });
+      if (body.collection === "bookings" && role === "admin" && storedRecord.rows[0]) {
+        const priorBooking = JSON.parse(String(storedRecord.rows[0].value));
+        const change = describeAdminBookingChange(priorBooking, record);
+        if (change) {
+          const notice = notificationForClient(record, change[0], change[1], change[2]);
+          if (notice) statements.push(notice);
+        }
+      }
     }
     for (const id of deleteIds) {
       if (role !== "admin") {
@@ -1519,6 +1800,11 @@ export default async function handler(request, response) {
       if (!existing.rows[0]) continue;
       if (normalizeStoreCode(JSON.parse(String(existing.rows[0].value)).storeCode) !== storeCode) {
         return response.status(403).json({ error: "El registro no pertenece a esta sucursal." });
+      }
+      if (body.collection === "bookings" && role === "admin") {
+        const removedBooking = JSON.parse(String(existing.rows[0].value));
+        const notice = notificationForClient(removedBooking, "booking_cancelled", "Turno cancelado", "El profesional canceló tu turno.");
+        if (notice) statements.push(notice);
       }
       statements.push({ sql: `DELETE FROM ${body.collection} WHERE id = ?`, args: [databaseId] });
     }

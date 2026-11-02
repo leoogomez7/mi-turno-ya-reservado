@@ -12,6 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { normalizeWhatsappNumber } from "@/lib/utils";
 
 import { bookingStore, type Booking, type Customer } from "@/lib/booking-store";
 import { type Professional, getScheduleForDate, generateSlotsFromSchedule, isProfessionalAvailableOnDate } from "@/lib/professional-store";
@@ -525,7 +526,7 @@ Observaciones: ${customer.notes || "Ninguna"}`;
     } catch {
       // Uses the current form data if no saved message is available.
     }
-    const whatsappUrl = `https://wa.me/${storeSettings.whatsapp.replace(/\D/g, "")}?text=${encodeURIComponent(message)}`;
+    const whatsappUrl = `https://wa.me/${normalizeWhatsappNumber(storeSettings.whatsapp)}?text=${encodeURIComponent(message)}`;
     window.open(whatsappUrl, "_blank", "noopener,noreferrer");
   }
 
@@ -777,7 +778,7 @@ Observaciones: ${customer.notes || "Ninguna"}`;
               {reservationResult?.kind === "confirmed" ? "Tu reserva quedó confirmada."
                 : reservationResult?.kind === "payment-success" ? "Mercado Pago confirmó el pago y el turno ya figura como pagado en la agenda de la sucursal."
                   : reservationResult?.kind === "payment-pending" ? reservationResult.paymentMethod === "transferencia"
-                    ? "Tu turno ya quedó confirmado. La sucursal actualizará el estado del pago cuando verifique la transferencia."
+                    ? "Tu turno ya quedó confirmado. La sucursal actualizará el estado del pago cuando verifique la transferencia bancaria."
                       : "Tu turno ya quedó confirmado y reservado. El pago está pendiente y la agenda se actualizará automáticamente cuando Mercado Pago lo apruebe."
                       : "El pago no se completó y el horario fue liberado. Podés volver a elegir fecha y hora."}
             </DialogDescription>
@@ -836,7 +837,7 @@ Observaciones: ${customer.notes || "Ninguna"}`;
                     toast.error("La sucursal todavía no configuró su WhatsApp.");
                     return;
                   }
-                  const whatsappUrl = `https://wa.me/${storeSettings.whatsapp.replace(/\D/g, "")}?text=${encodeURIComponent(createBookingWhatsAppMessage(false))}`;
+                  const whatsappUrl = `https://wa.me/${normalizeWhatsappNumber(storeSettings.whatsapp)}?text=${encodeURIComponent(createBookingWhatsAppMessage(false))}`;
                   window.open(whatsappUrl, "_blank", "noopener,noreferrer");
                 }}
               >

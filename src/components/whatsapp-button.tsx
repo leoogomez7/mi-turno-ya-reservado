@@ -1,13 +1,14 @@
 import { useEffect, useState } from "react";
 import { MessageCircle } from "lucide-react";
 import { getAvailableStores, getCurrentStoreCode } from "@/lib/cloud-sync";
+import { normalizeWhatsappNumber } from "@/lib/utils";
 
 export function WhatsappButton() {
   const [whatsapp, setWhatsapp] = useState("");
   useEffect(() => {
     const update = () => {
       const store = getAvailableStores().find((item) => item.code === getCurrentStoreCode());
-      setWhatsapp(store?.settings.whatsapp?.replace(/\D/g, "") ?? "");
+      setWhatsapp(normalizeWhatsappNumber(store?.settings.whatsapp ?? ""));
     };
     update();
     window.addEventListener("mi-turno-ya:cloud-ready", update);
