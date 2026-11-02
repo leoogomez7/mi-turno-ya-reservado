@@ -777,7 +777,7 @@ export default async function handler(request, response) {
             return response.status(400).json({ error: "Método de pago inválido." });
           }
           booking.customer.paymentMethod = paymentMethod;
-          booking.status = paymentMethod === "efectivo" ? "confirmed" : "pending-payment";
+          booking.status = "confirmed";
           booking.paymentStatus = "pending";
           delete booking.paymentReportedAt;
           await db.execute({ sql: "UPDATE bookings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", args: [JSON.stringify(booking), bookingId] });
@@ -785,7 +785,7 @@ export default async function handler(request, response) {
         }
 
         if (body.action === "create-client-booking-payment-preference") {
-          if (booking.paymentStatus === "approved" || booking.status !== "pending-payment" || booking.customer?.paymentMethod !== "tarjeta o mercado pago") {
+          if (booking.paymentStatus === "approved" || !["confirmed", "pending-payment"].includes(booking.status) || booking.customer?.paymentMethod !== "tarjeta o mercado pago") {
             return response.status(409).json({ error: "El turno no está pendiente de pago con Mercado Pago." });
           }
           const credentials = await getStorePaymentCredentials(db, booking.storeCode);
@@ -938,7 +938,7 @@ export default async function handler(request, response) {
         if (!cancellationToken || booking.cancellationToken !== cancellationToken) {
           return response.status(403).json({ error: "No se pudo validar la reserva para preparar el pago." });
         }
-        if (booking.status !== "pending-payment" || booking.customer?.paymentMethod !== "tarjeta o mercado pago") {
+        if (!["confirmed", "pending-payment"].includes(booking.status) || booking.paymentStatus === "approved" || booking.customer?.paymentMethod !== "tarjeta o mercado pago") {
           return response.status(409).json({ error: "El turno no está pendiente de pago con Mercado Pago." });
         }
 

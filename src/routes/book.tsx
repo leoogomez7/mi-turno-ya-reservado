@@ -16,7 +16,7 @@ import { toast } from "sonner";
 import { bookingStore, type Booking, type Customer } from "@/lib/booking-store";
 import { type Professional, getScheduleForDate, generateSlotsFromSchedule, isProfessionalAvailableOnDate } from "@/lib/professional-store";
 import { useAppAuth } from "@/lib/auth";
-import { cancelPendingBooking, createPublicBooking, getAvailableStores, getClientProfile, getCloudRecords, getCurrentStoreCode, isCloudInitialized, loadReservationStore, refreshCloudData, selectStore, type Store } from "@/lib/cloud-sync";
+import { bootstrapCloudData, createPublicBooking, getAvailableStores, getClientProfile, getCloudRecords, getCurrentStoreCode, isCloudInitialized, isCloudReady, loadReservationStore, selectStore, type Store } from "@/lib/cloud-sync";
 
 export const Route = createFileRoute("/book")({
   beforeLoad: () => {
@@ -242,13 +242,9 @@ export function BookPage() {
         } catch {
           resultKind = "payment-pending";
         }
-      } else if (paymentReturn === "failure" && pendingPayment.bookingId && pendingPayment.cancellationToken) {
-        try {
-          await cancelPendingBooking(pendingPayment.bookingId, pendingPayment.cancellationToken, pendingPayment.storeCode);
-          await refreshCloudData();
-        } catch (error) {
-          toast.error(error instanceof Error ? error.message : "No se pudo liberar el horario del pago cancelado.");
-        }
+      } else if (paymentReturn === "failure") {
+        resultKind = "payment-pending";
+        toast.error("El pago no se completó. Tu turno sigue confirmado y podés intentar pagar nuevamente.");
       }
       if (cancelled) return;
       if (resultKind !== "payment-pending") window.localStorage.removeItem(PENDING_PAYMENT_SESSION_KEY);
@@ -324,6 +320,16 @@ export function BookPage() {
   async function saveBooking(input: Omit<Booking, "id" | "createdAt">) {
     if (role === "admin" && selectedStoreCode !== accountStoreCode) {
       return createPublicBooking(selectedStoreCode, input);
+    }
+    if (isAuthenticated && !user?.email) {
+      throw new Error("No pudimos identificar tu cuenta para guardar el turno.");
+    }
+    if (isAuthenticated ? !isCloudReady() : !isCloudInitialized()) {
+      await bootstrapCloudData(
+        isAuthenticated ? user!.email! : "guest",
+        isAuthenticated ? auth.getIdToken : async () => undefined,
+        selectedStoreCode,
+      );
     }
     return bookingStore.add(input);
   }
@@ -402,7 +408,7 @@ Observaciones: ${customer.notes || "Ninguna"}`;
         storeCode: selectedStoreCode,
         customer, barberId, serviceIds,
         date: format(date, "yyyy-MM-dd"),
-        time, duration, totalPrice: price, status: "pending-payment",
+        time, duration, totalPrice: price, status: "confirmed", paymentStatus: "pending",
         });
         setReservationResult({
           kind: "payment-pending",
@@ -425,7 +431,7 @@ Observaciones: ${customer.notes || "Ninguna"}`;
           storeCode: selectedStoreCode,
           customer, barberId, serviceIds,
           date: format(date, "yyyy-MM-dd"),
-          time, duration, totalPrice: price, status: "pending-payment",
+          time, duration, totalPrice: price, status: "confirmed", paymentStatus: "pending",
         });
         window.localStorage.setItem(PENDING_PAYMENT_SESSION_KEY, JSON.stringify({
           bookingId: pendingBooking.id,
@@ -445,17 +451,14 @@ Observaciones: ${customer.notes || "Ninguna"}`;
       } catch (error) {
         setReservationResult(null);
         if (pendingBooking) {
-          try {
-            if (role === "admin" && selectedStoreCode !== accountStoreCode && pendingBooking.cancellationToken) {
-              await cancelPendingBooking(pendingBooking.id, pendingBooking.cancellationToken, selectedStoreCode);
-            } else {
-              await bookingStore.update(pendingBooking.id, { status: "cancelled" });
-            }
-          } catch {
-            // Conserva el turno pendiente si la limpieza no pudo sincronizarse.
-          }
+          setReservationResult({
+            kind: "payment-pending",
+            date: pendingBooking.date,
+            time: pendingBooking.time,
+            totalPrice: pendingBooking.totalPrice,
+            paymentMethod: pendingBooking.customer.paymentMethod,
+          });
         }
-        window.localStorage.removeItem(PENDING_PAYMENT_SESSION_KEY);
         setPaymentError(error instanceof Error ? error.message : "No se pudo preparar el pago.");
       }
       return;
@@ -716,7 +719,7 @@ Observaciones: ${customer.notes || "Ninguna"}`;
             {paymentError}
           </div>
         )}
-        <div className="mt-3 flex items-center justify-between">
+        <div className="mt-3 flex items-center justify-between gap-3">
           <Button
             type="button"
             variant="ghost"
@@ -732,7 +735,7 @@ Observaciones: ${customer.notes || "Ninguna"}`;
               Continuar <ChevronRight className="ml-1 h-4 w-4" />
             </Button>
           ) : (
-            <Button type="button" disabled={confirmingBooking} onClick={() => void confirm()} className="h-12 bg-gold px-8 text-base font-semibold text-primary-foreground shadow-gold hover:bg-gold-soft">
+            <Button type="button" disabled={confirmingBooking || storeLoading || !cloudDataReady} onClick={() => void confirm()} className="h-12 bg-gold px-8 text-base font-semibold text-primary-foreground shadow-gold hover:bg-gold-soft">
               {confirmingBooking ? "CONFIRMANDO..." : "CONFIRMAR TURNO"}
             </Button>
           )}
@@ -774,8 +777,8 @@ Observaciones: ${customer.notes || "Ninguna"}`;
               {reservationResult?.kind === "confirmed" ? "Tu reserva quedó confirmada."
                 : reservationResult?.kind === "payment-success" ? "Mercado Pago confirmó el pago y el turno ya figura como pagado en la agenda de la sucursal."
                   : reservationResult?.kind === "payment-pending" ? reservationResult.paymentMethod === "transferencia"
-                    ? "La sucursal confirmará el turno cuando verifique la transferencia."
-                    : "El turno quedó reservado y el pago está pendiente. La agenda se actualizará automáticamente cuando Mercado Pago lo apruebe."
+                    ? "Tu turno ya quedó confirmado. La sucursal actualizará el estado del pago cuando verifique la transferencia."
+                      : "Tu turno ya quedó confirmado y reservado. El pago está pendiente y la agenda se actualizará automáticamente cuando Mercado Pago lo apruebe."
                       : "El pago no se completó y el horario fue liberado. Podés volver a elegir fecha y hora."}
             </DialogDescription>
           </DialogHeader>
@@ -820,7 +823,7 @@ Observaciones: ${customer.notes || "Ninguna"}`;
                   onClick={startNewBooking}
                   className="shrink-0 whitespace-nowrap bg-gold px-3 text-sm text-primary-foreground hover:bg-gold-soft"
                 >
-                  Reservar turno
+                  Reservar otro turno
                 </Button>
               </>
             )}

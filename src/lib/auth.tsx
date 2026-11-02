@@ -102,7 +102,7 @@ function KindeSession({ children }: { children: ReactNode }) {
       register: (_requestedRole = "client", email) => startAuth(register, "client", email),
       logout: async () => {
         setRole(null);
-        await logout();
+        await logout({ redirectUrl: `${window.location.origin}/reserva` });
       },
     };
   }, [getIdToken, isAuthenticated, isLoading, login, logout, register, role, setVerifiedRole, user]);

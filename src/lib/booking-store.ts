@@ -44,7 +44,7 @@ export const bookingStore = {
     const booking: Booking = {
       ...input,
       id: crypto.randomUUID(),
-      ...(input.status === "pending-payment" ? { cancellationToken: crypto.randomUUID() } : {}),
+      ...(input.status === "pending-payment" || input.customer.paymentMethod === "tarjeta o mercado pago" ? { cancellationToken: crypto.randomUUID() } : {}),
       createdAt: new Date().toISOString(),
     };
     await write([...read(), booking], booking.storeCode);

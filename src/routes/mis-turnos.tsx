@@ -248,7 +248,7 @@ function MyBookingsPage() {
                 ?? professionals.find((item) => item.id === booking.barberId);
               const serviceNames = booking.serviceIds.map((id) => professional?.services.find((service) => service.id === id)?.name).filter(Boolean).join(", ");
               const appointmentDate = parseISO(`${booking.date}T${booking.time}`);
-              const statusLabel = booking.status === "pending-payment" ? "Pago pendiente" : booking.status === "completed" ? "Asistió" : booking.status === "no-show" ? "No asistió" : booking.status === "cancelled" ? "Cancelado" : "Reservado";
+              const statusLabel = booking.status === "completed" ? "Asistió" : booking.status === "no-show" ? "No asistió" : booking.status === "cancelled" ? "Cancelado" : "Reservado";
               const statusClass = booking.status === "completed" ? "border-emerald-300 text-emerald-400" : booking.status === "cancelled" || booking.status === "no-show" ? "border-red-500/30 bg-red-500/10 text-red-300" : "border-gold/40 text-gold";
               const paymentMethodLabel = booking.customer.paymentMethod === "efectivo"
                 ? "Efectivo"
@@ -276,6 +276,7 @@ function MyBookingsPage() {
                     <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                       <Badge variant="outline" className={statusClass}>{statusLabel}</Badge>
                       <Badge variant="outline" className="border-gold/30 text-gold">Pago · {paymentMethodLabel}</Badge>
+                      {(booking.status === "pending-payment" || booking.paymentStatus === "pending") && <Badge variant="outline" className="border-amber-300 text-amber-300">Pago pendiente</Badge>}
                       {booking.paymentReportedAt && booking.paymentStatus !== "approved" && <Badge variant="outline" className="border-amber-300 text-amber-300">Avisaste que pagaste · Podés modificar el turno hasta que lo verifique el profesional</Badge>}
                       {booking.paymentStatus === "approved" && <Badge variant="outline" className="border-emerald-300 text-emerald-400">Pago confirmado · Solo el profesional puede modificarlo</Badge>}
                     </div>

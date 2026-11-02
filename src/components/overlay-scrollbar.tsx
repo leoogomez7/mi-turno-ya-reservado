@@ -108,7 +108,7 @@ export function OverlayScrollbar() {
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onKeyDown={handleKeyDown}
-      className="fixed inset-y-0 right-0 z-100 w-3 touch-none bg-transparent outline-none"
+      className="fixed inset-y-0 right-0 z-100 hidden w-3 touch-none bg-transparent outline-none md:block"
     >
       <div
         aria-hidden="true"

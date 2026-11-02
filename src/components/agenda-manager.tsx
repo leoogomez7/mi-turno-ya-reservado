@@ -223,7 +223,7 @@ export function AgendaManager() {
                       </Badge>
                       <Badge variant="outline" className="border-gold/30 text-gold">Pago · {paymentMethodLabel}</Badge>
                       {booking.isTest && <Badge variant="outline" className="border-emerald-300 text-emerald-400">Turno de prueba</Badge>}
-                      {booking.status === "pending-payment" && <Badge variant="outline" className="border-amber-300 text-amber-300">Pago pendiente</Badge>}
+                      {(booking.status === "pending-payment" || booking.paymentStatus === "pending") && <Badge variant="outline" className="border-amber-300 text-amber-300">Pago pendiente</Badge>}
                       {booking.paymentReportedAt && booking.paymentStatus !== "approved" && <Badge variant="outline" className="border-amber-300 text-amber-300">Cliente avisó que pagó</Badge>}
                       {booking.paymentStatus === "approved" && <Badge variant="outline" className="border-emerald-300 text-emerald-400">Pagado · {booking.customer.paymentMethod === "tarjeta o mercado pago" ? "Tarjeta o Mercado Pago" : booking.customer.paymentMethod === "transferencia" ? "Transferencia Bancaria" : "Efectivo"}</Badge>}
                       {booking.status === "completed" && <Badge variant="outline" className="border-emerald-300 text-emerald-400">Asistió</Badge>}
@@ -232,7 +232,7 @@ export function AgendaManager() {
                   </div>
                   <div className="font-display text-lg font-semibold text-gold">${booking.totalPrice.toLocaleString("es-AR")}</div>
                   <div className="flex flex-wrap gap-2">
-                    {(booking.status === "pending-payment" || (booking.paymentReportedAt && booking.paymentStatus !== "approved")) && <Button size="sm" disabled={processingBookingId !== null} onClick={() => openDialog(booking, "payment")} className="bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-60">{booking.paymentReportedAt ? "Revisar pago" : "Indicar pago"}</Button>}
+                    {(booking.status === "pending-payment" || booking.paymentStatus === "pending" || (booking.paymentReportedAt && booking.paymentStatus !== "approved")) && <Button size="sm" disabled={processingBookingId !== null} onClick={() => openDialog(booking, "payment")} className="bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-60">{booking.paymentReportedAt ? "Revisar pago" : "Indicar pago"}</Button>}
                     {booking.status === "confirmed" && <Button size="sm" variant="outline" onClick={() => openDialog(booking, "attendance")}>Indicar asistencia</Button>}
                     <Button size="sm" variant="outline" onClick={() => openDialog(booking, "turno")}>Modificar turno</Button>
                     <Button size="sm" variant="destructive" disabled={booking.isTest || deletingBookingId === booking.id} className={deletingBookingId === booking.id ? "opacity-60" : undefined} onClick={() => void removeBooking(booking.id)}>{deletingBookingId === booking.id ? "Borrando..." : "Borrar turno"}</Button>
