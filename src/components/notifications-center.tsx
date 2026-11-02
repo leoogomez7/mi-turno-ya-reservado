@@ -1,10 +1,30 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { Bell, Check, ExternalLink } from "lucide-react";
+import { Bell, Check, ExternalLink, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { getNotifications, setNotificationRead, type BookingNotification } from "@/lib/cloud-sync";
+import { BOOKING_HIGHLIGHT_KEY, deleteNotification, getNotifications, setNotificationRead, type BookingNotification } from "@/lib/cloud-sync";
 import type { AccountRole } from "@/lib/auth";
+
+function parseNotificationTimestamp(value: string) {
+  const timestamp = /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(?:\.\d+)?$/.test(value)
+    ? `${value.replace(" ", "T")}Z`
+    : value;
+  return new Date(timestamp);
+}
+
+function formatBuenosAiresTimestamp(value: string) {
+  return new Intl.DateTimeFormat("es-AR", {
+    timeZone: "America/Argentina/Buenos_Aires",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).format(parseNotificationTimestamp(value));
+}
 
 export function NotificationsCenter({ isAuthenticated, role }: { isAuthenticated: boolean; role: AccountRole | null }) {
   const [notifications, setNotifications] = useState<BookingNotification[]>([]);
@@ -13,6 +33,11 @@ export function NotificationsCenter({ isAuthenticated, role }: { isAuthenticated
   const [panelOpen, setPanelOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [markingIds, setMarkingIds] = useState<Set<string>>(() => new Set());
+  const [markingAll, setMarkingAll] = useState(false);
+  const markingIdsRef = useRef(new Set<string>());
+  const pendingReadRef = useRef(new Map<string, string>());
+  const refreshSequenceRef = useRef(0);
   const bellRef = useRef<HTMLButtonElement>(null);
   const navigate = useNavigate();
 
@@ -27,19 +52,28 @@ export function NotificationsCenter({ isAuthenticated, role }: { isAuthenticated
     setLoading(true);
     setError("");
     const refresh = async (showWelcome: boolean) => {
+      const requestSequence = ++refreshSequenceRef.current;
       try {
         const { notifications: loaded, newForPrompt } = await getNotifications();
-        if (!active) return;
-        setNotifications(loaded);
+        if (!active || requestSequence !== refreshSequenceRef.current) return;
+        setNotifications(loaded.map((notification) => {
+          const pendingReadAt = pendingReadRef.current.get(notification.id);
+          if (!pendingReadAt) return notification;
+          if (notification.readAt) {
+            pendingReadRef.current.delete(notification.id);
+            return notification;
+          }
+          return { ...notification, readAt: pendingReadAt };
+        }));
         if (showWelcome) {
           setNewCount(newForPrompt.length);
           setPromptOpen(newForPrompt.length > 0);
         }
         setError("");
       } catch (reason) {
-        if (active) setError(reason instanceof Error ? reason.message : "No se pudieron cargar las notificaciones.");
+        if (active && requestSequence === refreshSequenceRef.current) setError(reason instanceof Error ? reason.message : "No se pudieron cargar las notificaciones.");
       } finally {
-        if (active && showWelcome) setLoading(false);
+        if (active && showWelcome && requestSequence === refreshSequenceRef.current) setLoading(false);
       }
     };
     void refresh(true);
@@ -53,29 +87,74 @@ export function NotificationsCenter({ isAuthenticated, role }: { isAuthenticated
     };
   }, [isAuthenticated, role]);
 
-  async function toggleRead(notification: BookingNotification) {
-    const read = !notification.readAt;
-    setNotifications((current) => current.map((item) => item.id === notification.id
-      ? { ...item, readAt: read ? new Date().toISOString() : null }
-      : item));
+  async function markRead(notification: BookingNotification) {
+    if (notification.readAt || markingIdsRef.current.has(notification.id)) return;
+    const readAt = new Date().toISOString();
+    markingIdsRef.current.add(notification.id);
+    pendingReadRef.current.set(notification.id, readAt);
+    setMarkingIds((current) => new Set(current).add(notification.id));
+    setNotifications((current) => current.map((item) => item.id === notification.id ? { ...item, readAt } : item));
     try {
-      await setNotificationRead(notification.id, read);
+      await setNotificationRead(notification.id, true);
     } catch (reason) {
+      pendingReadRef.current.delete(notification.id);
       setNotifications((current) => current.map((item) => item.id === notification.id
         ? { ...item, readAt: notification.readAt }
         : item));
       setError(reason instanceof Error ? reason.message : "No se pudo actualizar la notificación.");
+    } finally {
+      markingIdsRef.current.delete(notification.id);
+      setMarkingIds((current) => {
+        const next = new Set(current);
+        next.delete(notification.id);
+        return next;
+      });
     }
   }
 
   async function markAllRead() {
     const unread = notifications.filter((item) => !item.readAt);
+    if (!unread.length || markingAll) return;
+    setMarkingAll(true);
+    const now = new Date().toISOString();
+    for (const notification of unread) {
+      pendingReadRef.current.set(notification.id, now);
+      markingIdsRef.current.add(notification.id);
+    }
+    setMarkingIds((current) => new Set([...current, ...unread.map((item) => item.id)]));
+    setNotifications((current) => current.map((item) => item.readAt ? item : { ...item, readAt: now }));
     try {
-      await Promise.all(unread.map((item) => setNotificationRead(item.id, true)));
-      const now = new Date().toISOString();
-      setNotifications((current) => current.map((item) => item.readAt ? item : { ...item, readAt: now }));
+      const results = await Promise.allSettled(unread.map((item) => setNotificationRead(item.id, true)));
+      const failedIds = new Set(results.flatMap((result, index) => result.status === "rejected" ? [unread[index].id] : []));
+      if (failedIds.size) {
+        for (const id of failedIds) pendingReadRef.current.delete(id);
+        setNotifications((current) => current.map((item) => {
+          const original = unread.find((notification) => notification.id === item.id);
+          return original && failedIds.has(item.id) ? { ...item, readAt: original.readAt } : item;
+        }));
+        const firstFailure = results.find((result) => result.status === "rejected");
+        const reason = firstFailure?.status === "rejected" ? firstFailure.reason : undefined;
+        setError(reason instanceof Error ? reason.message : "Algunas notificaciones no se pudieron marcar como leídas.");
+      }
+    } finally {
+      for (const notification of unread) markingIdsRef.current.delete(notification.id);
+      setMarkingIds((current) => {
+        const next = new Set(current);
+        unread.forEach((item) => next.delete(item.id));
+        return next;
+      });
+      setMarkingAll(false);
+    }
+  }
+
+  async function removeNotification(notification: BookingNotification) {
+    pendingReadRef.current.delete(notification.id);
+    setNotifications((current) => current.filter((item) => item.id !== notification.id));
+    try {
+      await deleteNotification(notification.id);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "No se pudieron marcar las notificaciones como vistas.");
+      setNotifications((current) => [...current, notification].sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
+      setError(reason instanceof Error ? reason.message : "No se pudo eliminar la notificación.");
     }
   }
 
@@ -92,7 +171,11 @@ export function NotificationsCenter({ isAuthenticated, role }: { isAuthenticated
         size="icon"
         aria-label={`Notificaciones${unreadCount ? `, ${unreadCount} sin leer` : ""}`}
         aria-expanded={panelOpen}
-        onClick={() => setPanelOpen((open) => !open)}
+        onClick={() => {
+          const opening = !panelOpen;
+          setPanelOpen(opening);
+          if (opening) void markAllRead();
+        }}
         className="relative h-10 w-10 rounded-full border border-border/60 text-foreground hover:border-gold/50 hover:text-gold"
       >
         <Bell className="h-5 w-5" />
@@ -103,7 +186,7 @@ export function NotificationsCenter({ isAuthenticated, role }: { isAuthenticated
         <section aria-label="Notificaciones" className="absolute right-0 top-full z-60 mt-2 w-[min(22rem,calc(100vw-1.5rem))] rounded-2xl border border-gold/30 bg-background p-3 text-foreground shadow-2xl">
           <div className="mb-3 flex items-center justify-between gap-2 border-b border-border pb-2">
             <h2 className="font-semibold">Notificaciones</h2>
-            {unreadCount > 0 && <button type="button" className="text-xs text-gold hover:underline" onClick={() => void markAllRead()}>Marcar todas vistas</button>}
+            {unreadCount > 0 && <button type="button" disabled={markingAll} className="text-xs text-gold hover:underline disabled:cursor-wait disabled:opacity-70" onClick={() => void markAllRead()}>{markingAll ? "Marcando leídas..." : "Marcar todas leídas"}</button>}
           </div>
           {error && <p role="alert" className="mb-2 rounded-lg bg-red-500/10 p-2 text-xs text-red-300">{error}</p>}
           {loading ? <p className="py-5 text-center text-sm text-muted-foreground">Cargando…</p>
@@ -114,22 +197,30 @@ export function NotificationsCenter({ isAuthenticated, role }: { isAuthenticated
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
                         <p className="text-sm font-semibold">{notification.title}</p>
-                        <p className="mt-1 text-xs leading-5 text-muted-foreground">{notification.message}</p>
-                        <time className="mt-2 block text-[11px] text-muted-foreground" dateTime={notification.createdAt}>{new Date(notification.createdAt).toLocaleString("es-AR")}</time>
+                        <p className="mt-1 text-xs leading-5 text-muted-foreground">{notification.message.replace(/\b(\d{4})-(\d{2})-(\d{2})\b/g, "$3/$2/$1")}</p>
                       </div>
-                      <span className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${notification.readAt ? "bg-border" : "bg-gold"}`} aria-label={notification.readAt ? "Vista" : "Sin leer"} />
+                      <span className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${notification.readAt ? "bg-border" : "bg-gold"}`} aria-label={notification.readAt ? "Leída" : "Sin leer"} />
                     </div>
                     <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
                       <button type="button" className="inline-flex items-center gap-1 text-xs text-gold hover:underline" onClick={() => {
-                        void toggleRead(notification);
+                        sessionStorage.setItem(BOOKING_HIGHLIGHT_KEY, notification.bookingId);
+                        void markRead(notification);
                         setPanelOpen(false);
                         void navigate({ to: role === "admin" ? "/agenda" : "/mis-turnos" });
+                        window.setTimeout(() => window.dispatchEvent(new Event("mi-turno-ya:highlight-booking")), 0);
                       }}>
                         Ver turno <ExternalLink className="h-3 w-3" />
                       </button>
-                      <button type="button" className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground" onClick={() => void toggleRead(notification)}>
-                        {notification.readAt ? "Marcar no vista" : <><Check className="h-3 w-3" /> Marcar vista</>}
-                      </button>
+                      <div className="flex items-center gap-3">
+                        {markingIds.has(notification.id)
+                          ? <span className="text-xs text-muted-foreground">Marcando leída...</span>
+                          : notification.readAt
+                          ? <span className="inline-flex items-center gap-1 text-xs text-muted-foreground"><Check className="h-3 w-3" /> Leída</span>
+                          : <button type="button" disabled={markingAll} className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground disabled:cursor-wait disabled:opacity-70" onClick={() => void markRead(notification)}><Check className="h-3 w-3" /> Marcar como leída</button>}
+                        <button type="button" aria-label="Eliminar notificación" title="Eliminar notificación" className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-red-500/10 hover:text-red-300" onClick={() => void removeNotification(notification)}>
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
                     </div>
                   </li>
                 ))}

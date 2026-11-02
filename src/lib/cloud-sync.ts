@@ -32,6 +32,7 @@ export type BookingNotification = {
   createdAt: string;
   readAt: string | null;
 };
+export const BOOKING_HIGHLIGHT_KEY = "mi-turno-ya:highlight-booking";
 export type ClientBookings = {
   bookings: Booking[];
   professionals: Professional[];
@@ -262,6 +263,10 @@ export async function getNotifications() {
 
 export async function setNotificationRead(notificationId: string, read: boolean) {
   return request<{ ok: boolean }>("POST", { action: "set-notification-read", notificationId, read });
+}
+
+export async function deleteNotification(notificationId: string) {
+  return request<{ ok: boolean }>("POST", { action: "delete-notification", notificationId });
 }
 
 export async function confirmClientBooking(bookingId: string) {

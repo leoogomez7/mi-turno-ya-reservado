@@ -786,7 +786,7 @@ export default async function handler(request, response) {
     return response.status(400).json({ error: "El cuerpo JSON no es válido." });
   }
   if (request.method === "POST") {
-    if (user && ["get-notifications", "set-notification-read"].includes(body?.action)) {
+    if (user && ["get-notifications", "set-notification-read", "delete-notification"].includes(body?.action)) {
       try {
         if (!user.emailVerified) return response.status(403).json({ error: "Verificá tu correo para consultar tus notificaciones." });
         const account = await db.execute({ sql: "SELECT role, store_code FROM account_roles WHERE user_id = ?", args: [user.id] });
@@ -820,8 +820,17 @@ export default async function handler(request, response) {
         }
 
         const notificationId = typeof body.notificationId === "string" ? body.notificationId : "";
-        if (!notificationId || notificationId.length > 100 || typeof body.read !== "boolean") {
+        if (!notificationId || notificationId.length > 100
+          || (body.action === "set-notification-read" && typeof body.read !== "boolean")) {
           return response.status(400).json({ error: "La notificación seleccionada no es válida." });
+        }
+        if (body.action === "delete-notification") {
+          const deleted = await db.execute({
+            sql: "DELETE FROM notifications WHERE id = ? AND recipient_key = ?",
+            args: [notificationId, recipientKey],
+          });
+          if (!deleted.rowsAffected) return response.status(404).json({ error: "No encontramos esa notificación." });
+          return response.status(200).json({ ok: true });
         }
         const updated = await db.execute({
           sql: "UPDATE notifications SET read_at = ? WHERE id = ? AND recipient_key = ?",

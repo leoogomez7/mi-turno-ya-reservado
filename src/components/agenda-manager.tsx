@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { bookingStore, getBarber, type Booking } from "@/lib/booking-store";
 import { useAppAuth } from "@/lib/auth";
-import { refreshCloudData } from "@/lib/cloud-sync";
+import { BOOKING_HIGHLIGHT_KEY, refreshCloudData } from "@/lib/cloud-sync";
 import { getAvailableSlotsForDate, getProfessionalService, getScheduleForDate, professionalStore } from "@/lib/professional-store";
 
 export function AgendaManager() {
@@ -29,6 +29,8 @@ export function AgendaManager() {
   const [processingBookingId, setProcessingBookingId] = useState<string | null>(null);
   const [processingBookingStatus, setProcessingBookingStatus] = useState<Booking["status"] | null>(null);
   const [deletingBookingId, setDeletingBookingId] = useState<string | null>(null);
+  const [highlightedBookingId, setHighlightedBookingId] = useState("");
+  const highlightTimeout = useRef<number | null>(null);
 
   useEffect(() => {
     const reload = () => setBookings(bookingStore.all());
@@ -36,6 +38,21 @@ export function AgendaManager() {
     window.addEventListener("bookings:changed", reload);
     return () => window.removeEventListener("bookings:changed", reload);
   }, []);
+
+  useEffect(() => {
+    const activateHighlight = () => {
+      const bookingId = sessionStorage.getItem(BOOKING_HIGHLIGHT_KEY);
+      if (!bookingId || !bookings.some((booking) => booking.id === bookingId)) return;
+      sessionStorage.removeItem(BOOKING_HIGHLIGHT_KEY);
+      setHighlightedBookingId(bookingId);
+      window.setTimeout(() => document.getElementById(`booking-${bookingId}`)?.scrollIntoView({ behavior: "smooth", block: "center" }), 0);
+      if (highlightTimeout.current !== null) window.clearTimeout(highlightTimeout.current);
+      highlightTimeout.current = window.setTimeout(() => setHighlightedBookingId(""), 4000);
+    };
+    activateHighlight();
+    window.addEventListener("mi-turno-ya:highlight-booking", activateHighlight);
+    return () => window.removeEventListener("mi-turno-ya:highlight-booking", activateHighlight);
+  }, [bookings]);
 
   useEffect(() => {
     const refresh = () => { void refreshCloudData().catch(() => undefined); };
@@ -204,7 +221,7 @@ export function AgendaManager() {
                     ? "Tarjeta o Mercado Pago"
                     : "No especificado";
               return (
-                <div key={booking.id} className="flex flex-wrap items-center gap-4 rounded-xl border border-gold/30 bg-card p-4">
+                <div key={booking.id} id={`booking-${booking.id}`} className={`flex flex-wrap items-center gap-4 rounded-xl border p-4 transition-colors duration-300 ${highlightedBookingId === booking.id ? "border-gold bg-gold/20 ring-2 ring-gold/70" : "border-gold/30 bg-card"}`}>
                   <div className="flex w-20 shrink-0 flex-col items-center rounded-lg bg-gold/10 px-2 py-2 text-gold">
                     <span className="text-[10px] uppercase tracking-widest">{format(date, "EEE", { locale: es })}</span>
                     <span className="font-display text-2xl font-semibold">{format(date, "d")}</span>

@@ -11,7 +11,7 @@ import { AuthRequired } from "@/components/auth-required";
 import { useAppAuth } from "@/lib/auth";
 import type { Booking } from "@/lib/booking-store";
 import { getAvailableSlotsForDate, getScheduleForDate, type Professional } from "@/lib/professional-store";
-import { cancelClientPayment, createClientBookingPaymentPreference, deleteClientBooking, getClientBookings, reportClientPayment, updateClientBooking, updateClientPaymentMethod, type Store } from "@/lib/cloud-sync";
+import { BOOKING_HIGHLIGHT_KEY, cancelClientPayment, createClientBookingPaymentPreference, deleteClientBooking, getClientBookings, reportClientPayment, updateClientBooking, updateClientPaymentMethod, type Store } from "@/lib/cloud-sync";
 import { toast } from "sonner";
 import { LoadingScreen } from "@/components/loading-screen";
 
@@ -36,6 +36,8 @@ function MyBookingsPage() {
   const [changingPaymentBooking, setChangingPaymentBooking] = useState<Booking | null>(null);
   const [newPaymentMethod, setNewPaymentMethod] = useState<NonNullable<Booking["customer"]["paymentMethod"]>>("efectivo");
   const suppressPaymentClick = useRef(false);
+  const [highlightedBookingId, setHighlightedBookingId] = useState("");
+  const highlightTimeout = useRef<number | null>(null);
 
   const editingProfessional = editingBooking
     ? professionals.find((item) => item.id === editingBooking.barberId && item.storeCode === editingBooking.storeCode)
@@ -99,6 +101,21 @@ function MyBookingsPage() {
     window.addEventListener("focus", reload);
     return () => window.removeEventListener("focus", reload);
   }, [isAuthenticated, reload, role]);
+
+  useEffect(() => {
+    const activateHighlight = () => {
+      const bookingId = sessionStorage.getItem(BOOKING_HIGHLIGHT_KEY);
+      if (!bookingId || !bookings.some((booking) => booking.id === bookingId)) return;
+      sessionStorage.removeItem(BOOKING_HIGHLIGHT_KEY);
+      setHighlightedBookingId(bookingId);
+      window.setTimeout(() => document.getElementById(`booking-${bookingId}`)?.scrollIntoView({ behavior: "smooth", block: "center" }), 0);
+      if (highlightTimeout.current !== null) window.clearTimeout(highlightTimeout.current);
+      highlightTimeout.current = window.setTimeout(() => setHighlightedBookingId(""), 4000);
+    };
+    activateHighlight();
+    window.addEventListener("mi-turno-ya:highlight-booking", activateHighlight);
+    return () => window.removeEventListener("mi-turno-ya:highlight-booking", activateHighlight);
+  }, [bookings]);
 
   async function reportPayment(booking: Booking) {
     if (busyBookingId) return;
@@ -264,7 +281,7 @@ function MyBookingsPage() {
                 "tarjeta o mercado pago",
               ].includes(booking.customer.paymentMethod ?? "");
               return (
-                <article key={booking.id} className="flex flex-wrap items-center gap-4 rounded-xl border border-gold/30 bg-card p-4">
+                <article key={booking.id} id={`booking-${booking.id}`} className={`flex flex-wrap items-center gap-4 rounded-xl border p-4 transition-colors duration-300 ${highlightedBookingId === booking.id ? "border-gold bg-gold/20 ring-2 ring-gold/70" : "border-gold/30 bg-card"}`}>
                   <div className="flex w-20 shrink-0 flex-col items-center rounded-lg bg-gold/10 px-2 py-2 text-gold">
                     <span className="text-[10px] uppercase tracking-widest">{format(appointmentDate, "EEE", { locale: es })}</span>
                     <span className="font-display text-2xl font-semibold">{format(appointmentDate, "d")}</span>
@@ -283,7 +300,7 @@ function MyBookingsPage() {
                   </div>
                   <div className="font-display text-lg font-semibold text-gold">${booking.totalPrice.toLocaleString("es-AR")}</div>
                   {isActiveBooking && <div className="flex flex-wrap gap-2">
-                    <Button size="sm" disabled={busyBookingId !== null} className="bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-60" onClick={() => { setPaymentBooking(booking); setShowTransferDetails(false); }}>{booking.paymentStatus === "approved" ? "Pago confirmado" : "Indicar pago"}</Button>
+                    {booking.paymentStatus !== "approved" && <Button size="sm" disabled={busyBookingId !== null} className="bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-60" onClick={() => { setPaymentBooking(booking); setShowTransferDetails(false); }}>Indicar pago</Button>}
                     {booking.paymentStatus !== "approved" && <Button size="sm" variant="outline" disabled={busyBookingId !== null} onClick={() => void openEditDialog(booking)}>Modificar turno</Button>}
                     {canDelete && <Button size="sm" variant="destructive" disabled={busyBookingId !== null} className={busyBookingId === booking.id ? "opacity-60" : undefined} onClick={() => void deleteBooking(booking)}>{busyBookingId === booking.id ? "Borrando..." : "Borrar turno"}</Button>}
                   </div>}

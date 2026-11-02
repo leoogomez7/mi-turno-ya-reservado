@@ -69,6 +69,7 @@ export function SiteHeader() {
           <span className="font-display text-lg font-semibold tracking-tight">Mi Turno Ya Reservado</span>
         </Link>
 
+        <div className="ml-auto flex shrink-0 items-center gap-2">
         <nav className="hidden items-center justify-end gap-1 text-sm md:flex">
           {role === "admin" && (
             <div className="mr-2 grid grid-cols-[auto_minmax(0,1fr)] gap-x-2 rounded-lg border border-gold/30 bg-background/50 px-3 py-1.5 text-xs leading-4">
@@ -111,6 +112,7 @@ export function SiteHeader() {
         </button>
 
         <NotificationsCenter isAuthenticated={isAuthenticated} role={role} />
+        </div>
 
         {open && (
           <div className="absolute left-1/2 top-full z-50 mt-2 w-[calc(100vw-2rem)] max-w-xs -translate-x-1/2 rounded-3xl border border-border/60 bg-black p-3 shadow-2xl md:hidden">
