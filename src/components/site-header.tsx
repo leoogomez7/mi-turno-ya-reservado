@@ -89,8 +89,10 @@ export function SiteHeader() {
               <DropdownMenuTrigger asChild>
                 <Button size="sm" variant="outline" className="max-w-48 truncate border-gold/30">{user?.email || "Cuenta"}</Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onSelect={() => void handleLogout()}>Cerrar sesión</DropdownMenuItem>
+              <DropdownMenuContent align="end" className="min-w-[180px] p-1">
+                <DropdownMenuItem onSelect={() => void handleLogout()} className="justify-center text-center font-medium">
+                  Cerrar sesión
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           ) : (
@@ -140,7 +142,7 @@ export function SiteHeader() {
                 </Link>
               )}
               {isAuthenticated ? (
-                <button type="button" onClick={() => void handleLogout()} className="rounded-2xl px-4 py-3 text-left text-foreground hover:bg-border/10">Cerrar sesión</button>
+                <button type="button" onClick={() => void handleLogout()} className="mx-auto w-full max-w-[220px] rounded-2xl px-4 py-3 text-center text-foreground hover:bg-border/10">Cerrar sesión</button>
               ) : (
                 <button type="button" onClick={() => { setOpen(false); setAuthDialogOpen(true); }} className="rounded-2xl px-4 py-3 text-left text-foreground hover:bg-border/10">Ingresar / Crear cuenta</button>
               )}
