@@ -37,7 +37,10 @@ export function NotificationsCenter({ isAuthenticated, role }: { isAuthenticated
   const [markingIds, setMarkingIds] = useState<Set<string>>(() => new Set());
   const [markingAll, setMarkingAll] = useState(false);
   const [checkingBookingIds, setCheckingBookingIds] = useState<Set<string>>(() => new Set());
+  const [deletingIds, setDeletingIds] = useState<Set<string>>(() => new Set());
   const checkingBookingIdsRef = useRef(new Set<string>());
+  const deletingIdsRef = useRef(new Set<string>());
+  const deletedNotificationIdsRef = useRef(new Set<string>());
   const markingIdsRef = useRef(new Set<string>());
   const pendingReadRef = useRef(new Map<string, string>());
   const refreshSequenceRef = useRef(0);
@@ -59,7 +62,7 @@ export function NotificationsCenter({ isAuthenticated, role }: { isAuthenticated
       try {
         const { notifications: loaded, newForPrompt } = await getNotifications();
         if (!active || requestSequence !== refreshSequenceRef.current) return;
-        setNotifications(loaded.map((notification) => {
+        setNotifications(loaded.filter((notification) => !deletedNotificationIdsRef.current.has(notification.id)).map((notification) => {
           const pendingReadAt = pendingReadRef.current.get(notification.id);
           if (!pendingReadAt) return notification;
           if (notification.readAt) {
@@ -151,13 +154,25 @@ export function NotificationsCenter({ isAuthenticated, role }: { isAuthenticated
   }
 
   async function removeNotification(notification: BookingNotification) {
+    if (deletingIdsRef.current.has(notification.id)) return;
+    deletingIdsRef.current.add(notification.id);
+    deletedNotificationIdsRef.current.add(notification.id);
+    setDeletingIds((current) => new Set(current).add(notification.id));
     pendingReadRef.current.delete(notification.id);
     setNotifications((current) => current.filter((item) => item.id !== notification.id));
     try {
       await deleteNotification(notification.id);
     } catch (reason) {
+      deletedNotificationIdsRef.current.delete(notification.id);
       setNotifications((current) => [...current, notification].sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
       setError(reason instanceof Error ? reason.message : "No se pudo eliminar la notificación.");
+    } finally {
+      deletingIdsRef.current.delete(notification.id);
+      setDeletingIds((current) => {
+        const next = new Set(current);
+        next.delete(notification.id);
+        return next;
+      });
     }
   }
 
@@ -242,7 +257,7 @@ export function NotificationsCenter({ isAuthenticated, role }: { isAuthenticated
                           : notification.readAt
                           ? <span className="inline-flex items-center gap-1 text-xs text-muted-foreground"><Check className="h-3 w-3" /> Leída</span>
                           : <button type="button" disabled={markingAll} className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground disabled:cursor-wait disabled:opacity-70" onClick={() => void markRead(notification)}><Check className="h-3 w-3" /> Marcar como leída</button>}
-                        <button type="button" aria-label="Eliminar notificación" title="Eliminar notificación" className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-red-500/10 hover:text-red-300" onClick={() => void removeNotification(notification)}>
+                        <button type="button" disabled={deletingIds.has(notification.id)} aria-label="Eliminar notificación" title="Eliminar notificación" className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-red-500/10 hover:text-red-300 disabled:cursor-wait disabled:opacity-60" onClick={() => void removeNotification(notification)}>
                           <Trash2 className="h-3.5 w-3.5" />
                         </button>
                       </div>

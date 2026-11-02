@@ -844,8 +844,7 @@ export default async function handler(request, response) {
             sql: "DELETE FROM notifications WHERE id = ? AND recipient_key = ?",
             args: [notificationId, recipientKey],
           });
-          if (!deleted.rowsAffected) return response.status(404).json({ error: "No encontramos esa notificación." });
-          return response.status(200).json({ ok: true });
+          return response.status(200).json({ ok: true, deleted: deleted.rowsAffected > 0 });
         }
         const updated = await db.execute({
           sql: "UPDATE notifications SET read_at = ? WHERE id = ? AND recipient_key = ?",
