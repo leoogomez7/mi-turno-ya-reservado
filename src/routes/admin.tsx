@@ -82,7 +82,11 @@ function computeStats(bookings: Booking[]) {
 
   const allProfessionals = professionalStore.all();
   const serviceLookup = new Map<string, string>();
-  allProfessionals.forEach((prof) => prof.services.forEach((svc) => serviceLookup.set(svc.id, svc.name)));
+  const serviceDurationLookup = new Map<string, number>();
+  allProfessionals.forEach((prof) => prof.services.forEach((svc) => {
+    serviceLookup.set(svc.id, svc.name);
+    serviceDurationLookup.set(svc.id, svc.duration);
+  }));
 
   const svcCount: Record<string, number> = {};
   active.forEach((b) => b.serviceIds.forEach((id) => { svcCount[id] = (svcCount[id] ?? 0) + 1; }));
@@ -90,13 +94,18 @@ function computeStats(bookings: Booking[]) {
     .map(([id, v]) => ({
       name: serviceLookup.get(id) ?? getProfessionalService("", id)?.name ?? id,
       value: v,
+      subtitle: `${serviceDurationLookup.get(id) ?? getProfessionalService("", id)?.duration ?? 0} min`,
     }))
     .sort((a, b) => b.value - a.value).slice(0, 6);
 
   const barbCount: Record<string, number> = {};
   allProfessionals.forEach((b) => { barbCount[b.id] = 0; });
   active.forEach((b) => { barbCount[b.barberId] = (barbCount[b.barberId] ?? 0) + 1; });
-  const barbersChart = allProfessionals.map((b) => ({ name: b.name.split(" ")[0], value: barbCount[b.id] ?? 0 }));
+  const barbersChart = allProfessionals.map((b) => ({
+    name: b.name,
+    value: barbCount[b.id] ?? 0,
+    subtitle: b.specialty || "Profesional",
+  }));
 
   const sortedBarbers = allProfessionals.map((b) => ({ name: b.name, count: barbCount[b.id] ?? 0 }))
     .sort((a, b) => b.count - a.count);

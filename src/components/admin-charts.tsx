@@ -1,6 +1,6 @@
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip, type TooltipProps } from "recharts";
 
-type ChartEntry = { name: string; value: number };
+type ChartEntry = { name: string; value: number; subtitle?: string };
 
 function ChartTooltip({ active, payload, label }: TooltipProps<number, string>) {
   if (!active || !payload || payload.length === 0) return null;
@@ -26,12 +26,12 @@ export function ChartCard({ title, data }: { title: string; data: ChartEntry[] }
   const dataList = (
     <div className="grid gap-3 sm:grid-cols-2">
       {data.map((entry, index) => (
-        <div key={entry.name} className="flex items-center justify-between rounded-2xl border border-border/80 bg-muted p-3">
+        <div key={`${entry.name}-${index}`} className="flex items-center justify-between rounded-2xl border border-border/80 bg-muted p-3">
           <div className="flex items-center gap-3">
             <span className="h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: colors[index % colors.length] }} />
             <div>
               <div className="text-sm font-medium text-foreground">{entry.name}</div>
-              <div className="text-xs text-muted-foreground">{isProfessionalChart ? "Profesional" : "Servicio"}</div>
+              {entry.subtitle && <div className="text-xs text-muted-foreground">{entry.subtitle}</div>}
             </div>
           </div>
           <div className="text-sm font-semibold text-foreground">{entry.value}</div>
