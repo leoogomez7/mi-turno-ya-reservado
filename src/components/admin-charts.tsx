@@ -21,7 +21,7 @@ function ChartTooltip({ active, payload, label }: TooltipProps<number, string>) 
 export function ChartCard({ title, data }: { title: string; data: ChartEntry[] }) {
   const colors = ["#F59E0B", "#60A5FA", "#34D399", "#A855F7", "#F97316", "#22C55E"];
   const isProfessionalChart = title.includes("profesionales");
-  const hasData = data.length > 0 && (!isProfessionalChart || data.some((entry) => entry.value > 0));
+  const hasData = data.length > 0 && data.some((entry) => entry.value > 0);
 
   const dataList = (
     <div className="grid gap-3 sm:grid-cols-2">
@@ -45,8 +45,6 @@ export function ChartCard({ title, data }: { title: string; data: ChartEntry[] }
       <h3 className="mb-3 flex min-h-7 items-center font-display text-lg font-semibold">{title}</h3>
       {!hasData ? (
         <p className="py-4 text-center text-sm text-muted-foreground">Sin datos aún.</p>
-      ) : isProfessionalChart ? (
-        dataList
       ) : (
         <>
           <ResponsiveContainer width="100%" height={260}>
@@ -64,7 +62,7 @@ export function ChartCard({ title, data }: { title: string; data: ChartEntry[] }
                 stroke="transparent"
               >
                 {data.map((entry, index) => (
-                  <Cell key={entry.name} fill={colors[index % colors.length]} />
+                  <Cell key={`${entry.name}-${index}`} fill={colors[index % colors.length]} />
                 ))}
               </Pie>
               <Tooltip content={<ChartTooltip />} cursor={false} />
