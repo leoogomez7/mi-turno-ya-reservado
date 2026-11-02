@@ -142,7 +142,7 @@ export function SiteHeader() {
                 </Link>
               )}
               {isAuthenticated ? (
-                <button type="button" onClick={() => void handleLogout()} className="mx-auto w-full max-w-[220px] rounded-2xl px-4 py-3 text-center text-foreground hover:bg-border/10">Cerrar sesión</button>
+                <button type="button" onClick={() => void handleLogout()} className="mx-auto w-full max-w-220px rounded-2xl px-4 py-3 text-center text-foreground hover:bg-border/10">Cerrar sesión</button>
               ) : (
                 <button type="button" onClick={() => { setOpen(false); setAuthDialogOpen(true); }} className="rounded-2xl px-4 py-3 text-left text-foreground hover:bg-border/10">Ingresar / Crear cuenta</button>
               )}
