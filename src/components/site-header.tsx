@@ -89,8 +89,8 @@ export function SiteHeader() {
               <DropdownMenuTrigger asChild>
                 <Button size="sm" variant="outline" className="max-w-48 truncate border-gold/30">{user?.email || "Cuenta"}</Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="min-w-[180px] p-1">
-                <DropdownMenuItem onSelect={() => void handleLogout()} className="justify-center text-center font-medium">
+              <DropdownMenuContent align="end" className="w-auto min-w-0 p-1">
+                <DropdownMenuItem onSelect={() => void handleLogout()} className="justify-center whitespace-nowrap px-3 py-1.5 text-center font-medium">
                   Cerrar sesión
                 </DropdownMenuItem>
               </DropdownMenuContent>
