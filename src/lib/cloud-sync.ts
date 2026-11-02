@@ -55,6 +55,8 @@ let snapshot: CloudSnapshot = { bookings: [], professionals: [] };
 let initialized = false;
 let storeCode = "";
 let availableStores: Store[] = [];
+let snapshotRevision = 0;
+let activeCloudWrites = 0;
 
 function dispatchCloudReady() {
   window.dispatchEvent(new Event("bookings:changed"));
@@ -66,6 +68,7 @@ function setSnapshot(next: CloudSnapshot) {
   if (!next || !Array.isArray(next.bookings) || !Array.isArray(next.professionals)) {
     throw new Error("Se devolvió una respuesta incompleta. No se cargaron datos locales.");
   }
+  snapshotRevision += 1;
   snapshot = next;
   initialized = true;
   dispatchCloudReady();
@@ -123,13 +126,16 @@ export async function bootstrapCloudData(account: string, getToken: () => Promis
 
 export async function refreshCloudData() {
   if (!activeAccount || !initialized) return;
+  const revisionAtRequest = snapshotRevision;
   const result = await request<{ data: CloudSnapshot; stores: Store[] }>("GET");
   if (!result.data || !Array.isArray(result.stores)) throw new Error("Se devolvió una respuesta incompleta.");
+  if (revisionAtRequest !== snapshotRevision || activeCloudWrites > 0) return;
   availableStores = result.stores;
   setSnapshot(result.data);
 }
 
 export function clearCloudSession() {
+  snapshotRevision += 1;
   activeAccount = undefined;
   activeRole = "guest";
   tokenGetter = undefined;
@@ -155,33 +161,42 @@ export function isCloudInitialized() {
 
 export async function persistCloudCollection(collection: "bookings" | "professionals", records: Array<Booking | Professional>, requestedStoreCode?: string) {
   if (!activeAccount || !initialized) throw new Error("La base todavía no está cargada. Reintentá en unos segundos.");
-  const targetStoreCode = requestedStoreCode?.trim().toUpperCase() || storeCode;
-  if (!tokenGetter) {
-    if (activeAccount === "guest" && collection === "bookings") {
-      const booking = records[records.length - 1] as Booking | undefined;
-      if (!booking) return;
-      await request("POST", { action: "guest-booking", booking: { ...booking, storeCode: targetStoreCode } }, targetStoreCode);
-      const result = await request<{ data: CloudSnapshot; stores: Store[] }>("GET", undefined, targetStoreCode);
-      if (!result.data || !Array.isArray(result.stores)) throw new Error("Se devolvió una respuesta incompleta.");
-      availableStores = result.stores;
-      setSnapshot(result.data);
-      return;
+  const writeRevision = ++snapshotRevision;
+  activeCloudWrites += 1;
+  try {
+    const targetStoreCode = requestedStoreCode?.trim().toUpperCase() || storeCode;
+    if (!tokenGetter) {
+      if (activeAccount === "guest" && collection === "bookings") {
+        const booking = records[records.length - 1] as Booking | undefined;
+        if (!booking) return;
+        await request("POST", { action: "guest-booking", booking: { ...booking, storeCode: targetStoreCode } }, targetStoreCode);
+        const result = await request<{ data: CloudSnapshot; stores: Store[] }>("GET", undefined, targetStoreCode);
+        if (!result.data || !Array.isArray(result.stores)) throw new Error("Se devolvió una respuesta incompleta.");
+        if (writeRevision !== snapshotRevision) return;
+        availableStores = result.stores;
+        setSnapshot(result.data);
+        return;
+      }
+      throw new Error("Iniciá sesión para guardar cambios.");
     }
-    throw new Error("Iniciá sesión para guardar cambios.");
+    const oldIds = new Set(snapshot[collection].map((record) => record.id));
+    const nextIds = new Set(records.map((record) => record.id));
+    const deleteIds = [...oldIds].filter((id) => !nextIds.has(id));
+    const recordsCopy = records
+      .filter((record) => collection !== "bookings" || activeRole === "admin" || (record as Booking).customer?.email?.trim().toLowerCase() === activeAccount)
+      .map((record) => ({ ...record, storeCode: targetStoreCode }));
+    const accountAtWrite = activeAccount;
+    await writeRecords(collection, recordsCopy, deleteIds, targetStoreCode);
+    if (activeAccount !== accountAtWrite) throw new Error("Cambió la cuenta activa; vuelve a cargar los datos.");
+    const result = await request<{ data: CloudSnapshot; stores: Store[] }>("GET", undefined, targetStoreCode);
+    if (!result.data || !Array.isArray(result.stores)) throw new Error("Se devolvió una respuesta incompleta.");
+    if (writeRevision !== snapshotRevision) return;
+    availableStores = result.stores;
+    setSnapshot(result.data);
+  } finally {
+    activeCloudWrites -= 1;
+    if (writeRevision === snapshotRevision) snapshotRevision += 1;
   }
-  const oldIds = new Set(snapshot[collection].map((record) => record.id));
-  const nextIds = new Set(records.map((record) => record.id));
-  const deleteIds = [...oldIds].filter((id) => !nextIds.has(id));
-  const recordsCopy = records
-    .filter((record) => collection !== "bookings" || activeRole === "admin" || (record as Booking).customer?.email?.trim().toLowerCase() === activeAccount)
-    .map((record) => ({ ...record, storeCode: targetStoreCode }));
-  const accountAtWrite = activeAccount;
-  await writeRecords(collection, recordsCopy, deleteIds, targetStoreCode);
-  if (activeAccount !== accountAtWrite) throw new Error("Cambió la cuenta activa; vuelve a cargar los datos.");
-  const result = await request<{ data: CloudSnapshot; stores: Store[] }>("GET", undefined, targetStoreCode);
-  if (!result.data || !Array.isArray(result.stores)) throw new Error("Se devolvión una respuesta incompleta.");
-  availableStores = result.stores;
-  setSnapshot(result.data);
 }
 
 export function getCurrentStoreCode() {
@@ -259,6 +274,10 @@ export async function getClientBookings() {
 
 export async function getNotifications() {
   return request<{ notifications: BookingNotification[]; newForPrompt: BookingNotification[] }>("POST", { action: "get-notifications" });
+}
+
+export async function notificationBookingExists(notificationId: string) {
+  return request<{ exists: boolean }>("POST", { action: "check-notification-booking", notificationId });
 }
 
 export async function setNotificationRead(notificationId: string, read: boolean) {

@@ -786,7 +786,7 @@ export default async function handler(request, response) {
     return response.status(400).json({ error: "El cuerpo JSON no es válido." });
   }
   if (request.method === "POST") {
-    if (user && ["get-notifications", "set-notification-read", "delete-notification"].includes(body?.action)) {
+    if (user && ["get-notifications", "check-notification-booking", "set-notification-read", "delete-notification"].includes(body?.action)) {
       try {
         if (!user.emailVerified) return response.status(403).json({ error: "Verificá tu correo para consultar tus notificaciones." });
         const account = await db.execute({ sql: "SELECT role, store_code FROM account_roles WHERE user_id = ?", args: [user.id] });
@@ -823,6 +823,21 @@ export default async function handler(request, response) {
         if (!notificationId || notificationId.length > 100
           || (body.action === "set-notification-read" && typeof body.read !== "boolean")) {
           return response.status(400).json({ error: "La notificación seleccionada no es válida." });
+        }
+        if (body.action === "check-notification-booking") {
+          const notice = await db.execute({
+            sql: "SELECT booking_id, store_code FROM notifications WHERE id = ? AND recipient_key = ?",
+            args: [notificationId, recipientKey],
+          });
+          if (!notice.rows[0]) return response.status(404).json({ error: "No encontramos esa notificación." });
+          const booking = await db.execute({
+            sql: "SELECT value FROM bookings WHERE id = ?",
+            args: [String(notice.rows[0].booking_id)],
+          });
+          const bookingValue = booking.rows[0] ? JSON.parse(String(booking.rows[0].value)) : null;
+          const exists = Boolean(bookingValue)
+            && normalizeStoreCode(bookingValue.storeCode) === normalizeStoreCode(notice.rows[0].store_code);
+          return response.status(200).json({ exists });
         }
         if (body.action === "delete-notification") {
           const deleted = await db.execute({

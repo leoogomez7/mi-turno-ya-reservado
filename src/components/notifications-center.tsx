@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { Bell, Check, ExternalLink, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { BOOKING_HIGHLIGHT_KEY, deleteNotification, getNotifications, setNotificationRead, type BookingNotification } from "@/lib/cloud-sync";
+import { BOOKING_HIGHLIGHT_KEY, deleteNotification, getNotifications, notificationBookingExists, setNotificationRead, type BookingNotification } from "@/lib/cloud-sync";
 import type { AccountRole } from "@/lib/auth";
 
 function parseNotificationTimestamp(value: string) {
@@ -35,6 +36,8 @@ export function NotificationsCenter({ isAuthenticated, role }: { isAuthenticated
   const [error, setError] = useState("");
   const [markingIds, setMarkingIds] = useState<Set<string>>(() => new Set());
   const [markingAll, setMarkingAll] = useState(false);
+  const [checkingBookingIds, setCheckingBookingIds] = useState<Set<string>>(() => new Set());
+  const checkingBookingIdsRef = useRef(new Set<string>());
   const markingIdsRef = useRef(new Set<string>());
   const pendingReadRef = useRef(new Map<string, string>());
   const refreshSequenceRef = useRef(0);
@@ -158,6 +161,34 @@ export function NotificationsCenter({ isAuthenticated, role }: { isAuthenticated
     }
   }
 
+  async function viewBooking(notification: BookingNotification) {
+    if (checkingBookingIdsRef.current.has(notification.id)) return;
+    checkingBookingIdsRef.current.add(notification.id);
+    setCheckingBookingIds((current) => new Set(current).add(notification.id));
+    try {
+      const { exists } = await notificationBookingExists(notification.id);
+      if (!exists) {
+        toast.error("Este turno ya no está disponible. Es posible que haya sido eliminado.");
+        void markRead(notification);
+        return;
+      }
+      sessionStorage.setItem(BOOKING_HIGHLIGHT_KEY, notification.bookingId);
+      void markRead(notification);
+      setPanelOpen(false);
+      await navigate({ to: role === "admin" ? "/agenda" : "/mis-turnos" });
+      window.setTimeout(() => window.dispatchEvent(new Event("mi-turno-ya:highlight-booking")), 0);
+    } catch (reason) {
+      toast.error(reason instanceof Error ? reason.message : "No se pudo comprobar si el turno sigue disponible.");
+    } finally {
+      checkingBookingIdsRef.current.delete(notification.id);
+      setCheckingBookingIds((current) => {
+        const next = new Set(current);
+        next.delete(notification.id);
+        return next;
+      });
+    }
+  }
+
   if (!isAuthenticated || (role !== "admin" && role !== "client")) return null;
 
   const unreadCount = notifications.filter((item) => !item.readAt).length;
@@ -202,14 +233,8 @@ export function NotificationsCenter({ isAuthenticated, role }: { isAuthenticated
                       <span className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${notification.readAt ? "bg-border" : "bg-gold"}`} aria-label={notification.readAt ? "Leída" : "Sin leer"} />
                     </div>
                     <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-                      <button type="button" className="inline-flex items-center gap-1 text-xs text-gold hover:underline" onClick={() => {
-                        sessionStorage.setItem(BOOKING_HIGHLIGHT_KEY, notification.bookingId);
-                        void markRead(notification);
-                        setPanelOpen(false);
-                        void navigate({ to: role === "admin" ? "/agenda" : "/mis-turnos" });
-                        window.setTimeout(() => window.dispatchEvent(new Event("mi-turno-ya:highlight-booking")), 0);
-                      }}>
-                        Ver turno <ExternalLink className="h-3 w-3" />
+                      <button type="button" disabled={checkingBookingIds.has(notification.id)} className="inline-flex items-center gap-1 text-xs text-gold hover:underline disabled:cursor-wait disabled:opacity-70" onClick={() => void viewBooking(notification)}>
+                        {checkingBookingIds.has(notification.id) ? "Buscando turno..." : <>Ver turno <ExternalLink className="h-3 w-3" /></>}
                       </button>
                       <div className="flex items-center gap-3">
                         {markingIds.has(notification.id)
