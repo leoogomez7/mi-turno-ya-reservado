@@ -871,12 +871,40 @@ export default async function handler(request, response) {
         const archiveField = role === "client" ? "clientArchivedAt" : "adminArchivedAt";
         if (!booking[archiveField]) {
           booking[archiveField] = new Date().toISOString();
+          delete booking[role === "client" ? "clientRestoredAt" : "adminRestoredAt"];
           await db.execute({ sql: "UPDATE bookings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", args: [JSON.stringify(booking), bookingId] });
         }
         return response.status(200).json({ booking });
       } catch (error) {
         console.error("No se pudo archivar el turno", error);
         return response.status(500).json({ error: "No se pudo archivar el turno." });
+      }
+    }
+    if (user && body?.action === "restore-archived-booking") {
+      try {
+        if (!user.emailVerified) return response.status(403).json({ error: "Verificá tu correo antes de restaurar turnos." });
+        const account = await db.execute({ sql: "SELECT role, store_code FROM account_roles WHERE user_id = ?", args: [user.id] });
+        const role = String(account.rows[0]?.role ?? "");
+        if (role !== "admin" && role !== "client") return response.status(403).json({ error: "Configurá tu cuenta para restaurar turnos." });
+        const bookingId = typeof body.bookingId === "string" ? body.bookingId.trim() : "";
+        if (!bookingId || bookingId.length > 200) return response.status(400).json({ error: "Identificador de turno inválido." });
+        const existing = await db.execute({ sql: "SELECT value FROM bookings WHERE id = ?", args: [bookingId] });
+        if (!existing.rows[0]) return response.status(404).json({ error: "No encontramos ese turno." });
+        const booking = JSON.parse(String(existing.rows[0].value));
+        if (role === "client") {
+          if (booking.customer?.email?.trim().toLowerCase() !== user.email) return response.status(403).json({ error: "Solo puedes restaurar tus propios turnos." });
+        } else if (normalizeStoreCode(booking.storeCode) !== normalizeStoreCode(account.rows[0]?.store_code)) {
+          return response.status(403).json({ error: "El turno no corresponde a tu sucursal." });
+        }
+        const archiveField = role === "client" ? "clientArchivedAt" : "adminArchivedAt";
+        if (!booking[archiveField]) return response.status(409).json({ error: "Este turno no está eliminado de tu lista." });
+        delete booking[archiveField];
+        booking[role === "client" ? "clientRestoredAt" : "adminRestoredAt"] = new Date().toISOString();
+        await db.execute({ sql: "UPDATE bookings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", args: [JSON.stringify(booking), bookingId] });
+        return response.status(200).json({ booking });
+      } catch (error) {
+        console.error("No se pudo restaurar el turno", error);
+        return response.status(500).json({ error: "No se pudo restaurar el turno." });
       }
     }
     if (user && ["get-notifications", "check-notification-booking", "set-notification-read", "delete-notification"].includes(body?.action)) {

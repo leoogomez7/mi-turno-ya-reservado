@@ -245,7 +245,7 @@ export function NotificationsCenter({ isAuthenticated, role }: { isAuthenticated
         <section aria-label="Notificaciones" className="absolute right-0 top-full z-60 mt-2 w-[min(22rem,calc(100vw-1.5rem))] rounded-2xl border border-gold/30 bg-background p-3 text-foreground shadow-2xl">
           <div className="mb-3 flex items-center justify-between gap-2 border-b border-border pb-2">
             <h2 className="font-semibold">Notificaciones</h2>
-            {unreadCount > 0 && <button type="button" disabled={markingAll} className="text-xs text-gold hover:underline disabled:cursor-wait disabled:opacity-70" onClick={() => void markAllRead()}>{markingAll ? "Marcando leídas..." : "Marcar todas leídas"}</button>}
+            {unreadCount > 0 && <button type="button" disabled={markingAll} className="text-xs text-gold hover:underline disabled:cursor-wait disabled:opacity-70" onClick={() => void markAllRead()}>{markingAll ? "Marcando como leídas..." : "Marcar todas leídas"}</button>}
           </div>
           {error && <p role="alert" className="mb-2 rounded-lg bg-red-500/10 p-2 text-xs text-red-300">{error}</p>}
           {loading ? <p className="py-5 text-center text-sm text-muted-foreground">Cargando…</p>
@@ -279,7 +279,7 @@ export function NotificationsCenter({ isAuthenticated, role }: { isAuthenticated
                       </button>
                       <div className="flex items-center gap-3">
                         {markingIds.has(notification.id)
-                          ? <span className="text-xs text-muted-foreground">Marcando leída...</span>
+                          ? <span className="text-xs text-muted-foreground">Marcando como leída...</span>
                           : notification.readAt
                           ? <span className="inline-flex items-center gap-1 text-xs text-muted-foreground"><Check className="h-3 w-3" /> Leída</span>
                           : <button type="button" disabled={markingAll} className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground disabled:cursor-wait disabled:opacity-70" onClick={() => void markRead(notification)}><Check className="h-3 w-3" /> Marcar como leída</button>}

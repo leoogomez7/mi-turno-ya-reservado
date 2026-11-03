@@ -2,16 +2,17 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
-import { CalendarDays, Clock3, Copy } from "lucide-react";
+import { CalendarDays, Clock3, Copy, Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { SiteHeader } from "@/components/site-header";
 import { AuthRequired } from "@/components/auth-required";
 import { useAppAuth } from "@/lib/auth";
 import { getBookingArchiveLabel, type Booking } from "@/lib/booking-store";
 import { getAvailableSlotsForDate, getScheduleForDate, type Professional } from "@/lib/professional-store";
-import { archiveBooking, BOOKING_HIGHLIGHT_KEY, cancelClientBooking, cancelClientPayment, createClientBookingPaymentPreference, getClientBookings, reportClientPayment, updateClientBooking, updateClientPaymentMethod, type Store } from "@/lib/cloud-sync";
+import { archiveBooking, BOOKING_HIGHLIGHT_KEY, cancelClientBooking, cancelClientPayment, createClientBookingPaymentPreference, getClientBookings, reportClientPayment, restoreArchivedBooking, updateClientBooking, updateClientPaymentMethod, type Store } from "@/lib/cloud-sync";
 import { toast } from "sonner";
 import { LoadingScreen } from "@/components/loading-screen";
 
@@ -39,6 +40,9 @@ function MyBookingsPage() {
   const [editedTime, setEditedTime] = useState("");
   const [paymentBooking, setPaymentBooking] = useState<Booking | null>(null);
   const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
+  const [bookingSearch, setBookingSearch] = useState("");
+  const [archiveSearch, setArchiveSearch] = useState("");
+  const [restoringBookingId, setRestoringBookingId] = useState<string | null>(null);
   const [showTransferDetails, setShowTransferDetails] = useState(false);
   const [changingPaymentBooking, setChangingPaymentBooking] = useState<Booking | null>(null);
   const [newPaymentMethod, setNewPaymentMethod] = useState<NonNullable<Booking["customer"]["paymentMethod"]>>("efectivo");
@@ -293,6 +297,20 @@ function MyBookingsPage() {
     }
   }
 
+  async function restoreTurn(booking: Booking) {
+    if (restoringBookingId) return;
+    setRestoringBookingId(booking.id);
+    try {
+      const result = await restoreArchivedBooking(booking.id);
+      setBookings((current) => current.map((item) => item.id === booking.id ? result.booking : item));
+      toast.success("Turno restaurado en tu lista principal.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo restaurar el turno.");
+    } finally {
+      setRestoringBookingId(null);
+    }
+  }
+
   function cancellationPolicyFor(booking: Booking) {
     return stores.find((store) => store.code === booking.storeCode)?.settings;
   }
@@ -301,6 +319,35 @@ function MyBookingsPage() {
     .filter((booking) => getBookingArchiveLabel(booking, currentTime, "client"))
     .sort((a, b) => (b.clientArchivedAt ?? `${b.date}T${b.time}`).localeCompare(a.clientArchivedAt ?? `${a.date}T${a.time}`));
   const visibleBookings = bookings.filter((booking) => !getBookingArchiveLabel(booking, currentTime, "client"));
+  const normalizeSearch = (value: string) => value.trim().toLocaleLowerCase("es-AR").normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const filterBookings = (list: Booking[], query: string) => {
+    const terms = normalizeSearch(query).split(/\s+/).filter(Boolean);
+    if (!terms.length) return list;
+    return list.filter((booking) => {
+      const professional = professionals.find((item) => item.id === booking.barberId && item.storeCode === booking.storeCode)
+        ?? professionals.find((item) => item.id === booking.barberId);
+      const serviceNames = booking.serviceIds.map((id) => professional?.services.find((service) => service.id === id)?.name ?? "").join(" ");
+      const appointmentDate = parseISO(`${booking.date}T${booking.time}`);
+      const searchable = [
+        booking.customer.fullName,
+        booking.customer.email,
+        booking.customer.phone,
+        professional?.name,
+        professional?.specialty,
+        serviceNames,
+        booking.date,
+        booking.time,
+        format(appointmentDate, "EEEE d 'de' MMMM yyyy", { locale: es }),
+        booking.customer.paymentMethod,
+        booking.status,
+        booking.id,
+      ].filter(Boolean).join(" ");
+      const normalized = normalizeSearch(searchable);
+      return terms.every((term) => normalized.includes(term));
+    });
+  };
+  const filteredVisibleBookings = filterBookings(visibleBookings, bookingSearch);
+  const filteredArchivedBookings = filterBookings(archivedBookings, archiveSearch);
 
   if (isLoading) return <LoadingScreen message="Buscando tus turnos" />;
   if (!isAuthenticated || role !== "client") return <><SiteHeader /><AuthRequired role="client" title="Mis turnos" /></>;
@@ -320,13 +367,17 @@ function MyBookingsPage() {
               <Link to="/reserva" className="inline-flex h-10 items-center rounded-md bg-gold px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-gold-soft">Nuevo turno</Link>
             </div>
           </div>
+          <label className="relative mb-4 block">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input value={bookingSearch} onChange={(event) => setBookingSearch(event.target.value)} placeholder="Buscar por profesional, servicio, fecha u horario…" className="pl-9" aria-label="Buscar mis turnos" />
+          </label>
           {loadingBookings ? (
             <p className="text-sm text-muted-foreground">Cargando tus turnos…</p>
-          ) : !visibleBookings.length ? (
-            <p className="text-sm text-muted-foreground">Todavía no hay turnos asociados a esta cuenta.</p>
+          ) : !filteredVisibleBookings.length ? (
+            <p className="text-sm text-muted-foreground">{visibleBookings.length ? "No encontramos turnos con esa búsqueda." : "Todavía no hay turnos asociados a esta cuenta."}</p>
           ) : (
             <div className="space-y-2">
-            {visibleBookings.map((booking) => {
+            {filteredVisibleBookings.map((booking) => {
               const professional = professionals.find((item) => item.id === booking.barberId && item.storeCode === booking.storeCode)
                 ?? professionals.find((item) => item.id === booking.barberId);
               const serviceNames = booking.serviceIds.map((id) => professional?.services.find((service) => service.id === id)?.name).filter(Boolean).join(", ");
@@ -443,11 +494,15 @@ function MyBookingsPage() {
         <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>Turnos eliminados/antiguos</DialogTitle>
-            <DialogDescription>Turnos archivados con «Borrar turno», con asistencia registrada o que terminaron hace más de 24 horas.</DialogDescription>
+            <DialogDescription>Turnos archivados, con asistencia registrada o antiguos. Se conservan aquí; no se eliminan definitivamente.</DialogDescription>
           </DialogHeader>
-          {!archivedBookings.length ? <p className="py-5 text-center text-sm text-muted-foreground">Todavía no hay turnos archivados.</p> : (
+          <label className="relative block">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input value={archiveSearch} onChange={(event) => setArchiveSearch(event.target.value)} placeholder="Buscar en los turnos archivados…" className="pl-9" aria-label="Buscar turnos archivados" />
+          </label>
+          {!filteredArchivedBookings.length ? <p className="py-5 text-center text-sm text-muted-foreground">{archivedBookings.length ? "No encontramos turnos con esa búsqueda." : "Todavía no hay turnos archivados."}</p> : (
             <div className="space-y-2">
-              {archivedBookings.map((booking) => {
+              {filteredArchivedBookings.map((booking) => {
                 const professional = professionals.find((item) => item.id === booking.barberId && item.storeCode === booking.storeCode)
                   ?? professionals.find((item) => item.id === booking.barberId);
                 const serviceNames = booking.serviceIds.map((id) => professional?.services.find((service) => service.id === id)?.name).filter(Boolean).join(", ");
@@ -460,6 +515,7 @@ function MyBookingsPage() {
                   </div>
                   <p className="mt-1 text-muted-foreground">{format(appointmentDate, "EEEE d 'de' MMMM, yyyy", { locale: es })} · {booking.time}</p>
                   <p className="mt-1 text-muted-foreground">Pago: {paymentMethod} · ${booking.totalPrice.toLocaleString("es-AR")}</p>
+                  {booking.clientArchivedAt && <div className="mt-3 flex justify-end"><Button type="button" size="sm" variant="outline" disabled={restoringBookingId !== null} onClick={() => void restoreTurn(booking)}>{restoringBookingId === booking.id ? "Restaurando…" : "Restaurar a mis turnos"}</Button></div>}
                 </article>;
               })}
             </div>

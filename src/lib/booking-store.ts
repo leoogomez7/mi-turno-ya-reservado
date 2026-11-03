@@ -23,6 +23,8 @@ export interface Booking {
   cancelledBy?: "client" | "professional";
   clientArchivedAt?: string;
   adminArchivedAt?: string;
+  clientRestoredAt?: string;
+  adminRestoredAt?: string;
   paymentStatus?: "pending" | "approved";
   paymentReportedAt?: string;
   paymentCancellationStatus?: "requested" | "cancelled" | "refunded";
@@ -37,7 +39,10 @@ export interface Booking {
 }
 
 export function getBookingArchiveLabel(booking: Booking, now = Date.now(), audience: "client" | "admin" = "client") {
-  if (audience === "client" ? booking.clientArchivedAt : booking.adminArchivedAt) {
+  const archivedAt = audience === "client" ? booking.clientArchivedAt : booking.adminArchivedAt;
+  const restoredAt = audience === "client" ? booking.clientRestoredAt : booking.adminRestoredAt;
+  if (restoredAt) return null;
+  if (archivedAt) {
     return audience === "admin" ? "Eliminado de la agenda" : "Eliminado de tu lista";
   }
   if (booking.status === "completed") return "Asistencia confirmada · Asistió";

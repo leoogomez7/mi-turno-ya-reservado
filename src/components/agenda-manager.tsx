@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
+import { Search } from "lucide-react";
 import { toast } from "sonner";
 
 import { AuthRequired } from "@/components/auth-required";
@@ -9,10 +10,11 @@ import { LoadingScreen } from "@/components/loading-screen";
 import { SiteHeader } from "@/components/site-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { bookingStore, getBarber, getBookingArchiveLabel, type Booking } from "@/lib/booking-store";
 import { useAppAuth } from "@/lib/auth";
-import { archiveBooking, BOOKING_HIGHLIGHT_KEY, refreshCloudData } from "@/lib/cloud-sync";
+import { archiveBooking, BOOKING_HIGHLIGHT_KEY, refreshCloudData, restoreArchivedBooking } from "@/lib/cloud-sync";
 import { getAvailableSlotsForDate, getProfessionalService, getScheduleForDate, professionalStore } from "@/lib/professional-store";
 
 export function AgendaManager() {
@@ -31,6 +33,9 @@ export function AgendaManager() {
   const [deletingBookingId, setDeletingBookingId] = useState<string | null>(null);
   const [cancellingBookingId, setCancellingBookingId] = useState<string | null>(null);
   const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
+  const [archiveSearch, setArchiveSearch] = useState("");
+  const [bookingSearch, setBookingSearch] = useState("");
+  const [restoringBookingId, setRestoringBookingId] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState(Date.now());
   const [highlightedBookingId, setHighlightedBookingId] = useState("");
   const highlightTimeout = useRef<number | null>(null);
@@ -189,6 +194,20 @@ export function AgendaManager() {
     }
   }
 
+  async function restoreTurn(booking: Booking) {
+    if (restoringBookingId) return;
+    setRestoringBookingId(booking.id);
+    try {
+      const result = await restoreArchivedBooking(booking.id);
+      setBookings((current) => current.map((item) => item.id === booking.id ? result.booking : item));
+      toast.success("Turno restaurado en la agenda.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo restaurar el turno.");
+    } finally {
+      setRestoringBookingId(null);
+    }
+  }
+
   async function cancelBooking(booking: Booking) {
     if (cancellingBookingId || booking.status === "cancelled") return;
     setCancellingBookingId(booking.id);
@@ -205,12 +224,56 @@ export function AgendaManager() {
   const archivedBookings = bookings
     .filter((booking) => getBookingArchiveLabel(booking, currentTime, "admin"))
     .sort((a, b) => (b.adminArchivedAt ?? `${b.date}T${b.time}`).localeCompare(a.adminArchivedAt ?? `${a.date}T${a.time}`));
+  const normalizedArchiveSearch = archiveSearch.trim().toLocaleLowerCase("es-AR").normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const filteredArchivedBookings = archivedBookings.filter((booking) => {
+    if (!normalizedArchiveSearch) return true;
+    const professional = getBarber(booking.barberId);
+    const services = booking.serviceIds.map((id) => getProfessionalService(booking.barberId, id)?.name ?? "").join(" ");
+    const appointmentDate = parseISO(`${booking.date}T${booking.time}`);
+    const searchable = [
+      booking.customer.fullName,
+      booking.customer.email,
+      booking.customer.phone,
+      professional?.name,
+      professional?.specialty,
+      services,
+      booking.date,
+      booking.time,
+      format(appointmentDate, "EEEE d 'de' MMMM yyyy", { locale: es }),
+      booking.customer.paymentMethod,
+      booking.status,
+      getBookingArchiveLabel(booking, currentTime, "admin"),
+    ].filter(Boolean).join(" ").toLocaleLowerCase("es-AR").normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    return normalizedArchiveSearch.split(/\s+/).every((term) => searchable.includes(term));
+  });
   const visibleBookings = bookings
     .filter((booking) => !getBookingArchiveLabel(booking, currentTime, "admin"))
     .sort((a, b) => {
       if (!!a.isTest === !!b.isTest) return (a.date + a.time).localeCompare(b.date + b.time);
       return a.isTest ? 1 : -1;
     });
+  const normalizedBookingSearch = bookingSearch.trim().toLocaleLowerCase("es-AR").normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const filteredVisibleBookings = visibleBookings.filter((booking) => {
+    if (!normalizedBookingSearch) return true;
+    const professional = getBarber(booking.barberId);
+    const services = booking.serviceIds.map((id) => getProfessionalService(booking.barberId, id)?.name ?? "").join(" ");
+    const appointmentDate = parseISO(`${booking.date}T${booking.time}`);
+    const searchable = [
+      booking.customer.fullName,
+      booking.customer.email,
+      booking.customer.phone,
+      professional?.name,
+      professional?.specialty,
+      services,
+      booking.date,
+      booking.time,
+      format(appointmentDate, "EEEE d 'de' MMMM yyyy", { locale: es }),
+      booking.customer.paymentMethod,
+      booking.status,
+      booking.id,
+    ].filter(Boolean).join(" ").toLocaleLowerCase("es-AR").normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    return normalizedBookingSearch.split(/\s+/).every((term) => searchable.includes(term));
+  });
 
   return (
     <div className="min-h-screen bg-gradient-dark">
@@ -227,11 +290,15 @@ export function AgendaManager() {
               <Link to="/reserva" className="inline-flex h-10 items-center rounded-md bg-gold px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-gold-soft">Nuevo turno</Link>
             </div>
           </div>
-          {!visibleBookings.length ? (
-            <p className="text-sm text-muted-foreground">No hay turnos agendados todavía.</p>
+          <label className="relative mb-4 block">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input value={bookingSearch} onChange={(event) => setBookingSearch(event.target.value)} placeholder="Buscar por cliente, profesional, servicio, fecha u horario…" className="pl-9" aria-label="Buscar turnos" />
+          </label>
+          {!filteredVisibleBookings.length ? (
+            <p className="text-sm text-muted-foreground">{visibleBookings.length ? "No encontramos turnos con esa búsqueda." : "No hay turnos agendados todavía."}</p>
           ) : (
             <div className="space-y-2">
-              {visibleBookings.map((booking) => {
+              {filteredVisibleBookings.map((booking) => {
               const professional = getBarber(booking.barberId);
               const services = booking.serviceIds.map((id) => getProfessionalService(booking.barberId, id)?.name).filter(Boolean).join(", ");
               const date = parseISO(`${booking.date}T${booking.time}`);
@@ -296,11 +363,15 @@ export function AgendaManager() {
           <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
             <DialogHeader>
               <DialogTitle>Turnos eliminados/antiguos</DialogTitle>
-              <DialogDescription>Turnos archivados con «Borrar turno», con asistencia registrada o que terminaron hace más de 24 horas.</DialogDescription>
+              <DialogDescription>Turnos archivados, con asistencia registrada o antiguos. Se conservan aquí; no se eliminan definitivamente.</DialogDescription>
             </DialogHeader>
-            {!archivedBookings.length ? <p className="py-5 text-center text-sm text-muted-foreground">Todavía no hay turnos archivados.</p> : (
+            <label className="relative block">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input value={archiveSearch} onChange={(event) => setArchiveSearch(event.target.value)} placeholder="Buscar en los turnos archivados…" className="pl-9" aria-label="Buscar turnos archivados" />
+            </label>
+            {!filteredArchivedBookings.length ? <p className="py-5 text-center text-sm text-muted-foreground">{archivedBookings.length ? "No encontramos turnos con esa búsqueda." : "Todavía no hay turnos archivados."}</p> : (
               <div className="space-y-2">
-                {archivedBookings.map((booking) => {
+                {filteredArchivedBookings.map((booking) => {
                   const professional = getBarber(booking.barberId);
                   const services = booking.serviceIds.map((id) => getProfessionalService(booking.barberId, id)?.name).filter(Boolean).join(", ");
                   const appointmentDate = parseISO(`${booking.date}T${booking.time}`);
@@ -312,6 +383,7 @@ export function AgendaManager() {
                     </div>
                     <p className="mt-1 text-muted-foreground">{services || "Servicio"} · {format(appointmentDate, "EEEE d 'de' MMMM, yyyy", { locale: es })} · {booking.time}</p>
                     <p className="mt-1 text-muted-foreground">Pago: {paymentMethod} · ${booking.totalPrice.toLocaleString("es-AR")}</p>
+                    {booking.adminArchivedAt && <div className="mt-3 flex justify-end"><Button type="button" size="sm" variant="outline" disabled={restoringBookingId !== null} onClick={() => void restoreTurn(booking)}>{restoringBookingId === booking.id ? "Restaurando…" : "Restaurar a la agenda"}</Button></div>}
                   </article>;
                 })}
               </div>

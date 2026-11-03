@@ -339,6 +339,12 @@ export async function archiveBooking(bookingId: string) {
   return result;
 }
 
+export async function restoreArchivedBooking(bookingId: string) {
+  const result = await request<{ booking: Booking }>("POST", { action: "restore-archived-booking", bookingId });
+  setSnapshot({ ...snapshot, bookings: snapshot.bookings.map((item) => item.id === bookingId ? result.booking : item) });
+  return result;
+}
+
 export async function getStoreMercadoPagoCredentials() {
   return request<StoreMercadoPagoCredentials>("POST", { action: "get-store-payment-credentials" });
 }
