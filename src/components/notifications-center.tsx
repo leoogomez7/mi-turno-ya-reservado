@@ -183,7 +183,10 @@ export function NotificationsCenter({ isAuthenticated, role }: { isAuthenticated
     try {
       const { exists } = await notificationBookingExists(notification.id);
       if (!exists) {
-        toast.error("Este turno ya no está disponible.");
+        setNotifications((current) => current.map((item) => item.id === notification.id ? { ...item, bookingExists: false } : item));
+        toast("Este turno ya no está disponible. Podés consultar el detalle de la notificación.", {
+          className: "!border-white/20 !bg-black !text-white",
+        });
         void markRead(notification);
         return;
       }
@@ -247,12 +250,21 @@ export function NotificationsCenter({ isAuthenticated, role }: { isAuthenticated
                         <time className="mt-2 block text-[11px] text-muted-foreground" dateTime={parseNotificationTimestamp(notification.createdAt).toISOString()}>
                           {formatBuenosAiresTimestamp(notification.createdAt)}
                         </time>
+                        {notification.bookingExists === false && <p className="mt-2 rounded-md border border-white/15 bg-black px-2 py-1.5 text-xs text-white">El turno fue eliminado o ya no está disponible para consultar.</p>}
                       </div>
                       <span className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${notification.readAt ? "bg-border" : "bg-gold"}`} aria-label={notification.readAt ? "Leída" : "Sin leer"} />
                     </div>
                     <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-                      <button type="button" disabled={checkingBookingIds.has(notification.id)} className="inline-flex items-center gap-1 text-xs text-gold hover:underline disabled:cursor-wait disabled:opacity-70" onClick={() => void viewBooking(notification)}>
-                        {checkingBookingIds.has(notification.id) ? "Buscando turno..." : <>Ver turno <ExternalLink className="h-3 w-3" /></>}
+                      <button type="button" disabled={checkingBookingIds.has(notification.id)} className="inline-flex items-center gap-1 text-xs text-gold hover:underline disabled:cursor-wait disabled:opacity-70" onClick={() => {
+                        if (notification.bookingExists === false) {
+                          toast("El turno ya no se puede abrir. Este es el detalle de la notificación.", {
+                            className: "!border-white/20 !bg-black !text-white",
+                          });
+                          return;
+                        }
+                        void viewBooking(notification);
+                      }}>
+                        {checkingBookingIds.has(notification.id) ? "Buscando turno..." : <>{notification.bookingExists === false ? "Ver detalle" : "Ver turno"} <ExternalLink className="h-3 w-3" /></>}
                       </button>
                       <div className="flex items-center gap-3">
                         {markingIds.has(notification.id)

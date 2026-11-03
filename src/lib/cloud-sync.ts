@@ -31,6 +31,7 @@ export type BookingNotification = {
   message: string;
   createdAt: string;
   readAt: string | null;
+  bookingExists?: boolean;
 };
 export const BOOKING_HIGHLIGHT_KEY = "mi-turno-ya:highlight-booking";
 export type ClientBookings = {

@@ -799,12 +799,18 @@ export default async function handler(request, response) {
 
         if (body.action === "get-notifications") {
           const result = await db.execute({
-            sql: "SELECT id, booking_id AS bookingId, type, title, message, created_at AS createdAt, read_at AS readAt, prompted_at AS promptedAt FROM notifications WHERE recipient_key = ? ORDER BY created_at DESC LIMIT 100",
+            sql: `SELECT notifications.id, notifications.booking_id AS bookingId, notifications.type, notifications.title,
+              notifications.message, notifications.created_at AS createdAt, notifications.read_at AS readAt,
+              notifications.prompted_at AS promptedAt,
+              EXISTS(SELECT 1 FROM bookings WHERE bookings.id = notifications.booking_id
+                AND upper(json_extract(bookings.value, '$.storeCode')) = upper(notifications.store_code)) AS bookingExists
+              FROM notifications WHERE notifications.recipient_key = ? ORDER BY notifications.created_at DESC LIMIT 100`,
             args: [recipientKey],
           });
           const notifications = result.rows.map((row) => ({
             id: String(row.id), bookingId: String(row.bookingId), type: String(row.type), title: String(row.title),
             message: String(row.message), createdAt: String(row.createdAt), readAt: row.readAt ? String(row.readAt) : null,
+            bookingExists: Boolean(row.bookingExists),
           }));
           const newForPrompt = notifications.filter((notification) => {
             const row = result.rows.find((item) => String(item.id) === notification.id);
@@ -1826,6 +1832,9 @@ export default async function handler(request, response) {
       }
       if (body.collection === "bookings" && role === "admin") {
         const removedBooking = JSON.parse(String(existing.rows[0].value));
+        if (removedBooking.paymentStatus === "approved") {
+          return response.status(409).json({ error: "No se puede borrar un turno con el pago confirmado." });
+        }
         const notice = notificationForClient(removedBooking, "booking_cancelled", "Turno cancelado", "El profesional canceló tu turno.");
         if (notice) statements.push(notice);
       }
