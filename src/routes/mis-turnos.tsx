@@ -362,9 +362,9 @@ function MyBookingsPage() {
               <p className="text-xs uppercase tracking-widest text-gold">Reservar</p>
               <h1 className="mt-1 font-display text-2xl font-semibold">Mis turnos</h1>
             </div>
-            <div className="flex flex-wrap gap-2">
-              <Button type="button" variant="outline" onClick={() => setArchiveDialogOpen(true)}>Turnos eliminados/antiguos</Button>
-              <Link to="/reserva" className="inline-flex h-10 items-center rounded-md bg-gold px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-gold-soft">Nuevo turno</Link>
+            <div className="flex shrink-0 flex-nowrap gap-2">
+              <Button type="button" variant="outline" className="h-9 min-w-0 whitespace-nowrap px-2 text-[11px] sm:px-4 sm:text-sm" onClick={() => setArchiveDialogOpen(true)}>Turnos eliminados/antiguos</Button>
+              <Link to="/reserva" className="inline-flex h-9 shrink-0 items-center rounded-md bg-gold px-3 text-xs font-medium text-primary-foreground transition-colors hover:bg-gold-soft sm:h-10 sm:px-4 sm:text-sm">Nuevo turno</Link>
             </div>
           </div>
           <label className="relative mb-4 block">
@@ -406,16 +406,20 @@ function MyBookingsPage() {
                 && ["efectivo", "transferencia", "tarjeta o mercado pago"].includes(booking.customer.paymentMethod ?? "");
               const canArchive = !getBookingArchiveLabel(booking, currentTime, "client");
               return (
-                <article key={booking.id} id={`booking-${booking.id}`} className={`flex flex-wrap items-center gap-4 rounded-xl border p-4 transition-colors duration-300 ${highlightedBookingId === booking.id ? "border-gold bg-gold/20 ring-2 ring-gold/70" : "border-gold/30 bg-card"}`}>
-                  <div className="flex w-20 shrink-0 flex-col items-center rounded-lg bg-gold/10 px-2 py-2 text-gold">
-                    <span className="text-[10px] uppercase tracking-widest">{format(appointmentDate, "EEE", { locale: es })}</span>
-                    <span className="font-display text-2xl font-semibold">{format(appointmentDate, "d")}</span>
-                    <span className="text-[10px]">{booking.time}</span>
+                <article key={booking.id} id={`booking-${booking.id}`} className={`flex flex-col items-center gap-3 rounded-xl border p-4 text-center transition-colors duration-300 sm:flex-row sm:items-center sm:gap-4 sm:text-left ${highlightedBookingId === booking.id ? "border-gold bg-gold/20 ring-2 ring-gold/70" : "border-gold/30 bg-card"}`}>
+                  <div className="flex w-full items-center justify-center gap-2 sm:contents">
+                    <div className="flex w-16 shrink-0 flex-col items-center rounded-lg bg-gold/10 px-1.5 py-2 text-gold">
+                      <span className="text-[10px] uppercase tracking-widest">{format(appointmentDate, "EEE", { locale: es })}</span>
+                      <span className="font-display text-2xl font-semibold">{format(appointmentDate, "d")}</span>
+                      <span className="text-[10px]">{booking.time}</span>
+                    </div>
+                    <div className="min-w-0 flex-1 text-center sm:text-left">
+                      <div className="font-medium">{professional?.name ?? "Profesional"}</div>
+                      <div className="text-sm text-muted-foreground">{serviceNames || "Servicio"} · {booking.duration} min</div>
+                    </div>
+                    <div className="shrink-0 font-display text-base font-semibold text-gold sm:text-lg">${booking.totalPrice.toLocaleString("es-AR")}</div>
                   </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="font-medium">{professional?.name ?? "Profesional"}</div>
-                    <div className="truncate text-sm text-muted-foreground">{serviceNames || "Servicio"} · {booking.duration} min</div>
-                    <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                  <div className="flex w-full flex-wrap items-center justify-center gap-2 text-xs text-muted-foreground sm:w-auto sm:flex-1 sm:justify-start">
                       <Badge variant="outline" className={statusClass}>{statusLabel}</Badge>
                       <Badge variant="outline" className="border-gold/30 text-gold">Pago · {paymentMethodLabel}</Badge>
                       {(booking.status === "pending-payment" || booking.paymentStatus === "pending") && <Badge variant="outline" className="border-amber-300 text-amber-300">Pago pendiente</Badge>}
@@ -424,15 +428,10 @@ function MyBookingsPage() {
                       {booking.paymentCancellationStatus === "requested" && <Badge variant="outline" className="border-amber-300 text-amber-300">Devolución solicitada</Badge>}
                       {booking.paymentCancellationStatus === "refunded" && <Badge variant="outline" className="border-emerald-300 text-emerald-400">Pago devuelto</Badge>}
                       {booking.paymentCancellationStatus === "cancelled" && <Badge variant="outline" className="border-red-300 text-red-300">Pago cancelado</Badge>}
-                    </div>
                   </div>
-                  <div className="font-display text-lg font-semibold text-gold">${booking.totalPrice.toLocaleString("es-AR")}</div>
-                  {(isActiveBooking || canArchive) && <div className="flex flex-wrap gap-2">
+                  {(isActiveBooking || canArchive) && <div className="flex w-full flex-wrap justify-center gap-2 sm:w-auto sm:justify-end">
                     {!hasPaymentReport && booking.paymentStatus !== "approved" && <Button size="sm" disabled={busyBookingId !== null} className="bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-60" onClick={() => { setPaymentBooking(booking); setShowTransferDetails(false); }}>Indicar pago</Button>}
                     {canRequestPaymentCancellation && !booking.paymentCancellationStatus && <Button size="sm" variant="destructive" disabled={busyBookingId !== null} onClick={() => { setRefundCbu(""); setPaymentBooking(booking); setShowTransferDetails(false); }}>Cancelar pago</Button>}
-                    {booking.paymentCancellationStatus === "requested" && <Badge variant="outline" className="border-amber-300 text-amber-300">Devolución solicitada</Badge>}
-                    {booking.paymentCancellationStatus === "refunded" && <Badge variant="outline" className="border-emerald-300 text-emerald-400">Pago devuelto</Badge>}
-                    {booking.paymentCancellationStatus === "cancelled" && <Badge variant="outline" className="border-red-300 text-red-300">Pago cancelado</Badge>}
                     {booking.paymentStatus !== "approved" && !hasPaymentReport && !booking.paymentCancellationStatus && <Button size="sm" variant="outline" disabled={busyBookingId !== null} onClick={() => void openEditDialog(booking)}>Modificar turno</Button>}
                     {canCancel && <Button size="sm" variant="destructive" disabled={busyBookingId !== null} className={cancelingBookingId === booking.id ? "opacity-60" : undefined} onClick={() => void cancelBooking(booking)}>{cancelingBookingId === booking.id ? "Cancelando turno..." : "Cancelar turno"}</Button>}
                     {canArchive && <Button size="sm" variant="destructive" disabled={busyBookingId !== null} className={deletingBookingId === booking.id ? "opacity-60" : undefined} onClick={() => void archiveTurn(booking)}>{deletingBookingId === booking.id ? "Borrando turno..." : "Borrar turno"}</Button>}
@@ -491,7 +490,7 @@ function MyBookingsPage() {
         </DialogContent>
       </Dialog>
       <Dialog open={archiveDialogOpen} onOpenChange={setArchiveDialogOpen}>
-        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
+        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl" onOpenAutoFocus={(event) => event.preventDefault()}>
           <DialogHeader>
             <DialogTitle>Turnos eliminados/antiguos</DialogTitle>
             <DialogDescription>Turnos archivados, con asistencia registrada o antiguos. Se conservan aquí; no se eliminan definitivamente.</DialogDescription>

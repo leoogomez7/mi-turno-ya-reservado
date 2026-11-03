@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { Menu, X } from "lucide-react";
+import { LogOut, Menu, X } from "lucide-react";
 import logo from "../../logo.png";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -10,6 +10,7 @@ import { useLocation } from "@tanstack/react-router";
 import { getAvailableStores, getCurrentStoreCode } from "@/lib/cloud-sync";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { NotificationsCenter } from "@/components/notifications-center";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 
 function preloadStatsCharts() {
   void import("@/components/admin-charts");
@@ -60,16 +61,17 @@ export function SiteHeader() {
   }
 
   return (
+    <Sheet open={open} onOpenChange={setOpen}>
     <header className="sticky top-0 z-40 border-b border-border/60 bg-background/80 backdrop-blur-xl">
-      <div className="relative flex w-full flex-wrap items-center justify-between gap-2 px-3 py-2.5 md:px-4 lg:px-5">
-        <Link to="/reserva" className="flex items-center gap-2">
-          <span className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full border border-gold/50 bg-black shadow-[0_0_18px_rgba(234,179,8,0.18)]">
+      <div className="relative flex w-full flex-nowrap items-center justify-between gap-1 px-2 py-2.5 md:gap-2 md:px-4 lg:px-5">
+        <Link to="/reserva" className="flex min-w-0 items-center gap-2">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full border border-gold/50 bg-black shadow-[0_0_18px_rgba(234,179,8,0.18)] md:h-12 md:w-12">
             <img src={logo} alt="Mi Turno Ya Reservado" className="h-full w-full object-cover object-center" />
           </span>
-          <span className="font-display text-lg font-semibold tracking-tight">Mi Turno Ya Reservado</span>
+          <span className="max-w-[34vw] truncate font-display text-sm font-semibold tracking-tight sm:max-w-none sm:text-lg">Mi Turno Ya Reservado</span>
         </Link>
 
-        <div className="ml-auto flex shrink-0 items-center gap-2">
+        <div className="ml-auto flex shrink-0 items-center gap-1 sm:gap-2">
         <nav className="hidden items-center justify-end gap-1 text-sm md:flex">
           {role === "admin" && (
             <div className="mr-2 grid grid-cols-[auto_minmax(0,1fr)] gap-x-2 rounded-lg border border-gold/30 bg-background/50 px-3 py-1.5 text-xs leading-4">
@@ -102,23 +104,37 @@ export function SiteHeader() {
           )}
         </nav>
 
+        <NotificationsCenter isAuthenticated={isAuthenticated} role={role} />
+
         <button
           type="button"
           onClick={() => setOpen((value) => !value)}
-          className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-background/90 px-3 py-2 text-sm text-foreground shadow-sm transition hover:bg-background md:hidden"
+          aria-label={open ? "Cerrar menú" : "Abrir menú"}
+          aria-expanded={open}
+          className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-border/60 bg-background/90 p-0 text-foreground shadow-sm transition hover:bg-background md:hidden"
         >
-          {open ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
-          <span>Menú</span>
+          {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
         </button>
-
-        <NotificationsCenter isAuthenticated={isAuthenticated} role={role} />
+        {isAuthenticated && <button
+          type="button"
+          onClick={() => void handleLogout()}
+          aria-label="Cerrar sesión"
+          title="Cerrar sesión"
+          className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-border/60 bg-background/90 text-foreground shadow-sm transition hover:border-red-400/50 hover:bg-red-500/10 hover:text-red-300 md:hidden"
+        >
+          <LogOut className="h-5 w-5" />
+        </button>}
         </div>
 
-        {open && (
-          <div className="absolute left-1/2 top-full z-50 mt-2 w-[calc(100vw-2rem)] max-w-xs -translate-x-1/2 rounded-3xl border border-border/60 bg-black p-3 shadow-2xl md:hidden">
-            <nav className="flex flex-col gap-2 text-sm">
+        <SheetContent side="right" className="w-[min(88vw,22rem)] border-l border-gold/20 bg-background p-0 text-foreground md:hidden">
+          <div className="flex h-full flex-col overflow-y-auto p-5 pt-12">
+            <SheetHeader className="border-b border-border pb-5 text-left">
+              <SheetTitle className="font-display text-xl">Mi Turno Ya Reservado</SheetTitle>
+              <SheetDescription>{isAuthenticated ? user?.email ?? "Tu cuenta" : "Menú de navegación"}</SheetDescription>
+            </SheetHeader>
+            <nav aria-label="Navegación principal" className="flex flex-col gap-2 py-5 text-sm">
               {role === "admin" && (
-                <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 rounded-2xl border border-gold/30 bg-background/50 px-4 py-3 text-xs leading-5">
+                <div className="mb-2 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 rounded-2xl border border-gold/30 bg-gold/5 px-4 py-3 text-xs leading-5">
                   <span className="text-muted-foreground">Sucursal</span>
                   <span className="truncate font-semibold text-gold" title={branchInfo.name}>{branchInfo.name}</span>
                   <span className="text-muted-foreground">Código</span>
@@ -128,32 +144,28 @@ export function SiteHeader() {
               <Link
                 to="/reserva"
                 onClick={() => setOpen(false)}
-                className="block rounded-2xl px-4 py-3 text-foreground hover:bg-border/10 [&.active]:bg-gold/10 [&.active]:text-gold"
+                className="block rounded-xl border border-transparent px-4 py-3 text-foreground transition-colors hover:border-border hover:bg-card [&.active]:border-gold/30 [&.active]:bg-gold/10 [&.active]:text-gold"
               >
                 Reservar
               </Link>
-              {role === "admin" && <Link to="/agenda" onClick={() => setOpen(false)} className="block rounded-2xl px-4 py-3 text-foreground hover:bg-border/10 [&.active]:bg-gold/10 [&.active]:text-gold">Agenda</Link>}
-              {role === "admin" && <Link to="/estadisticas" preload="intent" onPointerEnter={preloadStatsCharts} onFocus={preloadStatsCharts} onClick={() => setOpen(false)} className="block rounded-2xl px-4 py-3 text-foreground hover:bg-border/10 [&.active]:bg-gold/10 [&.active]:text-gold">Estadísticas</Link>}
-              {role === "admin" && <Link to="/plan" preload="intent" onClick={() => setOpen(false)} className="block rounded-2xl px-4 py-3 text-foreground hover:bg-border/10 [&.active]:bg-gold/10 [&.active]:text-gold">Plan</Link>}
-              {role === "admin" && <Link to="/configuracion" onClick={() => setOpen(false)} className="block rounded-2xl px-4 py-3 text-foreground hover:bg-border/10 [&.active]:bg-gold/10 [&.active]:text-gold">Configuración</Link>}
+              {role === "admin" && <Link to="/agenda" onClick={() => setOpen(false)} className="block rounded-xl border border-transparent px-4 py-3 text-foreground transition-colors hover:border-border hover:bg-card [&.active]:border-gold/30 [&.active]:bg-gold/10 [&.active]:text-gold">Agenda</Link>}
+              {role === "admin" && <Link to="/estadisticas" preload="intent" onPointerEnter={preloadStatsCharts} onFocus={preloadStatsCharts} onClick={() => setOpen(false)} className="block rounded-xl border border-transparent px-4 py-3 text-foreground transition-colors hover:border-border hover:bg-card [&.active]:border-gold/30 [&.active]:bg-gold/10 [&.active]:text-gold">Estadísticas</Link>}
+              {role === "admin" && <Link to="/plan" preload="intent" onClick={() => setOpen(false)} className="block rounded-xl border border-transparent px-4 py-3 text-foreground transition-colors hover:border-border hover:bg-card [&.active]:border-gold/30 [&.active]:bg-gold/10 [&.active]:text-gold">Plan</Link>}
+              {role === "admin" && <Link to="/configuracion" onClick={() => setOpen(false)} className="block rounded-xl border border-transparent px-4 py-3 text-foreground transition-colors hover:border-border hover:bg-card [&.active]:border-gold/30 [&.active]:bg-gold/10 [&.active]:text-gold">Configuración</Link>}
               {isAuthenticated && role === "client" && (
-                <Link to="/mis-turnos" onClick={() => setOpen(false)} className="block rounded-2xl px-4 py-3 text-foreground hover:bg-border/10 [&.active]:bg-gold/10 [&.active]:text-gold">
+                <Link to="/mis-turnos" onClick={() => setOpen(false)} className="block rounded-xl border border-transparent px-4 py-3 text-foreground transition-colors hover:border-border hover:bg-card [&.active]:border-gold/30 [&.active]:bg-gold/10 [&.active]:text-gold">
                   Mis turnos
                 </Link>
               )}
               {isAuthenticated && role === "client" && (
-                <Link to="/mis-datos" onClick={() => setOpen(false)} className="block rounded-2xl px-4 py-3 text-foreground hover:bg-border/10 [&.active]:bg-gold/10 [&.active]:text-gold">
+                <Link to="/mis-datos" onClick={() => setOpen(false)} className="block rounded-xl border border-transparent px-4 py-3 text-foreground transition-colors hover:border-border hover:bg-card [&.active]:border-gold/30 [&.active]:bg-gold/10 [&.active]:text-gold">
                   Mis datos
                 </Link>
               )}
-              {isAuthenticated ? (
-                <button type="button" onClick={() => void handleLogout()} className="mx-auto w-full max-w-220px rounded-2xl px-4 py-3 text-center text-foreground hover:bg-border/10">Cerrar sesión</button>
-              ) : (
-                <button type="button" onClick={() => { setOpen(false); setAuthDialogOpen(true); }} className="rounded-2xl px-4 py-3 text-left text-foreground hover:bg-border/10">Ingresar / Crear cuenta</button>
-              )}
+              {!isAuthenticated && <button type="button" onClick={() => { setOpen(false); setAuthDialogOpen(true); }} className="rounded-xl border border-gold/30 bg-gold/10 px-4 py-3 text-left font-medium text-gold transition-colors hover:bg-gold/15">Ingresar / Crear cuenta</button>}
             </nav>
           </div>
-        )}
+        </SheetContent>
       </div>
       <Dialog open={authDialogOpen} onOpenChange={setAuthDialogOpen}>
         <DialogContent>
@@ -190,5 +202,6 @@ export function SiteHeader() {
         </DialogContent>
       </Dialog>
     </header>
+    </Sheet>
   );
 }

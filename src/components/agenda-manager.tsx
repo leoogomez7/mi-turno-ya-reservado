@@ -311,27 +311,29 @@ export function AgendaManager() {
                     : "No especificado";
               const isActiveBooking = booking.status === "confirmed" || booking.status === "pending-payment";
               return (
-                <div key={booking.id} id={`booking-${booking.id}`} className={`flex flex-wrap items-center gap-4 rounded-xl border p-4 transition-colors duration-300 ${highlightedBookingId === booking.id ? "border-gold bg-gold/20 ring-2 ring-gold/70" : "border-gold/30 bg-card"}`}>
-                  <div className="flex w-20 shrink-0 flex-col items-center rounded-lg bg-gold/10 px-2 py-2 text-gold">
-                    <span className="text-[10px] uppercase tracking-widest">{format(date, "EEE", { locale: es })}</span>
-                    <span className="font-display text-2xl font-semibold">{format(date, "d")}</span>
-                    <span className="text-[10px]">{booking.time}</span>
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                      <span className="font-medium">{booking.customer.fullName}</span>
-                      {booking.customer.phone && <span className="text-xs text-muted-foreground">{booking.customer.phone}</span>}
-                      {booking.customer.email && <span className="truncate text-xs text-muted-foreground">{booking.customer.email}</span>}
+                <div key={booking.id} id={`booking-${booking.id}`} className={`flex flex-col items-center gap-3 rounded-xl border p-4 text-center transition-colors duration-300 sm:flex-row sm:items-center sm:gap-4 sm:text-left ${highlightedBookingId === booking.id ? "border-gold bg-gold/20 ring-2 ring-gold/70" : "border-gold/30 bg-card"}`}>
+                  <div className="flex w-full items-center justify-center gap-2 sm:contents">
+                    <div className="flex w-16 shrink-0 flex-col items-center rounded-lg bg-gold/10 px-1.5 py-2 text-gold">
+                      <span className="text-[10px] uppercase tracking-widest">{format(date, "EEE", { locale: es })}</span>
+                      <span className="font-display text-2xl font-semibold">{format(date, "d")}</span>
+                      <span className="text-[10px]">{booking.time}</span>
                     </div>
-                    <div className="truncate text-sm text-muted-foreground">{services} · {booking.duration} min</div>
-                    <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                      <Badge variant="outline" className="border-gold/30 text-gold">
-                        {professional?.name}{professional?.specialty ? ` · ${professional.specialty}` : ""}
-                      </Badge>
+                    <div className="min-w-0 flex-1 text-center sm:text-left">
+                      <div className="font-medium">{professional?.name ?? "Profesional"}{professional?.specialty ? ` · ${professional.specialty}` : ""}</div>
+                      <div className="text-sm text-muted-foreground">{services || "Servicio"} · {booking.duration} min</div>
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        <span>{booking.customer.fullName}</span>
+                        {(booking.customer.phone || booking.customer.email) && <span className="block truncate">{[booking.customer.phone, booking.customer.email].filter(Boolean).join(" · ")}</span>}
+                      </div>
+                    </div>
+                    <div className="shrink-0 font-display text-base font-semibold text-gold sm:text-lg">${booking.totalPrice.toLocaleString("es-AR")}</div>
+                  </div>
+                  <div className="flex w-full flex-wrap items-center justify-center gap-2 text-xs text-muted-foreground sm:w-auto sm:flex-1 sm:justify-start">
                       {booking.cancelledBy === "client" && <Badge variant="outline" className="border-red-300 text-red-300">Cancelado por el cliente · Revisar si eliminar</Badge>}
                       {booking.cancelledBy === "professional" && <Badge variant="outline" className="border-red-300 text-red-300">Cancelado por el profesional</Badge>}
                       <Badge variant="outline" className="border-gold/30 text-gold">Pago · {paymentMethodLabel}</Badge>
                       {booking.isTest && <Badge variant="outline" className="border-emerald-300 text-emerald-400">Turno de prueba</Badge>}
+                      {booking.status === "confirmed" && <Badge variant="outline" className="border-gold/30 text-gold">Reservado</Badge>}
                       {(booking.status === "pending-payment" || booking.paymentStatus === "pending") && <Badge variant="outline" className="border-amber-300 text-amber-300">Pago pendiente</Badge>}
                       {booking.paymentReportedAt && booking.paymentStatus !== "approved" && <Badge variant="outline" className="border-amber-300 text-amber-300">Cliente avisó que pagó</Badge>}
                       {booking.paymentStatus === "approved" && <Badge variant="outline" className="border-emerald-300 text-emerald-400">Pagado · {booking.customer.paymentMethod === "tarjeta o mercado pago" ? "Tarjeta o Mercado Pago" : booking.customer.paymentMethod === "transferencia" ? "Transferencia Bancaria" : "Efectivo"}</Badge>}
@@ -340,11 +342,9 @@ export function AgendaManager() {
                       {booking.paymentCancellationStatus === "cancelled" && <Badge variant="outline" className="border-red-300 text-red-300">Pago cancelado en Mercado Pago</Badge>}
                       {booking.status === "completed" && <Badge variant="outline" className="border-emerald-300 text-emerald-400">Asistió</Badge>}
                       {booking.status === "no-show" && <Badge variant="outline" className="border-red-500/30 bg-red-500/10 text-red-300">No asistió</Badge>}
-                    </div>
-                    {booking.refundCbu && <p className="mt-2 text-sm text-amber-200">CBU para devolver ${(booking.refundAmount ?? booking.totalPrice).toLocaleString("es-AR")}: <span className="font-mono font-semibold text-foreground">{booking.refundCbu}</span></p>}
                   </div>
-                  <div className="font-display text-lg font-semibold text-gold">${booking.totalPrice.toLocaleString("es-AR")}</div>
-                  <div className="flex flex-wrap gap-2">
+                  {booking.refundCbu && <p className="w-full text-center text-sm text-amber-200 sm:w-auto">CBU para devolver ${(booking.refundAmount ?? booking.totalPrice).toLocaleString("es-AR")}: <span className="font-mono font-semibold text-foreground">{booking.refundCbu}</span></p>}
+                  <div className="flex w-full flex-wrap justify-center gap-2 sm:w-auto sm:justify-end">
                     {!booking.paymentCancellationStatus && booking.paymentStatus !== "approved" && (booking.status === "pending-payment" || booking.paymentStatus === "pending" || (booking.paymentReportedAt && booking.paymentStatus !== "approved")) && <Button size="sm" disabled={processingBookingId !== null} onClick={() => openDialog(booking, "payment")} className="bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-60">{booking.paymentReportedAt ? "Revisar pago" : "Indicar pago"}</Button>}
                     {booking.status === "confirmed" && <Button size="sm" variant="outline" onClick={() => openDialog(booking, "attendance")}>Indicar asistencia</Button>}
                     {isActiveBooking && !booking.paymentCancellationStatus && booking.paymentStatus !== "approved" && !booking.paymentReportedAt && <Button size="sm" variant="outline" onClick={() => openDialog(booking, "turno")}>Modificar turno</Button>}
