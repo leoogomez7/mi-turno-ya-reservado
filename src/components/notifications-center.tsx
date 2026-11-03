@@ -45,6 +45,7 @@ export function NotificationsCenter({ isAuthenticated, role }: { isAuthenticated
   const pendingReadRef = useRef(new Map<string, string>());
   const refreshSequenceRef = useRef(0);
   const bellRef = useRef<HTMLButtonElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -92,6 +93,17 @@ export function NotificationsCenter({ isAuthenticated, role }: { isAuthenticated
       window.removeEventListener("focus", refreshQuietly);
     };
   }, [isAuthenticated, role]);
+
+  useEffect(() => {
+    if (!panelOpen) return;
+    const closeOnOutsideClick = (event: PointerEvent) => {
+      if (event.target instanceof Node && !containerRef.current?.contains(event.target)) {
+        setPanelOpen(false);
+      }
+    };
+    document.addEventListener("pointerdown", closeOnOutsideClick);
+    return () => document.removeEventListener("pointerdown", closeOnOutsideClick);
+  }, [panelOpen]);
 
   async function markRead(notification: BookingNotification) {
     if (notification.readAt || markingIdsRef.current.has(notification.id)) return;
@@ -212,7 +224,7 @@ export function NotificationsCenter({ isAuthenticated, role }: { isAuthenticated
   const unreadCount = notifications.filter((item) => !item.readAt).length;
 
   return (
-    <div className="relative shrink-0">
+    <div ref={containerRef} className="relative shrink-0">
       <Button
         ref={bellRef}
         type="button"
