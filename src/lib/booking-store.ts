@@ -22,6 +22,10 @@ export interface Booking {
   status: "pending-payment" | "confirmed" | "cancelled" | "completed" | "no-show";
   paymentStatus?: "pending" | "approved";
   paymentReportedAt?: string;
+  paymentCancellationStatus?: "requested" | "cancelled" | "refunded";
+  paymentCancellationRequestedAt?: string;
+  refundCbu?: string;
+  refundRequestedAt?: string;
   appointmentConfirmation?: "confirmed" | "pending";
   cancellationToken?: string;
   createdAt: string;

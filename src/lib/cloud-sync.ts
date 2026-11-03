@@ -297,8 +297,8 @@ export async function reportClientPayment(bookingId: string) {
   return request<{ booking: Booking }>("POST", { action: "report-client-payment", bookingId });
 }
 
-export async function cancelClientPayment(bookingId: string) {
-  return request<{ ok: boolean; bookingId: string }>("POST", { action: "cancel-client-payment", bookingId });
+export async function cancelClientPayment(bookingId: string, refundCbu?: string) {
+  return request<{ booking: Booking; cancellationStatus: "requested" | "cancelled" | "refunded" }>("POST", { action: "cancel-client-payment", bookingId, refundCbu });
 }
 
 export async function updateClientPaymentMethod(bookingId: string, paymentMethod: NonNullable<Booking["customer"]["paymentMethod"]>) {

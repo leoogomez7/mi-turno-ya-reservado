@@ -754,7 +754,7 @@ Observaciones: ${customer.notes || "Ninguna"}`;
                 <TransferDetail label="Banco" value={storeSettings?.transferBank ?? ""} onCopy={copyTransferValue} />
                 <TransferDetail label="CBU" value={storeSettings?.transferCbu ?? ""} onCopy={copyTransferValue} copyable={!!storeSettings?.transferCbu.trim()} />
                 <TransferDetail label="Alias" value={storeSettings?.transferAlias ?? ""} onCopy={copyTransferValue} copyable={!storeSettings?.transferCbu.trim() && !!storeSettings?.transferAlias.trim()} />
-                <p className="border-t border-border pt-3 font-semibold text-gold">Importe: ${(pendingTransferReturn?.totalPrice ?? 0).toLocaleString("es-AR")}</p>
+                <p className="border-t border-border pt-3 font-semibold text-gold">Total a pagar: ${(pendingTransferReturn?.totalPrice ?? 0).toLocaleString("es-AR")}</p>
               </div>
               <DialogFooter>
                 <Button onClick={closeTransferPaymentDetails} className="bg-gold text-primary-foreground hover:bg-gold-soft">Volver a la reserva</Button>
