@@ -10,9 +10,9 @@ import { SiteHeader } from "@/components/site-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { bookingStore, getBarber, type Booking } from "@/lib/booking-store";
+import { bookingStore, getBarber, getBookingArchiveLabel, type Booking } from "@/lib/booking-store";
 import { useAppAuth } from "@/lib/auth";
-import { BOOKING_HIGHLIGHT_KEY, refreshCloudData } from "@/lib/cloud-sync";
+import { archiveBooking, BOOKING_HIGHLIGHT_KEY, refreshCloudData } from "@/lib/cloud-sync";
 import { getAvailableSlotsForDate, getProfessionalService, getScheduleForDate, professionalStore } from "@/lib/professional-store";
 
 export function AgendaManager() {
@@ -29,6 +29,9 @@ export function AgendaManager() {
   const [processingBookingId, setProcessingBookingId] = useState<string | null>(null);
   const [processingBookingStatus, setProcessingBookingStatus] = useState<Booking["status"] | null>(null);
   const [deletingBookingId, setDeletingBookingId] = useState<string | null>(null);
+  const [cancellingBookingId, setCancellingBookingId] = useState<string | null>(null);
+  const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
+  const [currentTime, setCurrentTime] = useState(Date.now());
   const [highlightedBookingId, setHighlightedBookingId] = useState("");
   const highlightTimeout = useRef<number | null>(null);
 
@@ -63,6 +66,11 @@ export function AgendaManager() {
       window.clearInterval(intervalId);
       window.removeEventListener("focus", refresh);
     };
+  }, []);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => setCurrentTime(Date.now()), 30_000);
+    return () => window.clearInterval(intervalId);
   }, []);
 
   useEffect(() => {
@@ -168,21 +176,38 @@ export function AgendaManager() {
     }
   }
 
-  async function removeBooking(id: string) {
+  async function archiveTurn(booking: Booking) {
     if (deletingBookingId) return;
-    setDeletingBookingId(id);
+    setDeletingBookingId(booking.id);
     try {
-      await bookingStore.remove(id);
-      toast("Turno eliminado.");
+      const result = await archiveBooking(booking.id);
+      setBookings((current) => current.map((item) => item.id === booking.id ? result.booking : item));
+      toast.success("Turno archivado. Podés consultarlo en Turnos eliminados/antiguos.");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "No se pudo eliminar el turno.");
+      toast.error(error instanceof Error ? error.message : "No se pudo archivar el turno.");
     } finally {
       setDeletingBookingId(null);
     }
   }
 
+  async function cancelBooking(booking: Booking) {
+    if (cancellingBookingId || booking.status === "cancelled") return;
+    setCancellingBookingId(booking.id);
+    try {
+      await bookingStore.update(booking.id, { status: "cancelled", cancelledBy: "professional" });
+      toast.success("Turno cancelado. El cliente recibirá una notificación.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo cancelar el turno.");
+    } finally {
+      setCancellingBookingId(null);
+    }
+  }
+
+  const archivedBookings = bookings
+    .filter((booking) => getBookingArchiveLabel(booking, currentTime, "admin"))
+    .sort((a, b) => (b.adminArchivedAt ?? `${b.date}T${b.time}`).localeCompare(a.adminArchivedAt ?? `${a.date}T${a.time}`));
   const visibleBookings = bookings
-    .filter((booking) => booking.status !== "cancelled")
+    .filter((booking) => !getBookingArchiveLabel(booking, currentTime, "admin"))
     .sort((a, b) => {
       if (!!a.isTest === !!b.isTest) return (a.date + a.time).localeCompare(b.date + b.time);
       return a.isTest ? 1 : -1;
@@ -198,12 +223,10 @@ export function AgendaManager() {
               <p className="text-xs uppercase tracking-widest text-gold">Control</p>
               <h1 className="mt-1 font-display text-2xl font-semibold">Agenda</h1>
             </div>
-            <Link
-              to="/reserva"
-              className="inline-flex h-10 items-center rounded-md bg-gold px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-gold-soft"
-            >
-              Nuevo turno
-            </Link>
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" variant="outline" onClick={() => setArchiveDialogOpen(true)}>Turnos eliminados/antiguos</Button>
+              <Link to="/reserva" className="inline-flex h-10 items-center rounded-md bg-gold px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-gold-soft">Nuevo turno</Link>
+            </div>
           </div>
           {!visibleBookings.length ? (
             <p className="text-sm text-muted-foreground">No hay turnos agendados todavía.</p>
@@ -239,6 +262,8 @@ export function AgendaManager() {
                       <Badge variant="outline" className="border-gold/30 text-gold">
                         {professional?.name}{professional?.specialty ? ` · ${professional.specialty}` : ""}
                       </Badge>
+                      {booking.cancelledBy === "client" && <Badge variant="outline" className="border-red-300 text-red-300">Cancelado por el cliente · Revisar si eliminar</Badge>}
+                      {booking.cancelledBy === "professional" && <Badge variant="outline" className="border-red-300 text-red-300">Cancelado por el profesional</Badge>}
                       <Badge variant="outline" className="border-gold/30 text-gold">Pago · {paymentMethodLabel}</Badge>
                       {booking.isTest && <Badge variant="outline" className="border-emerald-300 text-emerald-400">Turno de prueba</Badge>}
                       {(booking.status === "pending-payment" || booking.paymentStatus === "pending") && <Badge variant="outline" className="border-amber-300 text-amber-300">Pago pendiente</Badge>}
@@ -250,14 +275,16 @@ export function AgendaManager() {
                       {booking.status === "completed" && <Badge variant="outline" className="border-emerald-300 text-emerald-400">Asistió</Badge>}
                       {booking.status === "no-show" && <Badge variant="outline" className="border-red-500/30 bg-red-500/10 text-red-300">No asistió</Badge>}
                     </div>
-                    {booking.refundCbu && <p className="mt-2 text-sm text-amber-200">CBU para devolver ${booking.totalPrice.toLocaleString("es-AR")}: <span className="font-mono font-semibold text-foreground">{booking.refundCbu}</span></p>}
+                    {booking.refundCbu && <p className="mt-2 text-sm text-amber-200">CBU para devolver ${(booking.refundAmount ?? booking.totalPrice).toLocaleString("es-AR")}: <span className="font-mono font-semibold text-foreground">{booking.refundCbu}</span></p>}
                   </div>
                   <div className="font-display text-lg font-semibold text-gold">${booking.totalPrice.toLocaleString("es-AR")}</div>
                   <div className="flex flex-wrap gap-2">
                     {!booking.paymentCancellationStatus && booking.paymentStatus !== "approved" && (booking.status === "pending-payment" || booking.paymentStatus === "pending" || (booking.paymentReportedAt && booking.paymentStatus !== "approved")) && <Button size="sm" disabled={processingBookingId !== null} onClick={() => openDialog(booking, "payment")} className="bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-60">{booking.paymentReportedAt ? "Revisar pago" : "Indicar pago"}</Button>}
                     {booking.status === "confirmed" && <Button size="sm" variant="outline" onClick={() => openDialog(booking, "attendance")}>Indicar asistencia</Button>}
-                    {isActiveBooking && !booking.paymentCancellationStatus && <Button size="sm" variant="outline" onClick={() => openDialog(booking, "turno")}>Modificar turno</Button>}
-                    {isActiveBooking && !booking.isTest && booking.paymentStatus !== "approved" && !booking.paymentCancellationStatus && <Button size="sm" variant="destructive" disabled={deletingBookingId === booking.id} className={deletingBookingId === booking.id ? "opacity-60" : undefined} onClick={() => void removeBooking(booking.id)}>{deletingBookingId === booking.id ? "Borrando..." : "Borrar turno"}</Button>}
+                    {isActiveBooking && !booking.paymentCancellationStatus && booking.paymentStatus !== "approved" && !booking.paymentReportedAt && <Button size="sm" variant="outline" onClick={() => openDialog(booking, "turno")}>Modificar turno</Button>}
+                    {isActiveBooking && !booking.paymentCancellationStatus && booking.paymentStatus !== "approved" && !booking.paymentReportedAt && <Button size="sm" variant="destructive" disabled={cancellingBookingId !== null} className={cancellingBookingId === booking.id ? "opacity-60" : undefined} onClick={() => void cancelBooking(booking)}>{cancellingBookingId === booking.id ? "Cancelando turno..." : "Cancelar turno"}</Button>}
+                    {booking.paymentCancellationStatus === "requested" && booking.customer.paymentMethod !== "tarjeta o mercado pago" && <Button size="sm" className="bg-emerald-500 text-white hover:bg-emerald-600" disabled={processingBookingId !== null} onClick={() => void updateBooking(booking.id, { paymentCancellationStatus: "refunded" }, "Devolución confirmada; el cliente recibirá una notificación")}>Marcar devolución realizada</Button>}
+                    <Button size="sm" variant="destructive" disabled={deletingBookingId === booking.id} className={deletingBookingId === booking.id ? "opacity-60" : undefined} onClick={() => void archiveTurn(booking)}>{deletingBookingId === booking.id ? "Borrando turno..." : "Borrar turno"}</Button>
                   </div>
                 </div>
               );
@@ -265,6 +292,34 @@ export function AgendaManager() {
             </div>
           )}
         </section>
+
+        <Dialog open={archiveDialogOpen} onOpenChange={setArchiveDialogOpen}>
+          <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>Turnos eliminados/antiguos</DialogTitle>
+              <DialogDescription>Turnos archivados con «Borrar turno», con asistencia registrada o que terminaron hace más de 24 horas.</DialogDescription>
+            </DialogHeader>
+            {!archivedBookings.length ? <p className="py-5 text-center text-sm text-muted-foreground">Todavía no hay turnos archivados.</p> : (
+              <div className="space-y-2">
+                {archivedBookings.map((booking) => {
+                  const professional = getBarber(booking.barberId);
+                  const services = booking.serviceIds.map((id) => getProfessionalService(booking.barberId, id)?.name).filter(Boolean).join(", ");
+                  const appointmentDate = parseISO(`${booking.date}T${booking.time}`);
+                  const paymentMethod = booking.customer.paymentMethod === "transferencia" ? "Transferencia bancaria" : booking.customer.paymentMethod === "tarjeta o mercado pago" ? "Tarjeta o Mercado Pago" : booking.customer.paymentMethod === "efectivo" ? "Efectivo" : "No especificado";
+                  return <article key={booking.id} className="rounded-xl border border-border bg-card p-3 text-sm">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <p className="font-semibold">{booking.customer.fullName} · {professional?.name ?? "Profesional"}</p>
+                      <Badge variant="outline" className="border-gold/40 text-gold">{getBookingArchiveLabel(booking, currentTime, "admin")}</Badge>
+                    </div>
+                    <p className="mt-1 text-muted-foreground">{services || "Servicio"} · {format(appointmentDate, "EEEE d 'de' MMMM, yyyy", { locale: es })} · {booking.time}</p>
+                    <p className="mt-1 text-muted-foreground">Pago: {paymentMethod} · ${booking.totalPrice.toLocaleString("es-AR")}</p>
+                  </article>;
+                })}
+              </div>
+            )}
+            <DialogFooter><Button type="button" variant="outline" onClick={() => setArchiveDialogOpen(false)}>Cerrar</Button></DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         <Dialog open={dialogOpen} onOpenChange={(open) => open ? setDialogOpen(true) : closeDialog()}>
           <DialogContent>

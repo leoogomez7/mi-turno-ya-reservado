@@ -707,7 +707,7 @@ Observaciones: ${customer.notes || "Ninguna"}`;
           {step === 1 && <StepBarber professionals={reservationProfessionals} value={barberId} onChange={setBarberId} />}
           {step === 2 && <StepServices professional={selectedProfessional} value={serviceIds} onChange={setServiceIds} />}
           {step === 3 && <StepDateTime professional={selectedProfessional} bookings={reservationBookings} date={date} setDate={setDate} time={time} setTime={setTime} barberId={barberId} duration={duration} />}
-          {step === 4 && (date ? <StepConfirm professional={selectedProfessional} storeName={selectedStore?.name ?? selectedStoreCode} storeCode={selectedStoreCode} storeAddress={storeSettings?.address ?? ""} customer={customer} serviceIds={serviceIds} date={date} time={time} duration={duration} price={price} /> : <p className="py-8 text-center text-sm text-muted-foreground">Seleccioná fecha y horario para ver el resumen.</p>)}
+          {step === 4 && (date ? <StepConfirm professional={selectedProfessional} storeName={selectedStore?.name ?? selectedStoreCode} storeCode={selectedStoreCode} storeAddress={storeSettings?.address ?? ""} cancellationPolicy={storeSettings} customer={customer} serviceIds={serviceIds} date={date} time={time} duration={duration} price={price} /> : <p className="py-8 text-center text-sm text-muted-foreground">Seleccioná fecha y horario para ver el resumen.</p>)}
         </div>
 
         {stepError && (
@@ -1199,10 +1199,11 @@ function StepDateTime({
 }
 
 function StepConfirm({
-  professional, storeName, storeCode, storeAddress, customer, serviceIds, date, time, duration, price,
+  professional, storeName, storeCode, storeAddress, cancellationPolicy, customer, serviceIds, date, time, duration, price,
 }: {
   professional?: Professional;
   storeName: string; storeCode: string; storeAddress: string;
+  cancellationPolicy?: Store["settings"];
   customer: Customer; serviceIds: string[];
   date: Date; time: string; duration: number; price: number;
 }) {
@@ -1213,6 +1214,13 @@ function StepConfirm({
   return (
     <div>
       <SectionTitle icon={Check} title="Paso 5" subtitle="Resumen de tu turno" />
+      <div role="note" className="mb-4 rounded-xl border border-red-500/50 bg-red-500/10 p-4 text-sm text-red-200">
+        <p className="font-semibold text-red-300">Políticas de cancelación y devolución</p>
+        <p className="mt-1">{cancellationPolicy?.noRefunds || !cancellationPolicy?.allowRefunds
+          ? "Esta sucursal no acepta devoluciones de pagos."
+          : `Si se aprueba una devolución, se reintegrará el ${cancellationPolicy?.refundPercent ?? 100}% del importe pagado.`}</p>
+        <p className="mt-1">Podés solicitar cancelación hasta {cancellationPolicy?.cancellationWindowMinutes ?? 30} minutos antes del turno. Las solicitudes fuera de ese plazo no estarán disponibles.</p>
+      </div>
       <div className="grid gap-3 text-sm">
         <Row label="Sucursal" value={`${storeName} · ${storeCode}`} />
         {storeAddress && <Row label="Dirección" value={storeAddress} />}

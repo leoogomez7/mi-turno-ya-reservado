@@ -11,7 +11,7 @@ import { toast } from "sonner";
 import { professionalStore, type Professional, type ProfessionalService } from "@/lib/professional-store";
 import { AuthRequired } from "@/components/auth-required";
 import { useAppAuth } from "@/lib/auth";
-import { createStore, getAvailableStores, getCurrentStoreCode, getStoreMercadoPagoCredentials, isCloudInitialized, saveStoreMercadoPagoCredentials, updateStoreContact, updateStoreSettings, type StoreSettings } from "@/lib/cloud-sync";
+import { createStore, getAvailableStores, getCurrentStoreCode, getStoreMercadoPagoCredentials, isCloudInitialized, saveStoreMercadoPagoCredentials, updateStoreCancellationPolicy, updateStoreContact, updateStoreSettings, type StoreSettings } from "@/lib/cloud-sync";
 import { LoadingScreen } from "@/components/loading-screen";
 import { Calendar } from "@/components/ui/calendar";
 
@@ -48,6 +48,10 @@ const emptyStoreSettings: StoreSettings = {
   transferBank: "",
   transferCbu: "",
   transferAlias: "",
+  noRefunds: false,
+  allowRefunds: true,
+  refundPercent: 100,
+  cancellationWindowMinutes: 30,
 };
 export function ProfessionalsManager() {
   const { isAuthenticated, isLoading, role, getIdToken } = useAppAuth();
@@ -67,6 +71,7 @@ export function ProfessionalsManager() {
   const [loadingStoreSettings, setLoadingStoreSettings] = useState(true);
   const [savingContact, setSavingContact] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
+  const [savingCancellationPolicy, setSavingCancellationPolicy] = useState(false);
   const [mercadoPagoPublicKey, setMercadoPagoPublicKey] = useState("");
   const [mercadoPagoAccessToken, setMercadoPagoAccessToken] = useState("");
   const [mercadoPagoPublicKeyConfigured, setMercadoPagoPublicKeyConfigured] = useState(false);
@@ -178,6 +183,24 @@ export function ProfessionalsManager() {
       toast.error(error instanceof Error ? error.message : "No se pudieron guardar los datos bancarios.");
     } finally {
       setSavingSettings(false);
+    }
+  }
+
+  async function saveCancellationPolicy() {
+    setSavingCancellationPolicy(true);
+    try {
+      const saved = await updateStoreCancellationPolicy({
+        noRefunds: storeSettings.noRefunds,
+        allowRefunds: storeSettings.allowRefunds,
+        refundPercent: storeSettings.refundPercent,
+        cancellationWindowMinutes: storeSettings.cancellationWindowMinutes,
+      });
+      setStoreSettings((current) => ({ ...current, ...saved }));
+      toast.success("Políticas de cancelación guardadas en la sucursal.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudieron guardar las políticas de cancelación.");
+    } finally {
+      setSavingCancellationPolicy(false);
     }
   }
 
@@ -758,6 +781,34 @@ export function ProfessionalsManager() {
             </div>
             <Button type="button" disabled={loadingStoreSettings || savingSettings || !currentStoreCode} onClick={() => void saveSettings()} className="mt-5 bg-gold text-primary-foreground hover:bg-gold-soft">
               {savingSettings ? "Guardando…" : "Guardar datos"}
+            </Button>
+          </section>
+
+          <section className="rounded-3xl border border-gold/30 bg-card p-6">
+            <div className="mb-5">
+              <p className="text-xs uppercase tracking-widest text-gold">Cancelaciones</p>
+              <h2 className="mt-1 font-display text-2xl font-semibold text-foreground">Políticas de devolución</h2>
+              <p className="mt-2 text-sm text-muted-foreground">Estas reglas se guardan en la base de datos de la sucursal, se muestran antes de confirmar la reserva y se verifican al solicitar cancelaciones.</p>
+            </div>
+            <div className="grid gap-4">
+              <label className="flex items-start gap-3 rounded-xl border border-border bg-background p-4 text-sm">
+                <input type="checkbox" checked={storeSettings.noRefunds} disabled={loadingStoreSettings || savingCancellationPolicy} onChange={(event) => setStoreSettings({ ...storeSettings, noRefunds: event.target.checked })} className="mt-1 accent-gold" />
+                <span><span className="font-medium text-foreground">No se aceptan devoluciones de pagos</span><span className="mt-1 block text-muted-foreground">Si está seleccionada, el cliente no podrá solicitar la cancelación o devolución del pago ni borrar la reserva desde su cuenta. Esta regla prevalece sobre el porcentaje.</span></span>
+              </label>
+              <label className="flex items-start gap-3 rounded-xl border border-border bg-background p-4 text-sm">
+                <input type="checkbox" checked={storeSettings.allowRefunds} disabled={loadingStoreSettings || savingCancellationPolicy} onChange={(event) => setStoreSettings({ ...storeSettings, allowRefunds: event.target.checked })} className="mt-1 accent-gold" />
+                <span><span className="font-medium text-foreground">Permitir devolución total o parcial</span><span className="mt-1 block text-muted-foreground">El porcentaje se calcula sobre el importe pagado. 100% devuelve todo; un valor menor devuelve solo ese porcentaje.</span></span>
+              </label>
+              <Field label="Porcentaje a devolver (0–100%)">
+                <Input type="number" min="0" max="100" step="1" disabled={loadingStoreSettings || savingCancellationPolicy || !storeSettings.allowRefunds} value={storeSettings.refundPercent} onChange={(event) => setStoreSettings({ ...storeSettings, refundPercent: Math.min(100, Math.max(0, Number(event.target.value))) })} />
+              </Field>
+              <Field label="Anticipación mínima para cancelar o solicitar devolución (minutos)">
+                <Input type="number" min="0" max="10080" step="1" disabled={loadingStoreSettings || savingCancellationPolicy} value={storeSettings.cancellationWindowMinutes} onChange={(event) => setStoreSettings({ ...storeSettings, cancellationWindowMinutes: Math.min(10080, Math.max(0, Number(event.target.value))) })} />
+                <p className="mt-1 text-xs text-muted-foreground">0 permite cancelar hasta el horario del turno; 30 exige hacerlo al menos media hora antes.</p>
+              </Field>
+            </div>
+            <Button type="button" disabled={loadingStoreSettings || savingCancellationPolicy || !currentStoreCode} onClick={() => void saveCancellationPolicy()} className="mt-5 bg-gold text-primary-foreground hover:bg-gold-soft">
+              {savingCancellationPolicy ? "Guardando…" : "Guardar políticas"}
             </Button>
           </section>
 

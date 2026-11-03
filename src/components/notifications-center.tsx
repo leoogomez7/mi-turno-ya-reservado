@@ -196,12 +196,14 @@ export function NotificationsCenter({ isAuthenticated, role }: { isAuthenticated
       const { exists } = await notificationBookingExists(notification.id);
       if (!exists) {
         setNotifications((current) => current.map((item) => item.id === notification.id ? { ...item, bookingExists: false } : item));
+        void markRead(notification);
         toast("El turno fue eliminado o ya no está disponible para consultar.", {
           className: "!border-white/20 !bg-black !text-white",
         });
         return;
       }
       sessionStorage.setItem(BOOKING_HIGHLIGHT_KEY, notification.bookingId);
+      void markRead(notification);
       setPanelOpen(false);
       await navigate({ to: role === "admin" ? "/agenda" : "/mis-turnos" });
       window.setTimeout(() => window.dispatchEvent(new Event("mi-turno-ya:highlight-booking")), 0);
@@ -265,6 +267,7 @@ export function NotificationsCenter({ isAuthenticated, role }: { isAuthenticated
                     <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
                       <button type="button" disabled={checkingBookingIds.has(notification.id)} className="inline-flex items-center gap-1 text-xs text-gold hover:underline disabled:cursor-wait disabled:opacity-70" onClick={() => {
                         if (notification.bookingExists === false) {
+                          void markRead(notification);
                           toast("El turno fue eliminado o ya no está disponible para consultar.", {
                             className: "!border-white/20 !bg-black !text-white",
                           });

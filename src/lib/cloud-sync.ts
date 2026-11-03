@@ -16,8 +16,13 @@ export type StoreSettings = {
   transferBank: string;
   transferCbu: string;
   transferAlias: string;
+  noRefunds: boolean;
+  allowRefunds: boolean;
+  refundPercent: number;
+  cancellationWindowMinutes: number;
 };
 export type StoreContactSettings = Pick<StoreSettings, "street" | "height" | "city" | "province" | "postalCode" | "whatsapp" | "instagram">;
+export type StoreCancellationPolicy = Pick<StoreSettings, "noRefunds" | "allowRefunds" | "refundPercent" | "cancellationWindowMinutes">;
 export type StoreMercadoPagoCredentials = {
   publicKeyConfigured: boolean;
   accessTokenConfigured: boolean;
@@ -313,8 +318,14 @@ export async function updateClientBooking(bookingId: string, changes: { barberId
   return request<{ booking: Booking }>("POST", { action: "update-client-booking", bookingId, ...changes });
 }
 
-export async function deleteClientBooking(bookingId: string) {
-  return request<{ ok: boolean; bookingId: string }>("POST", { action: "delete-client-booking", bookingId });
+export async function cancelClientBooking(bookingId: string) {
+  return request<{ booking: Booking }>("POST", { action: "cancel-client-booking", bookingId });
+}
+
+export async function archiveBooking(bookingId: string) {
+  const result = await request<{ booking: Booking }>("POST", { action: "archive-booking", bookingId });
+  setSnapshot({ ...snapshot, bookings: snapshot.bookings.map((item) => item.id === bookingId ? result.booking : item) });
+  return result;
 }
 
 export async function getStoreMercadoPagoCredentials() {
@@ -401,4 +412,12 @@ export async function createPublicBooking(storeCode: string, booking: Omit<Booki
   const result = await response.json() as { error?: string };
   if (!response.ok) throw new Error(result.error || "No se pudo guardar el turno.");
   return createdBooking;
+}
+
+export async function updateStoreCancellationPolicy(policy: StoreCancellationPolicy) {
+  if (!tokenGetter) throw new Error("Iniciá sesión como administrador para editar las políticas de cancelación.");
+  const response = await request<{ code: string; settings: StoreSettings }>("POST", { action: "update-store-cancellation-policy", policy });
+  availableStores = availableStores.map((store) => store.code === response.code ? { ...store, settings: response.settings } : store);
+  window.dispatchEvent(new Event("mi-turno-ya:store-changed"));
+  return response.settings;
 }

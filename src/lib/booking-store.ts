@@ -20,16 +20,31 @@ export interface Booking {
   duration: number;
   totalPrice: number;
   status: "pending-payment" | "confirmed" | "cancelled" | "completed" | "no-show";
+  cancelledBy?: "client" | "professional";
+  clientArchivedAt?: string;
+  adminArchivedAt?: string;
   paymentStatus?: "pending" | "approved";
   paymentReportedAt?: string;
   paymentCancellationStatus?: "requested" | "cancelled" | "refunded";
   paymentCancellationRequestedAt?: string;
   refundCbu?: string;
+  refundAmount?: number;
   refundRequestedAt?: string;
   appointmentConfirmation?: "confirmed" | "pending";
   cancellationToken?: string;
   createdAt: string;
   isTest?: boolean;
+}
+
+export function getBookingArchiveLabel(booking: Booking, now = Date.now(), audience: "client" | "admin" = "client") {
+  if (audience === "client" ? booking.clientArchivedAt : booking.adminArchivedAt) {
+    return audience === "admin" ? "Eliminado de la agenda" : "Eliminado de tu lista";
+  }
+  if (booking.status === "completed") return "Asistencia confirmada · Asistió";
+  if (booking.status === "no-show") return "Asistencia confirmada · No asistió";
+  const appointmentAt = Date.parse(`${booking.date}T${booking.time}:00-03:00`);
+  if (Number.isFinite(appointmentAt) && now >= appointmentAt + 24 * 60 * 60 * 1000) return "Antiguo · Pasaron 24 horas";
+  return null;
 }
 
 function read(): Booking[] {
