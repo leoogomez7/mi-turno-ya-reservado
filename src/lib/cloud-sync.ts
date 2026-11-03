@@ -309,8 +309,8 @@ export async function createClientBookingPaymentPreference(bookingId: string) {
   return request<{ initPoint: string }>("POST", { action: "create-client-booking-payment-preference", bookingId });
 }
 
-export async function updateClientBooking(bookingId: string, date: string, time: string) {
-  return request<{ booking: Booking }>("POST", { action: "update-client-booking", bookingId, date, time });
+export async function updateClientBooking(bookingId: string, changes: { barberId: string; serviceId: string; date: string; time: string }) {
+  return request<{ booking: Booking }>("POST", { action: "update-client-booking", bookingId, ...changes });
 }
 
 export async function deleteClientBooking(bookingId: string) {

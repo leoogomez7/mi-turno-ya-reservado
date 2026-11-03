@@ -994,20 +994,51 @@ export default async function handler(request, response) {
           if (!["confirmed", "pending-payment"].includes(booking.status)) {
             return response.status(409).json({ error: "Este turno ya no se puede modificar desde tu cuenta." });
           }
+          const barberId = typeof body.barberId === "string" ? body.barberId.trim() : "";
+          const serviceId = typeof body.serviceId === "string" ? body.serviceId.trim() : "";
           const date = typeof body.date === "string" ? body.date : "";
           const time = typeof body.time === "string" ? body.time : "";
-          const candidate = { ...booking, date, time };
+          if (!barberId || barberId.length > 200 || !serviceId || serviceId.length > 200) {
+            return response.status(400).json({ error: "Elegí un profesional y un servicio válidos." });
+          }
           const transaction = await db.transaction("write");
           try {
+            const professionalResult = await transaction.execute({
+              sql: "SELECT value FROM professionals WHERE id = ?",
+              args: [storedRecordId(normalizeStoreCode(booking.storeCode), barberId)],
+            });
+            if (!professionalResult.rows[0]) {
+              await transaction.rollback();
+              return response.status(409).json({ error: "El profesional elegido ya no está disponible." });
+            }
+            const professional = JSON.parse(String(professionalResult.rows[0].value));
+            const service = professional.services?.find((item) => item.id === serviceId);
+            if (!service) {
+              await transaction.rollback();
+              return response.status(409).json({ error: "El servicio elegido ya no está disponible." });
+            }
+            const candidate = {
+              ...booking,
+              barberId,
+              serviceIds: [serviceId],
+              duration: Number(service.duration),
+              totalPrice: Number(service.price),
+              date,
+              time,
+            };
             const availabilityError = await validateBookingAvailability(transaction, candidate, normalizeStoreCode(booking.storeCode), bookingId);
             if (availabilityError) {
               await transaction.rollback();
               return response.status(409).json({ error: availabilityError });
             }
+            booking.barberId = barberId;
+            booking.serviceIds = [serviceId];
+            booking.duration = candidate.duration;
+            booking.totalPrice = candidate.totalPrice;
             booking.date = date;
             booking.time = time;
             await transaction.execute({ sql: "UPDATE bookings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", args: [JSON.stringify(booking), bookingId] });
-            const notice = notificationForAdmin(booking, "booking_changed_by_client", "Cliente modificó el turno", `${booking.customer.fullName} cambió el turno a ${date} a las ${time}.`);
+            const notice = notificationForAdmin(booking, "booking_changed_by_client", "Cliente modificó el turno", `${booking.customer.fullName} modificó el turno: ${professional.name}, ${service.name}, ${date} a las ${time}.`);
             if (notice) await transaction.execute(notice);
             await transaction.commit();
             return response.status(200).json({ booking });

@@ -28,7 +28,10 @@ function MyBookingsPage() {
   const [occupiedSlots, setOccupiedSlots] = useState<Pick<Booking, "id" | "storeCode" | "barberId" | "date" | "time" | "duration" | "status">[]>([]);
   const [loadingBookings, setLoadingBookings] = useState(true);
   const [busyBookingId, setBusyBookingId] = useState<string | null>(null);
+  const [payingBookingId, setPayingBookingId] = useState<string | null>(null);
   const [editingBooking, setEditingBooking] = useState<Booking | null>(null);
+  const [editedProfessionalId, setEditedProfessionalId] = useState("");
+  const [editedServiceId, setEditedServiceId] = useState("");
   const [editedDate, setEditedDate] = useState("");
   const [editedTime, setEditedTime] = useState("");
   const [paymentBooking, setPaymentBooking] = useState<Booking | null>(null);
@@ -39,19 +42,20 @@ function MyBookingsPage() {
   const [highlightedBookingId, setHighlightedBookingId] = useState("");
   const highlightTimeout = useRef<number | null>(null);
 
-  const editingProfessional = editingBooking
-    ? professionals.find((item) => item.id === editingBooking.barberId && item.storeCode === editingBooking.storeCode)
-      ?? professionals.find((item) => item.id === editingBooking.barberId)
-    : undefined;
+  const editableProfessionals = editingBooking
+    ? professionals.filter((item) => item.storeCode === editingBooking.storeCode)
+    : [];
+  const editingProfessional = editableProfessionals.find((item) => item.id === editedProfessionalId);
+  const editingService = editingProfessional?.services.find((service) => service.id === editedServiceId);
   const availableEditSlots = useMemo(() => {
-    if (!editingProfessional || !editedDate) return [];
+    if (!editingProfessional || !editingService || !editedDate) return [];
     const date = parseISO(`${editedDate}T12:00:00`);
     if (Number.isNaN(date.getTime())) return [];
     const today = format(new Date(), "yyyy-MM-dd");
     if (editedDate < today) return [];
     const slots = getAvailableSlotsForDate(editingProfessional, date);
     const capacity = getScheduleForDate(editingProfessional, date)?.capacity ?? 1;
-    const neededIntervals = Math.ceil((editingBooking?.duration ?? 0) / 15);
+    const neededIntervals = Math.ceil(editingService.duration / 15);
     return slots.filter((slot) => {
       const [hours, minutes] = slot.split(":").map(Number);
       const start = hours * 60 + minutes;
@@ -72,7 +76,7 @@ function MyBookingsPage() {
       }
       return true;
     });
-  }, [editedDate, editingBooking, editingProfessional, occupiedSlots]);
+  }, [editedDate, editingBooking, editingProfessional, editingService, occupiedSlots]);
 
   const reload = useCallback(async () => {
     try {
@@ -91,6 +95,8 @@ function MyBookingsPage() {
   async function openEditDialog(booking: Booking) {
     await reload();
     setEditingBooking(booking);
+    setEditedProfessionalId(booking.barberId);
+    setEditedServiceId(booking.serviceIds[0] ?? "");
     setEditedDate(booking.date);
     setEditedTime(booking.time);
   }
@@ -155,6 +161,7 @@ function MyBookingsPage() {
     }
     paymentTab.opener = null;
     setBusyBookingId(booking.id);
+    setPayingBookingId(booking.id);
     try {
       const { initPoint } = await createClientBookingPaymentPreference(booking.id);
       paymentTab.location.href = initPoint;
@@ -163,6 +170,7 @@ function MyBookingsPage() {
       toast.error(error instanceof Error ? error.message : "No se pudo iniciar el pago.");
     } finally {
       setBusyBookingId(null);
+      setPayingBookingId(null);
     }
   }
 
@@ -183,13 +191,12 @@ function MyBookingsPage() {
 
   async function savePaymentMethod() {
     if (!changingPaymentBooking || busyBookingId) return;
+    suppressPaymentClick.current = true;
     setBusyBookingId(changingPaymentBooking.id);
     try {
       const result = await updateClientPaymentMethod(changingPaymentBooking.id, newPaymentMethod);
       setBookings((current) => current.map((item) => item.id === changingPaymentBooking.id ? result.booking : item));
       setPaymentBooking(result.booking);
-      suppressPaymentClick.current = true;
-      window.setTimeout(() => { suppressPaymentClick.current = false; }, 600);
       setChangingPaymentBooking(null);
       setShowTransferDetails(false);
       toast.success("Método de pago actualizado.");
@@ -197,18 +204,28 @@ function MyBookingsPage() {
       toast.error(error instanceof Error ? error.message : "No se pudo cambiar el método de pago.");
     } finally {
       setBusyBookingId(null);
+      window.setTimeout(() => { suppressPaymentClick.current = false; }, 600);
     }
   }
 
   async function saveBookingTime() {
     if (!editingBooking || busyBookingId) return;
+    if (!editingProfessional || !editingService) {
+      toast.error("Elegí un profesional y un servicio disponibles.");
+      return;
+    }
     if (!editedDate || !availableEditSlots.includes(editedTime)) {
-      toast.error("Elegí una fecha y un horario disponibles.");
+      toast.error("Elegí una fecha y un horario disponibles para el servicio.");
       return;
     }
     setBusyBookingId(editingBooking.id);
     try {
-      const result = await updateClientBooking(editingBooking.id, editedDate, editedTime);
+      const result = await updateClientBooking(editingBooking.id, {
+        barberId: editingProfessional.id,
+        serviceId: editingService.id,
+        date: editedDate,
+        time: editedTime,
+      });
       setBookings((current) => current.map((item) => item.id === editingBooking.id ? result.booking : item));
       setEditingBooking(null);
       toast.success("Turno modificado.");
@@ -315,20 +332,40 @@ function MyBookingsPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Modificar turno</DialogTitle>
-            <DialogDescription>Podés cambiar solamente el día y el horario. La disponibilidad se verifica antes de guardar.</DialogDescription>
+            <DialogDescription>Elegí profesional, servicio, fecha y horario. Revisaremos la disponibilidad antes de guardar.</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-3">
             <label className="space-y-2 text-sm text-muted-foreground">
-              <span className="flex items-center gap-2"><CalendarDays className="h-4 w-4 text-gold" />Día</span>
-              <input type="date" min={format(new Date(), "yyyy-MM-dd")} value={editedDate} onChange={(event) => { setEditedDate(event.target.value); setEditedTime(""); }} className="block w-full rounded-lg border border-border bg-background px-3 py-2 text-foreground" />
+              <span>👤 Profesional</span>
+              <select value={editedProfessionalId} onChange={(event) => {
+                const nextProfessionalId = event.target.value;
+                setEditedProfessionalId(nextProfessionalId);
+                setEditedServiceId(editableProfessionals.find((item) => item.id === nextProfessionalId)?.services[0]?.id ?? "");
+                setEditedDate("");
+                setEditedTime("");
+              }} className="block w-full rounded-lg border border-border bg-background px-3 py-2 text-foreground">
+                <option value="">Seleccionar profesional</option>
+                {editableProfessionals.map((professional) => <option key={professional.id} value={professional.id}>{professional.name}{professional.specialty ? ` · ${professional.specialty}` : ""}</option>)}
+              </select>
             </label>
             <label className="space-y-2 text-sm text-muted-foreground">
-              <span className="flex items-center gap-2"><Clock3 className="h-4 w-4 text-gold" />Horario</span>
+              <span>✂️ Servicio</span>
+              <select value={editedServiceId} onChange={(event) => { setEditedServiceId(event.target.value); setEditedDate(""); setEditedTime(""); }} className="block w-full rounded-lg border border-border bg-background px-3 py-2 text-foreground" disabled={!editingProfessional}>
+                <option value="">Seleccionar servicio</option>
+                {(editingProfessional?.services ?? []).map((service) => <option key={service.id} value={service.id}>{service.name} · {service.duration} min · ${service.price.toLocaleString("es-AR")}</option>)}
+              </select>
+            </label>
+            <label className="space-y-2 text-sm text-muted-foreground">
+              <span className="flex items-center gap-2"><CalendarDays className="h-4 w-4 text-gold" />📅 Fecha</span>
+              <input type="date" min={format(new Date(), "yyyy-MM-dd")} value={editedDate} disabled={!editingProfessional || !editingService} onChange={(event) => { setEditedDate(event.target.value); setEditedTime(""); }} className="block w-full rounded-lg border border-border bg-background px-3 py-2 text-foreground disabled:cursor-not-allowed disabled:opacity-60" />
+            </label>
+            <label className="space-y-2 text-sm text-muted-foreground">
+              <span className="flex items-center gap-2"><Clock3 className="h-4 w-4 text-gold" />🕒 Horario</span>
               <select value={editedTime} onChange={(event) => setEditedTime(event.target.value)} className="block w-full rounded-lg border border-border bg-background px-3 py-2 text-foreground" disabled={!editedDate || !editingProfessional}>
                 <option value="">Seleccionar horario</option>
                 {availableEditSlots.map((slot) => <option key={slot} value={slot}>{slot}</option>)}
               </select>
-              {editedDate && !availableEditSlots.length && <span className="block text-xs">No hay horarios disponibles para ese día.</span>}
+              {editedDate && editingService && !availableEditSlots.length && <span className="block text-xs">No hay horarios disponibles para ese servicio en esa fecha.</span>}
             </label>
           </div>
           <DialogFooter>
@@ -338,7 +375,7 @@ function MyBookingsPage() {
         </DialogContent>
       </Dialog>
       <Dialog open={paymentBooking !== null} onOpenChange={(open) => { if (!open && !busyBookingId) { setPaymentBooking(null); setShowTransferDetails(false); } }}>
-        <DialogContent className="sm:max-w-4xl">
+        <DialogContent className={showTransferDetails ? "sm:max-w-lg" : "sm:max-w-2xl"}>
           <DialogHeader>
             <DialogTitle>{showTransferDetails ? "Datos para la transferencia" : "Confirmar pago"}</DialogTitle>
             <DialogDescription>
@@ -371,25 +408,25 @@ function MyBookingsPage() {
             </div>
           ) : paymentBooking ? (
             <div className="space-y-3 rounded-xl border border-border bg-card p-4 text-sm">
-              <p>Método de pago: <span className="font-medium text-gold">{paymentBooking.customer.paymentMethod ?? "No especificado"}</span></p>
+              <p>Método de pago: <span className="font-medium text-gold">{paymentBooking.customer.paymentMethod === "transferencia" ? "Transferencia bancaria" : paymentBooking.customer.paymentMethod === "tarjeta o mercado pago" ? "Tarjeta o Mercado Pago" : paymentBooking.customer.paymentMethod === "efectivo" ? "Efectivo" : "No especificado"}</span></p>
               <p>Importe: <span className="font-semibold text-gold">${paymentBooking.totalPrice.toLocaleString("es-AR")}</span></p>
               {paymentBooking.customer.paymentMethod === "efectivo" && <p className="text-muted-foreground">El pago en efectivo se realiza en la sucursal; el pago en línea no está disponible para este método.</p>}
               {paymentBooking.paymentStatus === "approved" && <p className="text-emerald-400">El profesional ya confirmó este pago.</p>}
             </div>
           ) : null}
-          <DialogFooter className="mobile-scrollbar-hidden flex-row flex-nowrap gap-1 overflow-x-auto sm:space-x-0">
+          <DialogFooter className="flex-col-reverse gap-2 sm:flex-row sm:flex-wrap sm:justify-end sm:space-x-0">
             {showTransferDetails ? (
-              <Button type="button" variant="outline" disabled={busyBookingId !== null} onClick={() => setShowTransferDetails(false)}>Volver</Button>
+              <Button type="button" variant="outline" className="w-full sm:w-auto" disabled={busyBookingId !== null} onClick={() => setShowTransferDetails(false)}>Volver</Button>
             ) : paymentBooking ? (
               <>
-                <Button type="button" variant="outline" disabled={busyBookingId !== null || paymentBooking.paymentStatus === "approved"} onClick={() => void cancelPayment(paymentBooking)}>Cancelar pago</Button>
-                <Button type="button" variant="outline" disabled={busyBookingId !== null || paymentBooking.paymentStatus === "approved"} onClick={() => {
+                <Button type="button" variant="outline" className="w-full sm:w-auto" disabled={busyBookingId !== null || paymentBooking.paymentStatus === "approved"} onClick={() => void cancelPayment(paymentBooking)}>Cancelar pago</Button>
+                <Button type="button" variant="outline" className="w-full sm:w-auto" disabled={busyBookingId !== null || paymentBooking.paymentStatus === "approved"} onClick={() => {
                   setNewPaymentMethod(paymentBooking.customer.paymentMethod ?? "efectivo");
                   setChangingPaymentBooking(paymentBooking);
                 }}>Cambiar método de pago</Button>
-                <Button type="button" variant="outline" disabled={busyBookingId !== null || paymentBooking.paymentStatus === "approved" || !!paymentBooking.paymentReportedAt} className="border-emerald-500 bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-60" onClick={() => void reportPayment(paymentBooking)}>Indicar pago realizado</Button>
-                <Button type="button" disabled={busyBookingId !== null || paymentBooking.paymentStatus === "approved" || paymentBooking.customer.paymentMethod === "efectivo"} className="bg-gold text-primary-foreground hover:bg-gold-soft" onClick={() => void payBooking(paymentBooking)}>
-                  {busyBookingId === paymentBooking.id ? "Preparando pago…" : "Pagar"}
+                <Button type="button" variant="outline" className="w-full border-emerald-500 bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-60 sm:w-auto" disabled={busyBookingId !== null || paymentBooking.paymentStatus === "approved" || !!paymentBooking.paymentReportedAt} onClick={() => void reportPayment(paymentBooking)}>Indicar pago realizado</Button>
+                <Button type="button" disabled={busyBookingId !== null || paymentBooking.paymentStatus === "approved" || paymentBooking.customer.paymentMethod === "efectivo"} className="w-full bg-gold text-primary-foreground hover:bg-gold-soft sm:w-auto" onClick={() => void payBooking(paymentBooking)}>
+                  {payingBookingId === paymentBooking.id ? "Preparando pago…" : "Pagar"}
                 </Button>
               </>
             ) : null}
