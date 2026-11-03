@@ -799,12 +799,14 @@ export function ProfessionalsManager() {
                 <input type="radio" name="refund-policy" checked={!storeSettings.noRefunds && storeSettings.allowRefunds} disabled={loadingStoreSettings || savingCancellationPolicy} onChange={() => setStoreSettings((current) => ({ ...current, noRefunds: false, allowRefunds: true }))} className="mt-1 accent-gold" />
                 <span><span className="font-medium text-foreground">Permitir devolución total o parcial</span><span className="mt-1 block text-muted-foreground">El porcentaje se calcula sobre el importe pagado. 100% devuelve todo; un valor menor devuelve solo ese porcentaje.</span></span>
               </label>
-              <Field label="Porcentaje a devolver (0–100%)">
-                <Input type="number" min="0" max="100" step="1" disabled={loadingStoreSettings || savingCancellationPolicy || !storeSettings.allowRefunds} value={storeSettings.refundPercent} onChange={(event) => setStoreSettings({ ...storeSettings, refundPercent: Math.min(100, Math.max(0, Number(event.target.value))) })} />
-              </Field>
-              <Field label="Anticipación mínima para cancelar o solicitar devolución (minutos)">
-                <Input type="number" min="0" max="10080" step="1" disabled={loadingStoreSettings || savingCancellationPolicy} value={storeSettings.cancellationWindowMinutes} onChange={(event) => setStoreSettings({ ...storeSettings, cancellationWindowMinutes: Math.min(10080, Math.max(0, Number(event.target.value))) })} />
-              </Field>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field label="Porcentaje a devolver (0–100%)">
+                  <Input type="number" min="0" max="100" step="1" disabled={loadingStoreSettings || savingCancellationPolicy || !storeSettings.allowRefunds} value={storeSettings.refundPercent} onChange={(event) => setStoreSettings({ ...storeSettings, refundPercent: Math.min(100, Math.max(0, Number(event.target.value))) })} />
+                </Field>
+                <Field label="Anticipación mínima para cancelar o solicitar devolución (minutos)">
+                  <Input type="number" min="0" max="10080" step="1" disabled={loadingStoreSettings || savingCancellationPolicy} value={storeSettings.cancellationWindowMinutes} onChange={(event) => setStoreSettings({ ...storeSettings, cancellationWindowMinutes: Math.min(10080, Math.max(0, Number(event.target.value))) })} />
+                </Field>
+              </div>
             </div>
             <Button type="button" disabled={loadingStoreSettings || savingCancellationPolicy || !currentStoreCode} onClick={() => void saveCancellationPolicy()} className="mt-5 bg-gold text-primary-foreground hover:bg-gold-soft">
               {savingCancellationPolicy ? "Guardando…" : "Guardar políticas"}
