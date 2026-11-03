@@ -382,7 +382,7 @@ function MyBookingsPage() {
           </div>
           <label className="relative mb-4 block">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input value={bookingSearch} onChange={(event) => setBookingSearch(event.target.value)} placeholder="Buscar por profesional, servicio, fecha u horario…" className="pl-9" aria-label="Buscar mis turnos" />
+            <Input value={bookingSearch} onChange={(event) => setBookingSearch(event.target.value)} placeholder="Buscar turno..." className="pl-9" aria-label="Buscar mis turnos" />
           </label>
           {loadingBookings ? (
             <p className="text-sm text-muted-foreground">Cargando tus turnos…</p>
@@ -609,7 +609,6 @@ function MyBookingsPage() {
               <p>Método de pago: <span className="font-medium text-gold">{paymentBooking.customer.paymentMethod === "transferencia" ? "Transferencia bancaria" : paymentBooking.customer.paymentMethod === "tarjeta o mercado pago" ? "Tarjeta o Mercado Pago" : paymentBooking.customer.paymentMethod === "efectivo" ? "Efectivo" : "No especificado"}</span></p>
               <p>Total a pagar: <span className="font-semibold text-gold">${paymentBooking.totalPrice.toLocaleString("es-AR")}</span></p>
               {paymentBooking.customer.paymentMethod === "efectivo" && <p className="text-muted-foreground">El pago en efectivo se realiza en la sucursal; el pago en línea no está disponible para este método de pago.</p>}
-              {paymentBooking.paymentStatus === "approved" && <p className="text-emerald-400">El profesional ya confirmó este pago.</p>}
             </div>
           ) : null}
           <DialogFooter className="flex-col-reverse gap-3 sm:flex-row sm:flex-wrap sm:justify-end sm:gap-4 sm:space-x-0">
@@ -625,11 +624,11 @@ function MyBookingsPage() {
                     {busyBookingId === paymentBooking.id ? "Enviando solicitud…" : "Solicitar devolución"}
                   </Button>}
               </> : <>
-                <Button type="button" variant="outline" className="w-full sm:w-auto" disabled={busyBookingId !== null || paymentBooking.paymentReportedAt !== undefined || paymentBooking.paymentStatus === "approved"} onClick={() => {
+                <Button type="button" variant="outline" className="w-full sm:w-auto" disabled={busyBookingId !== null || paymentBooking.paymentReportedAt !== undefined} onClick={() => {
                   setNewPaymentMethod(paymentBooking.customer.paymentMethod ?? "efectivo");
                   setChangingPaymentBooking(paymentBooking);
                 }}>Cambiar método de pago</Button>
-                <Button type="button" variant="outline" className="w-full border-emerald-500 bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-60 sm:w-auto" disabled={busyBookingId !== null || paymentBooking.paymentStatus === "approved" || !!paymentBooking.paymentReportedAt} onClick={() => void reportPayment(paymentBooking)}>Indicar pago realizado</Button>
+                <Button type="button" variant="outline" className="w-full border-emerald-500 bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-60 sm:w-auto" disabled={busyBookingId !== null || !!paymentBooking.paymentReportedAt} onClick={() => void reportPayment(paymentBooking)}>Indicar pago realizado</Button>
                 {paymentBooking.customer.paymentMethod !== "efectivo" && <Button type="button" disabled={busyBookingId !== null} className="w-full bg-gold text-primary-foreground hover:bg-gold-soft sm:w-auto" onClick={() => void payBooking(paymentBooking)}>
                   {payingBookingId === paymentBooking.id ? "Preparando pago…" : "Pagar"}
                 </Button>}

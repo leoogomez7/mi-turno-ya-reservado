@@ -243,7 +243,13 @@ export function NotificationsCenter({ isAuthenticated, role }: { isAuthenticated
 
       {panelOpen && (
         <>
-        <button type="button" aria-label="Cerrar notificaciones" className="fixed inset-0 z-50 bg-black/70 backdrop-blur-[1px] md:hidden" onClick={() => setPanelOpen(false)} />
+        <button
+          type="button"
+          aria-label="Cerrar notificaciones"
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm md:hidden"
+          onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); }}
+          onClick={(event) => { event.preventDefault(); event.stopPropagation(); setPanelOpen(false); }}
+        />
         <section aria-label="Notificaciones" className="fixed left-1/2 right-auto top-17 z-60 w-[calc(100vw-1rem)] -translate-x-1/2 rounded-2xl border border-gold/40 bg-background p-3 text-foreground shadow-2xl md:absolute md:left-auto md:right-0 md:top-full md:mt-2 md:w-[min(22rem,calc(100vw-1.5rem))] md:translate-x-0">
           <div className="mb-3 flex items-center justify-between gap-2 border-b border-border pb-2">
             <h2 className="font-semibold">Notificaciones</h2>
