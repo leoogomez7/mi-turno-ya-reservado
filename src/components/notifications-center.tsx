@@ -242,7 +242,7 @@ export function NotificationsCenter({ isAuthenticated, role }: { isAuthenticated
       </Button>
 
       {panelOpen && (
-        <section aria-label="Notificaciones" className="absolute right-0 top-full z-60 mt-2 w-[min(22rem,calc(100vw-1.5rem))] rounded-2xl border border-gold/30 bg-background p-3 text-foreground shadow-2xl">
+        <section aria-label="Notificaciones" className="fixed left-1/2 right-auto top-17 z-60 w-[calc(100vw-1rem)] -translate-x-1/2 rounded-2xl border border-gold/30 bg-background p-3 text-foreground shadow-2xl md:absolute md:left-auto md:right-0 md:top-full md:mt-2 md:w-[min(22rem,calc(100vw-1.5rem))] md:translate-x-0">
           <div className="mb-3 flex items-center justify-between gap-2 border-b border-border pb-2">
             <h2 className="font-semibold">Notificaciones</h2>
             {unreadCount > 0 && <button type="button" disabled={markingAll} className="text-xs text-gold hover:underline disabled:cursor-wait disabled:opacity-70" onClick={() => void markAllRead()}>{markingAll ? "Marcando como leídas..." : "Marcar todas leídas"}</button>}
