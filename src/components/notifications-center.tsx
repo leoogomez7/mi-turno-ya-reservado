@@ -199,11 +199,9 @@ export function NotificationsCenter({ isAuthenticated, role }: { isAuthenticated
         toast("El turno fue eliminado o ya no está disponible para consultar.", {
           className: "!border-white/20 !bg-black !text-white",
         });
-        void markRead(notification);
         return;
       }
       sessionStorage.setItem(BOOKING_HIGHLIGHT_KEY, notification.bookingId);
-      void markRead(notification);
       setPanelOpen(false);
       await navigate({ to: role === "admin" ? "/agenda" : "/mis-turnos" });
       window.setTimeout(() => window.dispatchEvent(new Event("mi-turno-ya:highlight-booking")), 0);
@@ -233,9 +231,7 @@ export function NotificationsCenter({ isAuthenticated, role }: { isAuthenticated
         aria-label={`Notificaciones${unreadCount ? `, ${unreadCount} sin leer` : ""}`}
         aria-expanded={panelOpen}
         onClick={() => {
-          const opening = !panelOpen;
-          setPanelOpen(opening);
-          if (opening) void markAllRead();
+          setPanelOpen((open) => !open);
         }}
         className="relative h-10 w-10 rounded-full border border-border/60 text-foreground hover:border-gold/50 hover:text-gold"
       >
