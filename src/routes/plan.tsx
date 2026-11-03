@@ -209,6 +209,20 @@ function PlanPage() {
     <div className="min-h-screen bg-gradient-dark">
       <SiteHeader />
       <main className="mx-auto w-full max-w-7xl px-4 py-10 sm:px-6">
+        <aside className="mb-5 flex flex-col gap-3 rounded-2xl border border-gold/40 bg-gold/10 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm font-semibold text-gold">Beneficio de bienvenida</p>
+            <p className="mt-1 text-sm">Usá <span className="rounded bg-background px-1.5 py-0.5 font-mono font-semibold text-gold">promo10nuevo</span> para obtener un 10% de descuento en cualquier plan.</p>
+            <p className="mt-1 text-xs text-muted-foreground">Válido por única vez por cuenta. Aplicá el código antes de contratar.</p>
+          </div>
+          <Button type="button" variant="outline" disabled={!storeInfo || subscriptionBusy || discountPercent > 0} onClick={() => {
+            setPromoCode("promo10nuevo");
+            setAppliedPromoCode("");
+            setDiscountPercent(0);
+          }} className="shrink-0">
+            Usar código
+          </Button>
+        </aside>
         <section className="mb-8 w-full rounded-3xl border border-gold/30 bg-card p-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div>

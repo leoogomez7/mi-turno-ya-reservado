@@ -343,10 +343,10 @@ export function subscriptionPromoDiscountPercent(code) {
   const normalizedCode = typeof code === "string" ? code.trim().toUpperCase() : "";
   if (!normalizedCode) return 0;
 
-  const discountCodes = (process.env.DESCUENTO_OFF ?? "")
+  const discountCodes = ["PROMO10NUEVO", ...(process.env.DESCUENTO_OFF ?? "")
     .split(",")
     .map((configuredCode) => configuredCode.trim().toUpperCase())
-    .filter(Boolean);
+    .filter(Boolean)];
   if (discountCodes.includes(normalizedCode)) return 10;
 
   const freeCodes = (process.env.GRATIS2026 ?? "")

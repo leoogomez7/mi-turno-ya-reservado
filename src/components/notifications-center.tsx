@@ -184,7 +184,7 @@ export function NotificationsCenter({ isAuthenticated, role }: { isAuthenticated
       const { exists } = await notificationBookingExists(notification.id);
       if (!exists) {
         setNotifications((current) => current.map((item) => item.id === notification.id ? { ...item, bookingExists: false } : item));
-        toast("Este turno ya no está disponible. Podés consultar el detalle de la notificación.", {
+        toast("El turno fue eliminado o ya no está disponible para consultar.", {
           className: "!border-white/20 !bg-black !text-white",
         });
         void markRead(notification);
@@ -257,7 +257,7 @@ export function NotificationsCenter({ isAuthenticated, role }: { isAuthenticated
                     <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
                       <button type="button" disabled={checkingBookingIds.has(notification.id)} className="inline-flex items-center gap-1 text-xs text-gold hover:underline disabled:cursor-wait disabled:opacity-70" onClick={() => {
                         if (notification.bookingExists === false) {
-                          toast("El turno ya no se puede abrir. Este es el detalle de la notificación.", {
+                          toast("El turno fue eliminado o ya no está disponible para consultar.", {
                             className: "!border-white/20 !bg-black !text-white",
                           });
                           return;
