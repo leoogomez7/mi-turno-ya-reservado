@@ -96,6 +96,7 @@ export function NotificationsCenter({ isAuthenticated, role }: { isAuthenticated
 
   useEffect(() => {
     if (!panelOpen) return;
+    if (window.matchMedia("(max-width: 767px)").matches) return;
     const closeOnOutsideClick = (event: PointerEvent) => {
       if (event.target instanceof Node && !containerRef.current?.contains(event.target)) {
         setPanelOpen(false);
@@ -222,6 +223,59 @@ export function NotificationsCenter({ isAuthenticated, role }: { isAuthenticated
   if (!isAuthenticated || (role !== "admin" && role !== "client")) return null;
 
   const unreadCount = notifications.filter((item) => !item.readAt).length;
+  const isMobileViewport = typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches;
+  const notificationPanelContent = (
+    <>
+      <div className="mb-3 flex items-center justify-between gap-2 border-b border-border pb-2">
+        <h2 className="font-semibold">Notificaciones</h2>
+        {unreadCount > 0 && <button type="button" disabled={markingAll} className="text-xs text-gold hover:underline disabled:cursor-wait disabled:opacity-70" onClick={() => void markAllRead()}>{markingAll ? "Marcando como leídas..." : "Marcar todas leídas"}</button>}
+      </div>
+      {error && <p role="alert" className="mb-2 rounded-lg bg-red-500/10 p-2 text-xs text-red-300">{error}</p>}
+      {loading ? <p className="py-5 text-center text-sm text-muted-foreground">Cargando…</p>
+        : notifications.length === 0 ? <p className="py-5 text-center text-sm text-muted-foreground">Todavía no tenés notificaciones.</p>
+          : <ul className="gold-scrollbar max-h-[min(65vh,28rem)] space-y-2 overflow-y-auto pr-1">
+            {notifications.map((notification) => (
+              <li key={notification.id} className={`rounded-xl border p-3 ${notification.readAt ? "border-border bg-card/60" : "border-gold/40 bg-gold/5"}`}>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold">{notification.title}</p>
+                    <p className="mt-1 text-xs leading-5 text-muted-foreground">{notification.message.replace(/\b(\d{4})-(\d{2})-(\d{2})\b/g, "$3/$2/$1")}</p>
+                    <time className="mt-2 block text-[11px] text-muted-foreground" dateTime={parseNotificationTimestamp(notification.createdAt).toISOString()}>
+                      {formatBuenosAiresTimestamp(notification.createdAt)}
+                    </time>
+                    {notification.bookingExists === false && <p className="mt-2 rounded-md border border-white/15 bg-black px-2 py-1.5 text-xs text-white">El turno fue eliminado o ya no está disponible para consultar.</p>}
+                  </div>
+                  <span className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${notification.readAt ? "bg-border" : "bg-gold"}`} aria-label={notification.readAt ? "Leída" : "Sin leer"} />
+                </div>
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                  <button type="button" disabled={checkingBookingIds.has(notification.id)} className="inline-flex items-center gap-1 text-xs text-gold hover:underline disabled:cursor-wait disabled:opacity-70" onClick={() => {
+                    if (notification.bookingExists === false) {
+                      void markRead(notification);
+                      toast("El turno fue eliminado o ya no está disponible para consultar.", {
+                        className: "!border-white/20 !bg-black !text-white",
+                      });
+                      return;
+                    }
+                    void viewBooking(notification);
+                  }}>
+                    {checkingBookingIds.has(notification.id) ? "Buscando turno..." : <>{notification.bookingExists === false ? "Ver detalle" : "Ver turno"} <ExternalLink className="h-3 w-3" /></>}
+                  </button>
+                  <div className="flex items-center gap-3">
+                    {markingIds.has(notification.id)
+                      ? <span className="text-xs text-muted-foreground">Marcando como leída...</span>
+                      : notification.readAt
+                      ? <span className="inline-flex items-center gap-1 text-xs text-muted-foreground"><Check className="h-3 w-3" /> Leída</span>
+                      : <button type="button" disabled={markingAll} className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground disabled:cursor-wait disabled:opacity-70" onClick={() => void markRead(notification)}><Check className="h-3 w-3" /> Marcar como leída</button>}
+                    <button type="button" disabled={deletingIds.has(notification.id)} aria-label="Eliminar notificación" title="Eliminar notificación" className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-red-500/10 hover:text-red-300 disabled:cursor-wait disabled:opacity-60" onClick={() => void removeNotification(notification)}>
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>}
+    </>
+  );
 
   return (
     <div ref={containerRef} className="relative shrink-0">
@@ -241,67 +295,18 @@ export function NotificationsCenter({ isAuthenticated, role }: { isAuthenticated
         {unreadCount > 0 && <span className="absolute -right-1 -top-1 flex min-h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">{unreadCount > 99 ? "99+" : unreadCount}</span>}
       </Button>
 
-      {panelOpen && (
-        <>
-        <button
-          type="button"
-          aria-label="Cerrar notificaciones"
-          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm md:hidden"
-          onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); }}
-          onClick={(event) => { event.preventDefault(); event.stopPropagation(); setPanelOpen(false); }}
-        />
-        <section aria-label="Notificaciones" className="fixed left-1/2 right-auto top-17 z-60 w-[calc(100vw-1rem)] -translate-x-1/2 rounded-2xl border border-gold/40 bg-background p-3 text-foreground shadow-2xl md:absolute md:left-auto md:right-0 md:top-full md:mt-2 md:w-[min(22rem,calc(100vw-1.5rem))] md:translate-x-0">
-          <div className="mb-3 flex items-center justify-between gap-2 border-b border-border pb-2">
-            <h2 className="font-semibold">Notificaciones</h2>
-            {unreadCount > 0 && <button type="button" disabled={markingAll} className="text-xs text-gold hover:underline disabled:cursor-wait disabled:opacity-70" onClick={() => void markAllRead()}>{markingAll ? "Marcando como leídas..." : "Marcar todas leídas"}</button>}
-          </div>
-          {error && <p role="alert" className="mb-2 rounded-lg bg-red-500/10 p-2 text-xs text-red-300">{error}</p>}
-          {loading ? <p className="py-5 text-center text-sm text-muted-foreground">Cargando…</p>
-            : notifications.length === 0 ? <p className="py-5 text-center text-sm text-muted-foreground">Todavía no tenés notificaciones.</p>
-              : <ul className="gold-scrollbar max-h-[min(65vh,28rem)] space-y-2 overflow-y-auto pr-1">
-                {notifications.map((notification) => (
-                  <li key={notification.id} className={`rounded-xl border p-3 ${notification.readAt ? "border-border bg-card/60" : "border-gold/40 bg-gold/5"}`}>
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold">{notification.title}</p>
-                        <p className="mt-1 text-xs leading-5 text-muted-foreground">{notification.message.replace(/\b(\d{4})-(\d{2})-(\d{2})\b/g, "$3/$2/$1")}</p>
-                        <time className="mt-2 block text-[11px] text-muted-foreground" dateTime={parseNotificationTimestamp(notification.createdAt).toISOString()}>
-                          {formatBuenosAiresTimestamp(notification.createdAt)}
-                        </time>
-                        {notification.bookingExists === false && <p className="mt-2 rounded-md border border-white/15 bg-black px-2 py-1.5 text-xs text-white">El turno fue eliminado o ya no está disponible para consultar.</p>}
-                      </div>
-                      <span className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${notification.readAt ? "bg-border" : "bg-gold"}`} aria-label={notification.readAt ? "Leída" : "Sin leer"} />
-                    </div>
-                    <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-                      <button type="button" disabled={checkingBookingIds.has(notification.id)} className="inline-flex items-center gap-1 text-xs text-gold hover:underline disabled:cursor-wait disabled:opacity-70" onClick={() => {
-                        if (notification.bookingExists === false) {
-                          void markRead(notification);
-                          toast("El turno fue eliminado o ya no está disponible para consultar.", {
-                            className: "!border-white/20 !bg-black !text-white",
-                          });
-                          return;
-                        }
-                        void viewBooking(notification);
-                      }}>
-                        {checkingBookingIds.has(notification.id) ? "Buscando turno..." : <>{notification.bookingExists === false ? "Ver detalle" : "Ver turno"} <ExternalLink className="h-3 w-3" /></>}
-                      </button>
-                      <div className="flex items-center gap-3">
-                        {markingIds.has(notification.id)
-                          ? <span className="text-xs text-muted-foreground">Marcando como leída...</span>
-                          : notification.readAt
-                          ? <span className="inline-flex items-center gap-1 text-xs text-muted-foreground"><Check className="h-3 w-3" /> Leída</span>
-                          : <button type="button" disabled={markingAll} className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground disabled:cursor-wait disabled:opacity-70" onClick={() => void markRead(notification)}><Check className="h-3 w-3" /> Marcar como leída</button>}
-                        <button type="button" disabled={deletingIds.has(notification.id)} aria-label="Eliminar notificación" title="Eliminar notificación" className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-red-500/10 hover:text-red-300 disabled:cursor-wait disabled:opacity-60" onClick={() => void removeNotification(notification)}>
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    </div>
-                  </li>
-                ))}
-              </ul>}
-        </section>
-        </>
-      )}
+      <Dialog open={panelOpen && isMobileViewport} onOpenChange={setPanelOpen}>
+        <DialogContent aria-label="Notificaciones" className="max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] max-w-lg overflow-y-auto rounded-2xl border-gold/40 bg-background p-4 text-foreground sm:p-6 md:hidden">
+          <DialogHeader className="sr-only">
+            <DialogTitle>Notificaciones</DialogTitle>
+          </DialogHeader>
+          {notificationPanelContent}
+        </DialogContent>
+      </Dialog>
+
+      {panelOpen && <section aria-label="Notificaciones" className="absolute right-0 top-full z-60 mt-2 hidden w-[min(22rem,calc(100vw-1.5rem))] rounded-2xl border border-gold/40 bg-background p-3 text-foreground shadow-2xl md:block">
+        {notificationPanelContent}
+      </section>}
 
       <Dialog open={promptOpen} onOpenChange={setPromptOpen}>
         <DialogContent>
