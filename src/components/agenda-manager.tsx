@@ -14,7 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { bookingStore, getBarber, getBookingArchiveLabel, type Booking } from "@/lib/booking-store";
 import { useAppAuth } from "@/lib/auth";
-import { archiveBooking, BOOKING_HIGHLIGHT_KEY, refreshCloudData, restoreArchivedBooking } from "@/lib/cloud-sync";
+import { archiveBooking, BOOKING_HIGHLIGHT_KEY, confirmBookingRefund, refreshCloudData, restoreArchivedBooking } from "@/lib/cloud-sync";
 import { getAvailableSlotsForDate, getProfessionalService, getScheduleForDate, professionalStore } from "@/lib/professional-store";
 
 export function AgendaManager() {
@@ -36,6 +36,9 @@ export function AgendaManager() {
   const [archiveSearch, setArchiveSearch] = useState("");
   const [bookingSearch, setBookingSearch] = useState("");
   const [restoringBookingId, setRestoringBookingId] = useState<string | null>(null);
+  const [refundDetailsBooking, setRefundDetailsBooking] = useState<Booking | null>(null);
+  const [refundConfirmationBooking, setRefundConfirmationBooking] = useState<Booking | null>(null);
+  const [confirmingRefundId, setConfirmingRefundId] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState(Date.now());
   const [highlightedBookingId, setHighlightedBookingId] = useState("");
   const highlightTimeout = useRef<number | null>(null);
@@ -221,6 +224,22 @@ export function AgendaManager() {
     }
   }
 
+  async function confirmRefund(booking: Booking) {
+    if (confirmingRefundId || booking.paymentCancellationStatus !== "requested") return;
+    setConfirmingRefundId(booking.id);
+    try {
+      const result = await confirmBookingRefund(booking.id);
+      setBookings((current) => current.map((item) => item.id === booking.id ? result.booking : item));
+      setRefundDetailsBooking(null);
+      setRefundConfirmationBooking(null);
+      toast.success("Devolución confirmada. El cliente recibirá una notificación.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo confirmar la devolución.");
+    } finally {
+      setConfirmingRefundId(null);
+    }
+  }
+
   const archivedBookings = bookings
     .filter((booking) => getBookingArchiveLabel(booking, currentTime, "admin"))
     .sort((a, b) => (b.adminArchivedAt ?? `${b.date}T${b.time}`).localeCompare(a.adminArchivedAt ?? `${a.date}T${a.time}`));
@@ -338,18 +357,18 @@ export function AgendaManager() {
                       {booking.paymentReportedAt && booking.paymentStatus !== "approved" && <Badge variant="outline" className="border-amber-300 text-amber-300">Cliente avisó que pagó</Badge>}
                       {booking.paymentStatus === "approved" && <Badge variant="outline" className="border-emerald-300 text-emerald-400">Pagado · {booking.customer.paymentMethod === "tarjeta o mercado pago" ? "Tarjeta o Mercado Pago" : booking.customer.paymentMethod === "transferencia" ? "Transferencia Bancaria" : "Efectivo"}</Badge>}
                       {booking.paymentCancellationStatus === "requested" && <Badge variant="outline" className="border-amber-300 text-amber-300">Devolución solicitada</Badge>}
-                      {booking.paymentCancellationStatus === "refunded" && <Badge variant="outline" className="border-emerald-300 text-emerald-400">Pago devuelto por Mercado Pago</Badge>}
-                      {booking.paymentCancellationStatus === "cancelled" && <Badge variant="outline" className="border-red-300 text-red-300">Pago cancelado en Mercado Pago</Badge>}
+                      {booking.paymentCancellationStatus === "refunded" && <Badge variant="outline" className="border-emerald-300 text-emerald-400">Devolución confirmada</Badge>}
+                      {booking.paymentCancellationStatus === "cancelled" && <Badge variant="outline" className="border-red-300 text-red-300">Pago cancelado</Badge>}
                       {booking.status === "completed" && <Badge variant="outline" className="border-emerald-300 text-emerald-400">Asistió</Badge>}
                       {booking.status === "no-show" && <Badge variant="outline" className="border-red-500/30 bg-red-500/10 text-red-300">No asistió</Badge>}
                   </div>
-                  {booking.refundCbu && <p className="w-full text-center text-sm text-amber-200 sm:w-auto">CBU para devolver ${(booking.refundAmount ?? booking.totalPrice).toLocaleString("es-AR")}: <span className="font-mono font-semibold text-foreground">{booking.refundCbu}</span></p>}
                   <div className="flex w-full flex-wrap justify-center gap-2 sm:w-auto sm:justify-end">
                     {!booking.paymentCancellationStatus && booking.paymentStatus !== "approved" && (booking.status === "pending-payment" || booking.paymentStatus === "pending" || (booking.paymentReportedAt && booking.paymentStatus !== "approved")) && <Button size="sm" disabled={processingBookingId !== null} onClick={() => openDialog(booking, "payment")} className="bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-60">{booking.paymentReportedAt ? "Revisar pago" : "Indicar pago"}</Button>}
                     {booking.status === "confirmed" && <Button size="sm" variant="outline" onClick={() => openDialog(booking, "attendance")}>Indicar asistencia</Button>}
                     {isActiveBooking && !booking.paymentCancellationStatus && booking.paymentStatus !== "approved" && !booking.paymentReportedAt && <Button size="sm" variant="outline" onClick={() => openDialog(booking, "turno")}>Modificar turno</Button>}
                     {isActiveBooking && !booking.paymentCancellationStatus && booking.paymentStatus !== "approved" && !booking.paymentReportedAt && <Button size="sm" variant="destructive" disabled={cancellingBookingId !== null} className={cancellingBookingId === booking.id ? "opacity-60" : undefined} onClick={() => void cancelBooking(booking)}>{cancellingBookingId === booking.id ? "Cancelando turno..." : "Cancelar turno"}</Button>}
-                    {booking.paymentCancellationStatus === "requested" && booking.customer.paymentMethod !== "tarjeta o mercado pago" && <Button size="sm" className="bg-emerald-500 text-white hover:bg-emerald-600" disabled={processingBookingId !== null} onClick={() => void updateBooking(booking.id, { paymentCancellationStatus: "refunded" }, "Devolución confirmada; el cliente recibirá una notificación")}>Marcar devolución realizada</Button>}
+                    {["requested", "refunded"].includes(booking.paymentCancellationStatus ?? "") && (booking.refundDestination || booking.refundCbu) && <Button size="sm" variant="outline" className="border-gold/40 text-gold hover:bg-gold/10 hover:text-gold" onClick={() => setRefundDetailsBooking(booking)}>Ver CBU/Alias</Button>}
+                    {booking.paymentCancellationStatus === "requested" && <Button size="sm" className="bg-gold text-primary-foreground hover:bg-gold-soft" disabled={confirmingRefundId !== null} onClick={() => setRefundConfirmationBooking(booking)}>Indicar devolución</Button>}
                     <Button size="sm" variant="destructive" disabled={deletingBookingId === booking.id} className={deletingBookingId === booking.id ? "opacity-60" : undefined} onClick={() => void archiveTurn(booking)}>{deletingBookingId === booking.id ? "Borrando turno..." : "Borrar turno"}</Button>
                   </div>
                 </div>
@@ -358,6 +377,38 @@ export function AgendaManager() {
             </div>
           )}
         </section>
+
+        <Dialog open={refundDetailsBooking !== null} onOpenChange={(open) => { if (!open) setRefundDetailsBooking(null); }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Datos para devolver el pago</DialogTitle>
+              <DialogDescription>El turno ya está cancelado y su horario disponible.</DialogDescription>
+            </DialogHeader>
+            {refundDetailsBooking && <div className="space-y-3 rounded-xl border border-gold/30 bg-gold/5 p-4 text-sm">
+              <p>Cliente: <span className="font-medium text-foreground">{refundDetailsBooking.customer.fullName}</span></p>
+              <p>Importe a devolver: <span className="font-semibold text-gold">${(refundDetailsBooking.refundAmount ?? refundDetailsBooking.totalPrice).toLocaleString("es-AR")}</span></p>
+              <p>{refundDetailsBooking.refundDestinationType === "alias" ? "Alias" : "CBU"}: <span className="break-all font-mono font-semibold text-foreground">{refundDetailsBooking.refundDestination ?? refundDetailsBooking.refundCbu}</span></p>
+            </div>}
+            <DialogFooter className="flex-col gap-2 sm:flex-row">
+              <Button type="button" variant="outline" onClick={() => setRefundDetailsBooking(null)}>Cerrar</Button>
+              {refundDetailsBooking?.paymentCancellationStatus === "requested" && <Button type="button" className="bg-gold text-primary-foreground hover:bg-gold-soft" disabled={confirmingRefundId !== null} onClick={() => { setRefundConfirmationBooking(refundDetailsBooking); setRefundDetailsBooking(null); }}>Indicar devolución</Button>}
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={refundConfirmationBooking !== null} onOpenChange={(open) => { if (!open && confirmingRefundId === null) setRefundConfirmationBooking(null); }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>¿Ya realizaste la devolución?</DialogTitle>
+              <DialogDescription>El turno ya está cancelado. Solo avisaremos al cliente cuando confirmes que el dinero fue devuelto.</DialogDescription>
+            </DialogHeader>
+            {refundConfirmationBooking && <p className="rounded-xl border border-gold/30 bg-gold/5 p-4 text-sm">Devolución de <span className="font-semibold text-gold">${(refundConfirmationBooking.refundAmount ?? refundConfirmationBooking.totalPrice).toLocaleString("es-AR")}</span> para {refundConfirmationBooking.customer.fullName}.</p>}
+            <DialogFooter className="flex-col gap-2 sm:flex-row">
+              <Button type="button" variant="outline" disabled={confirmingRefundId !== null} onClick={() => setRefundConfirmationBooking(null)}>Todavía no</Button>
+              {refundConfirmationBooking && <Button type="button" className="bg-gold text-primary-foreground hover:bg-gold-soft" disabled={confirmingRefundId !== null} onClick={() => void confirmRefund(refundConfirmationBooking)}>{confirmingRefundId === refundConfirmationBooking.id ? "Confirmando…" : "Sí, ya hice la devolución"}</Button>}
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         <Dialog open={archiveDialogOpen} onOpenChange={setArchiveDialogOpen}>
           <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">

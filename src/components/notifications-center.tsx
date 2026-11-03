@@ -235,14 +235,16 @@ export function NotificationsCenter({ isAuthenticated, role }: { isAuthenticated
         onClick={() => {
           setPanelOpen((open) => !open);
         }}
-        className="relative h-10 w-10 rounded-full border border-border/60 text-foreground hover:border-gold/50 hover:text-gold"
+        className="relative h-9 w-9 rounded-full border border-gold/40 text-gold hover:border-gold hover:bg-gold/10 hover:text-gold sm:h-10 sm:w-10 md:border-border/60 md:text-foreground md:hover:border-gold/50 md:hover:bg-transparent md:hover:text-gold"
       >
         <Bell className="h-5 w-5" />
         {unreadCount > 0 && <span className="absolute -right-1 -top-1 flex min-h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">{unreadCount > 99 ? "99+" : unreadCount}</span>}
       </Button>
 
       {panelOpen && (
-        <section aria-label="Notificaciones" className="fixed left-1/2 right-auto top-17 z-60 w-[calc(100vw-1rem)] -translate-x-1/2 rounded-2xl border border-gold/30 bg-background p-3 text-foreground shadow-2xl md:absolute md:left-auto md:right-0 md:top-full md:mt-2 md:w-[min(22rem,calc(100vw-1.5rem))] md:translate-x-0">
+        <>
+        <button type="button" aria-label="Cerrar notificaciones" className="fixed inset-0 z-50 bg-black/70 backdrop-blur-[1px] md:hidden" onClick={() => setPanelOpen(false)} />
+        <section aria-label="Notificaciones" className="fixed left-1/2 right-auto top-17 z-60 w-[calc(100vw-1rem)] -translate-x-1/2 rounded-2xl border border-gold/40 bg-background p-3 text-foreground shadow-2xl md:absolute md:left-auto md:right-0 md:top-full md:mt-2 md:w-[min(22rem,calc(100vw-1.5rem))] md:translate-x-0">
           <div className="mb-3 flex items-center justify-between gap-2 border-b border-border pb-2">
             <h2 className="font-semibold">Notificaciones</h2>
             {unreadCount > 0 && <button type="button" disabled={markingAll} className="text-xs text-gold hover:underline disabled:cursor-wait disabled:opacity-70" onClick={() => void markAllRead()}>{markingAll ? "Marcando como leídas..." : "Marcar todas leídas"}</button>}
@@ -292,6 +294,7 @@ export function NotificationsCenter({ isAuthenticated, role }: { isAuthenticated
                 ))}
               </ul>}
         </section>
+        </>
       )}
 
       <Dialog open={promptOpen} onOpenChange={setPromptOpen}>

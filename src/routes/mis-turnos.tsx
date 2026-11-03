@@ -46,7 +46,8 @@ function MyBookingsPage() {
   const [showTransferDetails, setShowTransferDetails] = useState(false);
   const [changingPaymentBooking, setChangingPaymentBooking] = useState<Booking | null>(null);
   const [newPaymentMethod, setNewPaymentMethod] = useState<NonNullable<Booking["customer"]["paymentMethod"]>>("efectivo");
-  const [refundCbu, setRefundCbu] = useState("");
+  const [refundDestination, setRefundDestination] = useState("");
+  const [refundDestinationType, setRefundDestinationType] = useState<"cbu" | "alias">("cbu");
   const suppressPaymentClick = useRef(false);
   const [highlightedBookingId, setHighlightedBookingId] = useState("");
   const highlightTimeout = useRef<number | null>(null);
@@ -197,24 +198,36 @@ function MyBookingsPage() {
     }
     const appointmentAt = Date.parse(`${booking.date}T${booking.time}:00-03:00`);
     const windowMinutes = policy?.cancellationWindowMinutes ?? 30;
+    if (booking.paymentStatus !== "approved") {
+      toast.error("Solo podés solicitar la devolución cuando el profesional haya confirmado el pago.");
+      return;
+    }
+    if ((booking.customer.paymentMethod === "efectivo" || booking.customer.paymentMethod === "transferencia")
+      && !isValidRefundDestination(refundDestinationType, refundDestination)) {
+      toast.error(refundDestinationType === "cbu" ? "Ingresá un CBU válido de 22 dígitos." : "Ingresá un alias válido de 6 a 30 caracteres.");
+      return;
+    }
     if (!Number.isFinite(appointmentAt) || appointmentAt - Date.now() < windowMinutes * 60 * 1000) {
       toast.error(`Solo podés solicitar la cancelación con al menos ${windowMinutes} minutos de anticipación.`);
       return;
     }
     setBusyBookingId(booking.id);
     try {
-      const result = await cancelClientPayment(booking.id, booking.customer.paymentMethod === "transferencia" ? refundCbu : undefined);
+      const needsDestination = booking.customer.paymentMethod === "efectivo" || booking.customer.paymentMethod === "transferencia";
+      const result = await cancelClientPayment(booking.id, needsDestination ? refundDestinationType : undefined, needsDestination ? refundDestination.trim() : undefined);
       setBookings((current) => current.map((item) => item.id === booking.id ? result.booking : item));
       setPaymentBooking(null);
-      setRefundCbu("");
-      toast.success(result.cancellationStatus === "requested"
-        ? "Solicitud de devolución enviada al profesional; el turno queda cancelado y se conserva en la agenda."
-        : result.cancellationStatus === "refunded" ? "El pago fue devuelto a través de Mercado Pago; el turno queda cancelado." : "El pago pendiente fue cancelado en Mercado Pago; el turno queda cancelado.");
+      setRefundDestination("");
+      toast.success("Solicitud de devolución enviada. El turno se canceló y el horario quedó disponible; el profesional confirmará la devolución.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "No se pudo cancelar el pago.");
     } finally {
       setBusyBookingId(null);
     }
+  }
+
+  function isValidRefundDestination(type: "cbu" | "alias", value: string) {
+    return type === "cbu" ? /^\d{22}$/.test(value.replace(/\s/g, "")) : /^[\p{L}\d._-]{6,30}$/u.test(value.trim());
   }
 
   async function savePaymentMethod() {
@@ -401,10 +414,10 @@ function MyBookingsPage() {
                 "transferencia",
                 "tarjeta o mercado pago",
               ].includes(booking.customer.paymentMethod ?? "");
-              const canRequestPaymentCancellation = hasPaymentReport && !policy?.noRefunds && policy?.allowRefunds !== false
+              const canRequestPaymentCancellation = booking.paymentStatus === "approved" && !policy?.noRefunds && policy?.allowRefunds !== false
                 && (policy?.refundPercent ?? 100) > 0 && !cancellationTooLate
                 && ["efectivo", "transferencia", "tarjeta o mercado pago"].includes(booking.customer.paymentMethod ?? "");
-              const canArchive = !getBookingArchiveLabel(booking, currentTime, "client");
+              const canArchive = !getBookingArchiveLabel(booking, currentTime, "client") && booking.paymentCancellationStatus !== "requested";
               return (
                 <article key={booking.id} id={`booking-${booking.id}`} className={`flex flex-col items-center gap-3 rounded-xl border p-4 text-center transition-colors duration-300 sm:flex-row sm:items-center sm:gap-4 sm:text-left ${highlightedBookingId === booking.id ? "border-gold bg-gold/20 ring-2 ring-gold/70" : "border-gold/30 bg-card"}`}>
                   <div className="flex w-full items-center justify-center gap-2 sm:contents">
@@ -431,7 +444,7 @@ function MyBookingsPage() {
                   </div>
                   {(isActiveBooking || canArchive) && <div className="flex w-full flex-wrap justify-center gap-2 sm:w-auto sm:justify-end">
                     {!hasPaymentReport && booking.paymentStatus !== "approved" && <Button size="sm" disabled={busyBookingId !== null} className="bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-60" onClick={() => { setPaymentBooking(booking); setShowTransferDetails(false); }}>Indicar pago</Button>}
-                    {canRequestPaymentCancellation && !booking.paymentCancellationStatus && <Button size="sm" variant="destructive" disabled={busyBookingId !== null} onClick={() => { setRefundCbu(""); setPaymentBooking(booking); setShowTransferDetails(false); }}>Cancelar pago</Button>}
+                    {canRequestPaymentCancellation && !booking.paymentCancellationStatus && <Button size="sm" className="bg-gold text-primary-foreground hover:bg-gold-soft" disabled={busyBookingId !== null} onClick={() => { setRefundDestination(""); setRefundDestinationType("cbu"); setPaymentBooking(booking); setShowTransferDetails(false); }}>Solicitar devolución</Button>}
                     {booking.paymentStatus !== "approved" && !hasPaymentReport && !booking.paymentCancellationStatus && <Button size="sm" variant="outline" disabled={busyBookingId !== null} onClick={() => void openEditDialog(booking)}>Modificar turno</Button>}
                     {canCancel && <Button size="sm" variant="destructive" disabled={busyBookingId !== null} className={cancelingBookingId === booking.id ? "opacity-60" : undefined} onClick={() => void cancelBooking(booking)}>{cancelingBookingId === booking.id ? "Cancelando turno..." : "Cancelar turno"}</Button>}
                     {canArchive && <Button size="sm" variant="destructive" disabled={busyBookingId !== null} className={deletingBookingId === booking.id ? "opacity-60" : undefined} onClick={() => void archiveTurn(booking)}>{deletingBookingId === booking.id ? "Borrando turno..." : "Borrar turno"}</Button>}
@@ -525,14 +538,14 @@ function MyBookingsPage() {
       <Dialog open={paymentBooking !== null} onOpenChange={(open) => { if (!open && !busyBookingId) { setPaymentBooking(null); setShowTransferDetails(false); } }}>
         <DialogContent className={showTransferDetails ? "sm:max-w-lg" : "sm:max-w-2xl"}>
           <DialogHeader>
-            <DialogTitle>{showTransferDetails ? "Datos para la transferencia" : paymentBooking?.paymentCancellationStatus ? "Solicitud enviada" : paymentBooking && (paymentBooking.paymentReportedAt || paymentBooking.paymentStatus === "approved") ? "Cancelar pago" : "Confirmar pago"}</DialogTitle>
+            <DialogTitle>{showTransferDetails ? "Datos para la transferencia" : paymentBooking?.paymentCancellationStatus ? "Solicitud enviada" : paymentBooking?.paymentStatus === "approved" ? "Solicitar devolución" : "Confirmar pago"}</DialogTitle>
             <DialogDescription>
               {showTransferDetails
                 ? `Realizá la transferencia bancaria.`
                 : paymentBooking?.paymentCancellationStatus
-                  ? "La solicitud quedó registrada y el turno se mantiene."
-                  : paymentBooking && (paymentBooking.paymentReportedAt || paymentBooking.paymentStatus === "approved")
-                    ? "Revisá la información antes de solicitar la cancelación o devolución."
+                  ? "La solicitud quedó registrada. El turno está cancelado y el horario disponible; el profesional confirmará la devolución."
+                  : paymentBooking?.paymentStatus === "approved"
+                    ? "Revisá la información antes de solicitar la devolución. El turno se cancelará y el horario quedará disponible."
                     : "Revisá el método de pago elegido y seleccioná cómo querés continuar."}
             </DialogDescription>
           </DialogHeader>
@@ -560,31 +573,34 @@ function MyBookingsPage() {
             </div>
           ) : paymentBooking && paymentBooking.paymentCancellationStatus ? (
             <div className="space-y-2 rounded-xl border border-amber-300/30 bg-amber-300/5 p-4 text-sm">
-              <p className="font-medium text-amber-200">Ya existe una solicitud de cancelación para este pago.</p>
-              {paymentBooking.refundCbu && <p>CBU informado: <span className="font-mono text-foreground">{paymentBooking.refundCbu}</span></p>}
+              <p className="font-medium text-amber-200">La solicitud de devolución ya fue enviada. El turno está cancelado y el horario quedó disponible.</p>
+              {paymentBooking.refundDestination && <p>{paymentBooking.refundDestinationType === "alias" ? "Alias informado" : "CBU informado"}: <span className="font-mono text-foreground">{paymentBooking.refundDestination}</span></p>}
             </div>
-          ) : paymentBooking && (paymentBooking.paymentReportedAt || paymentBooking.paymentStatus === "approved") ? (
-            <div className="space-y-3 rounded-xl border border-red-500/30 bg-red-500/5 p-4 text-sm">
+          ) : paymentBooking?.paymentStatus === "approved" ? (
+            <div className="space-y-3 rounded-xl border border-gold/30 bg-gold/5 p-4 text-sm">
               {(() => {
                 const policy = cancellationPolicyFor(paymentBooking);
                 const percent = policy?.refundPercent ?? 100;
                 const amount = Math.round(paymentBooking.totalPrice * percent / 100);
-                return <p className="font-medium text-red-200">Política de devolución: {percent}% · Importe estimado: ${amount.toLocaleString("es-AR")}.</p>;
+                return <p className="font-medium text-gold">Política de devolución: {percent}% · Importe estimado: ${amount.toLocaleString("es-AR")}.</p>;
               })()}
-              {paymentBooking.customer.paymentMethod === "transferencia" ? <>
-                <p>Ingresá el CBU de 22 dígitos donde el profesional debe devolver el dinero. El turno se mantiene y la solicitud se envía a la agenda.</p>
+              {(paymentBooking.customer.paymentMethod === "transferencia" || paymentBooking.customer.paymentMethod === "efectivo") ? <>
+                <p>Ingresá el dato donde el profesional debe devolver el dinero. Indicá si es CBU o alias. Al enviar la solicitud, el turno se cancela y el horario queda disponible.</p>
                 <label className="grid gap-2 text-muted-foreground">
-                  <span>CBU para la devolución</span>
-                  <input value={refundCbu} onChange={(event) => setRefundCbu(event.target.value.replace(/\D/g, "").slice(0, 22))} inputMode="numeric" autoComplete="off" placeholder="22 dígitos" className="w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-foreground" aria-label="CBU para la devolución" />
+                  <span>Tipo de dato</span>
+                  <select value={refundDestinationType} onChange={(event) => { setRefundDestinationType(event.target.value as "cbu" | "alias"); setRefundDestination(""); }} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-foreground">
+                    <option value="cbu">CBU (22 dígitos)</option>
+                    <option value="alias">Alias</option>
+                  </select>
+                  <span>{refundDestinationType === "cbu" ? "CBU para recibir la devolución" : "Alias para recibir la devolución"}</span>
+                  <input value={refundDestination} onChange={(event) => setRefundDestination(refundDestinationType === "cbu" ? event.target.value.replace(/\D/g, "").slice(0, 22) : event.target.value.slice(0, 30))} inputMode={refundDestinationType === "cbu" ? "numeric" : "text"} autoComplete="off" placeholder={refundDestinationType === "cbu" ? "22 dígitos" : "ejemplo.alias"} className="w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-foreground" aria-label={`${refundDestinationType === "cbu" ? "CBU" : "Alias"} para la devolución`} />
                 </label>
-              </> : paymentBooking.customer.paymentMethod === "tarjeta o mercado pago"
-                ? <p>Mercado Pago cancelará el pago pendiente o devolverá el importe al mismo medio de pago. El turno se mantiene.</p>
-                : <p>La solicitud de devolución en efectivo se enviará al profesional. El turno se mantiene.</p>}
+              </> : <p>El profesional gestionará la devolución de Mercado Pago o tarjeta. Al enviar la solicitud, el turno se cancela y el horario queda disponible; recibirás un aviso cuando confirme que hizo la devolución.</p>}
               {(() => {
                 const minutesRemaining = (Date.parse(`${paymentBooking.date}T${paymentBooking.time}:00-03:00`) - currentTime) / 60_000;
                 const windowMinutes = cancellationPolicyFor(paymentBooking)?.cancellationWindowMinutes ?? 30;
                 return minutesRemaining < windowMinutes
-                  ? <p role="alert" className="text-red-300">La cancelación solo está disponible con al menos {windowMinutes} minutos de anticipación.</p>
+                  ? <p role="alert" className="text-red-300">La solicitud solo está disponible con al menos {windowMinutes} minutos de anticipación.</p>
                   : <p className="text-xs text-muted-foreground">La solicitud está disponible hasta {windowMinutes} minutos antes del turno.</p>;
               })()}
             </div>
@@ -601,12 +617,12 @@ function MyBookingsPage() {
               <Button type="button" variant="outline" className="w-full sm:w-auto" disabled={busyBookingId !== null} onClick={() => setShowTransferDetails(false)}>Volver</Button>
             ) : paymentBooking ? (
               paymentBooking.paymentCancellationStatus ? <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => setPaymentBooking(null)}>Cerrar</Button>
-              : paymentBooking.paymentReportedAt || paymentBooking.paymentStatus === "approved" ? <>
+              : paymentBooking.paymentStatus === "approved" ? <>
                 <Button type="button" variant="outline" className="w-full sm:w-auto" disabled={busyBookingId !== null} onClick={() => setPaymentBooking(null)}>Volver</Button>
-                {(paymentBooking.customer.paymentMethod !== "transferencia" || /^\d{22}$/.test(refundCbu))
+                {((paymentBooking.customer.paymentMethod !== "transferencia" && paymentBooking.customer.paymentMethod !== "efectivo") || isValidRefundDestination(refundDestinationType, refundDestination))
                   && Date.parse(`${paymentBooking.date}T${paymentBooking.time}:00-03:00`) - currentTime >= (cancellationPolicyFor(paymentBooking)?.cancellationWindowMinutes ?? 30) * 60 * 1000
-                  && <Button type="button" variant="destructive" className="w-full sm:w-auto" disabled={busyBookingId !== null} onClick={() => void cancelPayment(paymentBooking)}>
-                    {busyBookingId === paymentBooking.id ? "Procesando…" : "Cancelar pago"}
+                  && <Button type="button" className="w-full bg-gold text-primary-foreground hover:bg-gold-soft sm:w-auto" disabled={busyBookingId !== null} onClick={() => void cancelPayment(paymentBooking)}>
+                    {busyBookingId === paymentBooking.id ? "Enviando solicitud…" : "Solicitar devolución"}
                   </Button>}
               </> : <>
                 <Button type="button" variant="outline" className="w-full sm:w-auto" disabled={busyBookingId !== null || paymentBooking.paymentReportedAt !== undefined || paymentBooking.paymentStatus === "approved"} onClick={() => {

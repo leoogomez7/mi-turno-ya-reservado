@@ -313,8 +313,14 @@ export async function reportClientPayment(bookingId: string) {
   return request<{ booking: Booking }>("POST", { action: "report-client-payment", bookingId });
 }
 
-export async function cancelClientPayment(bookingId: string, refundCbu?: string) {
-  return request<{ booking: Booking; cancellationStatus: "requested" | "cancelled" | "refunded" }>("POST", { action: "cancel-client-payment", bookingId, refundCbu });
+export async function cancelClientPayment(bookingId: string, refundDestinationType?: "cbu" | "alias", refundDestination?: string) {
+  return request<{ booking: Booking; cancellationStatus: "requested" }>("POST", { action: "cancel-client-payment", bookingId, refundDestinationType, refundDestination });
+}
+
+export async function confirmBookingRefund(bookingId: string) {
+  const result = await request<{ booking: Booking }>("POST", { action: "admin-confirm-booking-refund", bookingId });
+  setSnapshot({ ...snapshot, bookings: snapshot.bookings.map((item) => item.id === bookingId ? result.booking : item) });
+  return result;
 }
 
 export async function updateClientPaymentMethod(bookingId: string, paymentMethod: NonNullable<Booking["customer"]["paymentMethod"]>) {

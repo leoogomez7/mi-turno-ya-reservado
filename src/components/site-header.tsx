@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { LogOut, Menu, X } from "lucide-react";
+import { LogOut, Menu } from "lucide-react";
 import logo from "../../logo.png";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -63,15 +63,15 @@ export function SiteHeader() {
   return (
     <Sheet open={open} onOpenChange={setOpen}>
     <header className="sticky top-0 z-40 border-b border-border/60 bg-background/80 backdrop-blur-xl">
-      <div className="relative flex w-full flex-nowrap items-center justify-between gap-1 px-2 py-2.5 md:gap-2 md:px-4 lg:px-5">
-        <Link to="/reserva" className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+      <div className="relative flex w-full flex-nowrap items-center justify-between gap-1 px-1 py-2.5 md:gap-2 md:px-4 lg:px-5">
+        <Link to="/reserva" className="flex shrink-0 items-center gap-1 sm:gap-2">
           <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full border border-gold/50 bg-black shadow-[0_0_18px_rgba(234,179,8,0.18)] sm:h-10 sm:w-10 md:h-12 md:w-12">
             <img src={logo} alt="Mi Turno Ya Reservado" className="h-full w-full object-cover object-center" />
           </span>
-          <span className="whitespace-nowrap font-display text-[11px] font-semibold leading-tight tracking-tight sm:text-sm md:text-lg">Mi Turno Ya Reservado</span>
+          <span className="whitespace-nowrap font-display text-base font-semibold leading-tight tracking-tight sm:text-lg">Mi Turno Ya Reservado</span>
         </Link>
 
-        <div className="ml-auto flex shrink-0 items-center gap-0.5 sm:gap-2">
+        <div className="ml-auto flex shrink-0 items-center gap-0 sm:gap-2">
         <nav className="hidden items-center justify-end gap-1 text-sm md:flex">
           {role === "admin" && (
             <div className="mr-2 grid grid-cols-[auto_minmax(0,1fr)] gap-x-2 rounded-lg border border-gold/30 bg-background/50 px-3 py-1.5 text-xs leading-4">
@@ -113,7 +113,7 @@ export function SiteHeader() {
           aria-expanded={open}
           className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-border/60 bg-background/90 p-0 text-foreground shadow-sm transition hover:bg-background sm:h-10 sm:w-10 md:hidden"
         >
-          {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+          <Menu className="h-5 w-5" />
         </button>
         {isAuthenticated && <button
           type="button"
@@ -126,7 +126,7 @@ export function SiteHeader() {
         </button>}
         </div>
 
-        <SheetContent side="right" className="inset-y-auto right-3 bottom-4 h-auto max-h-[calc(100dvh-2rem)] w-[min(88vw,22rem)] rounded-2xl border border-gold/20 bg-background p-0 text-foreground md:hidden">
+        <SheetContent side="right" className="right-3 top-17 bottom-auto h-auto max-h-[calc(100dvh-5rem)] w-[min(88vw,22rem)] rounded-2xl border border-gold/20 bg-background p-0 text-foreground md:hidden">
           <div className="max-h-[calc(100dvh-2rem)] overflow-y-auto p-4">
             <SheetHeader className="flex-row items-center gap-3 space-y-0 border-b border-border pb-3 pr-10 text-left">
               <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full border border-gold/50 bg-black shadow-[0_0_14px_rgba(234,179,8,0.16)]">

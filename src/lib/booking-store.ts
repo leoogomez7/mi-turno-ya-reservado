@@ -30,8 +30,11 @@ export interface Booking {
   paymentCancellationStatus?: "requested" | "cancelled" | "refunded";
   paymentCancellationRequestedAt?: string;
   refundCbu?: string;
+  refundDestination?: string;
+  refundDestinationType?: "cbu" | "alias";
   refundAmount?: number;
   refundRequestedAt?: string;
+  refundConfirmedAt?: string;
   appointmentConfirmation?: "confirmed" | "pending";
   cancellationToken?: string;
   createdAt: string;
@@ -39,6 +42,7 @@ export interface Booking {
 }
 
 export function getBookingArchiveLabel(booking: Booking, now = Date.now(), audience: "client" | "admin" = "client") {
+  if (booking.paymentCancellationStatus === "requested") return null;
   const archivedAt = audience === "client" ? booking.clientArchivedAt : booking.adminArchivedAt;
   const restoredAt = audience === "client" ? booking.clientRestoredAt : booking.adminRestoredAt;
   if (restoredAt) return null;

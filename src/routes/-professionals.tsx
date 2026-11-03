@@ -788,15 +788,15 @@ export function ProfessionalsManager() {
             <div className="mb-5">
               <p className="text-xs uppercase tracking-widest text-gold">Cancelaciones</p>
               <h2 className="mt-1 font-display text-2xl font-semibold text-foreground">Políticas de devolución</h2>
-              <p className="mt-2 text-sm text-muted-foreground">Estas reglas se guardan en la base de datos de la sucursal, se muestran antes de confirmar la reserva y se verifican al solicitar cancelaciones.</p>
+              <p className="mt-2 text-sm text-muted-foreground">Estas políticas se muestran antes de confirmar la reserva para que el cliente este avisado.</p>
             </div>
-            <div className="grid gap-4">
+            <div className="grid gap-4" role="radiogroup" aria-label="Política de devolución">
               <label className="flex items-start gap-3 rounded-xl border border-border bg-background p-4 text-sm">
-                <input type="checkbox" checked={storeSettings.noRefunds} disabled={loadingStoreSettings || savingCancellationPolicy} onChange={(event) => setStoreSettings({ ...storeSettings, noRefunds: event.target.checked })} className="mt-1 accent-gold" />
-                <span><span className="font-medium text-foreground">No se aceptan devoluciones de pagos</span><span className="mt-1 block text-muted-foreground">Si está seleccionada, el cliente no podrá solicitar la cancelación o devolución del pago ni borrar la reserva desde su cuenta. Esta regla prevalece sobre el porcentaje.</span></span>
+                <input type="radio" name="refund-policy" checked={storeSettings.noRefunds} disabled={loadingStoreSettings || savingCancellationPolicy} onChange={() => setStoreSettings((current) => ({ ...current, noRefunds: true, allowRefunds: false }))} className="mt-1 accent-gold" />
+                <span><span className="font-medium text-foreground">No se aceptan devoluciones de pagos</span><span className="mt-1 block text-muted-foreground">Si está seleccionada, el cliente no podrá solicitar la cancelación o devolución del pago ni borrar la reserva desde su cuenta.</span></span>
               </label>
               <label className="flex items-start gap-3 rounded-xl border border-border bg-background p-4 text-sm">
-                <input type="checkbox" checked={storeSettings.allowRefunds} disabled={loadingStoreSettings || savingCancellationPolicy} onChange={(event) => setStoreSettings({ ...storeSettings, allowRefunds: event.target.checked })} className="mt-1 accent-gold" />
+                <input type="radio" name="refund-policy" checked={!storeSettings.noRefunds && storeSettings.allowRefunds} disabled={loadingStoreSettings || savingCancellationPolicy} onChange={() => setStoreSettings((current) => ({ ...current, noRefunds: false, allowRefunds: true }))} className="mt-1 accent-gold" />
                 <span><span className="font-medium text-foreground">Permitir devolución total o parcial</span><span className="mt-1 block text-muted-foreground">El porcentaje se calcula sobre el importe pagado. 100% devuelve todo; un valor menor devuelve solo ese porcentaje.</span></span>
               </label>
               <Field label="Porcentaje a devolver (0–100%)">
@@ -804,7 +804,6 @@ export function ProfessionalsManager() {
               </Field>
               <Field label="Anticipación mínima para cancelar o solicitar devolución (minutos)">
                 <Input type="number" min="0" max="10080" step="1" disabled={loadingStoreSettings || savingCancellationPolicy} value={storeSettings.cancellationWindowMinutes} onChange={(event) => setStoreSettings({ ...storeSettings, cancellationWindowMinutes: Math.min(10080, Math.max(0, Number(event.target.value))) })} />
-                <p className="mt-1 text-xs text-muted-foreground">0 permite cancelar hasta el horario del turno; 30 exige hacerlo al menos media hora antes.</p>
               </Field>
             </div>
             <Button type="button" disabled={loadingStoreSettings || savingCancellationPolicy || !currentStoreCode} onClick={() => void saveCancellationPolicy()} className="mt-5 bg-gold text-primary-foreground hover:bg-gold-soft">

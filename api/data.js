@@ -505,7 +505,7 @@ async function verifyBookingPayment(db, bookingId, paymentId) {
   if (!bookingResult.rows[0]) throw new Error("No encontramos el turno asociado al pago.");
   const existingBooking = JSON.parse(String(bookingResult.rows[0].value));
   if (["requested", "cancelled", "refunded"].includes(existingBooking.paymentCancellationStatus)) {
-    throw new Error("El cliente ya solicitó cancelar este pago.");
+    throw new Error("El cliente ya solicitó la devolución de este pago.");
   }
   if (existingBooking.customer?.paymentMethod !== "tarjeta o mercado pago") {
     throw new Error("La reserva no corresponde a un pago con Mercado Pago.");
@@ -863,6 +863,9 @@ export default async function handler(request, response) {
         if (!existing.rows[0]) return response.status(404).json({ error: "No encontramos ese turno." });
         const booking = JSON.parse(String(existing.rows[0].value));
         const storeCode = normalizeStoreCode(booking.storeCode);
+        if (booking.paymentCancellationStatus === "requested") {
+          return response.status(409).json({ error: "No se puede archivar el turno mientras la devolución esté pendiente." });
+        }
         if (role === "client") {
           if (booking.customer?.email?.trim().toLowerCase() !== user.email) return response.status(403).json({ error: "Solo puedes archivar tus propios turnos." });
         } else if (storeCode !== normalizeStoreCode(account.rows[0]?.store_code)) {
@@ -1051,15 +1054,18 @@ export default async function handler(request, response) {
           if (!["confirmed", "pending-payment"].includes(booking.status)) {
             return response.status(409).json({ error: "Este turno ya no está activo." });
           }
+          if (booking.paymentStatus !== "approved") {
+            return response.status(409).json({ error: "Solo podés solicitar una devolución después de que el profesional confirme el pago." });
+          }
           if (booking.paymentCancellationStatus) {
-            return response.status(409).json({ error: "Ya existe una solicitud de cancelación para este pago." });
+            return response.status(409).json({ error: "Ya existe una solicitud de devolución para este pago." });
           }
           const policy = await getStoreCancellationPolicy(db, booking.storeCode);
           if (policy.noRefunds || !policy.allowRefunds) {
             return response.status(403).json({ error: "La política de esta sucursal no permite cancelar ni devolver pagos." });
           }
           const refundAmount = Math.round(Number(booking.totalPrice) * policy.refundPercent / 100);
-          if (refundAmount <= 0 && (booking.paymentReportedAt || booking.paymentStatus === "approved")) {
+          if (refundAmount <= 0) {
             return response.status(403).json({ error: "La política de esta sucursal no permite devolver dinero por este pago." });
           }
           const appointmentAt = /^\d{4}-\d{2}-\d{2}$/.test(booking.date) && /^([01]\d|2[0-3]):[0-5]\d$/.test(booking.time)
@@ -1068,95 +1074,39 @@ export default async function handler(request, response) {
           if (!Number.isFinite(appointmentAt) || appointmentAt - Date.now() < policy.cancellationWindowMinutes * 60 * 1000) {
             return response.status(409).json({ error: `Solo podés solicitar la cancelación con al menos ${policy.cancellationWindowMinutes} minutos de anticipación.` });
           }
-          if (booking.customer?.paymentMethod === "transferencia") {
-            if (!booking.paymentReportedAt && booking.paymentStatus !== "approved") {
-              return response.status(409).json({ error: "Primero informá el pago de la transferencia para solicitar la devolución." });
+          const paymentMethod = booking.customer?.paymentMethod;
+          if (!["efectivo", "transferencia", "tarjeta o mercado pago"].includes(paymentMethod)) {
+            return response.status(409).json({ error: "No se puede solicitar la devolución para este método de pago." });
+          }
+          let refundDestination = "";
+          let refundDestinationType = "";
+          if (paymentMethod === "efectivo" || paymentMethod === "transferencia") {
+            refundDestinationType = body.refundDestinationType === "cbu" ? "cbu" : body.refundDestinationType === "alias" ? "alias" : "";
+            refundDestination = typeof body.refundDestination === "string" ? body.refundDestination.trim() : "";
+            if (refundDestinationType === "cbu") {
+              refundDestination = refundDestination.replace(/\s/g, "");
+              if (!/^\d{22}$/.test(refundDestination)) return response.status(400).json({ error: "Ingresá un CBU válido de 22 dígitos." });
+            } else if (refundDestinationType === "alias") {
+              if (!/^[\p{L}\d._-]{6,30}$/u.test(refundDestination)) return response.status(400).json({ error: "Ingresá un alias válido de 6 a 30 caracteres." });
+            } else {
+              return response.status(400).json({ error: "Indicá si el dato para recibir la devolución es CBU o alias." });
             }
-            const refundCbu = typeof body.refundCbu === "string" ? body.refundCbu.replace(/\s/g, "") : "";
-            if (!/^\d{22}$/.test(refundCbu)) {
-              return response.status(400).json({ error: "Ingresá un CBU válido de 22 dígitos para recibir la devolución." });
-            }
-            booking.refundCbu = refundCbu;
-            booking.refundAmount = refundAmount;
-            booking.refundRequestedAt = new Date().toISOString();
-            booking.paymentCancellationStatus = "requested";
-            booking.paymentCancellationRequestedAt = booking.refundRequestedAt;
-            booking.status = "cancelled";
-            booking.cancelledBy = "client";
-            await db.execute({ sql: "UPDATE bookings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", args: [JSON.stringify(booking), bookingId] });
-            const notice = notificationForAdmin(booking, "payment_refund_requested", "Devolución de transferencia solicitada", `${booking.customer.fullName} solicita devolver $${refundAmount.toLocaleString("es-AR")} (${policy.refundPercent}% del pago). CBU: ${refundCbu}.`);
-            if (notice) await db.execute(notice);
-            return response.status(200).json({ booking, cancellationStatus: "requested" });
+            booking.refundDestination = refundDestination;
+            booking.refundDestinationType = refundDestinationType;
+            if (refundDestinationType === "cbu") booking.refundCbu = refundDestination;
+            else delete booking.refundCbu;
           }
-          if (booking.customer?.paymentMethod === "efectivo") {
-            if (!booking.paymentReportedAt && booking.paymentStatus !== "approved") {
-              return response.status(409).json({ error: "Primero informá el pago para solicitar una devolución." });
-            }
-            booking.paymentCancellationStatus = "requested";
-            booking.refundAmount = refundAmount;
-            booking.paymentCancellationRequestedAt = new Date().toISOString();
-            booking.status = "cancelled";
-            booking.cancelledBy = "client";
-            await db.execute({ sql: "UPDATE bookings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", args: [JSON.stringify(booking), bookingId] });
-            const notice = notificationForAdmin(booking, "payment_refund_requested", "Devolución en efectivo solicitada", `${booking.customer.fullName} solicita la devolución en efectivo de $${refundAmount.toLocaleString("es-AR")} (${policy.refundPercent}% del pago).`);
-            if (notice) await db.execute(notice);
-            return response.status(200).json({ booking, cancellationStatus: "requested" });
-          }
-          if (booking.customer?.paymentMethod !== "tarjeta o mercado pago") {
-            return response.status(409).json({ error: "La cancelación de pago está disponible para transferencia o Mercado Pago." });
-          }
-          if (!booking.paymentReportedAt && booking.paymentStatus !== "approved") {
-            return response.status(409).json({ error: "Primero informá el pago antes de solicitar la cancelación." });
-          }
-          const credentials = await getStorePaymentCredentials(db, booking.storeCode);
-          const paymentEndpoint = booking.mercadoPagoPaymentId
-            ? `https://api.mercadopago.com/v1/payments/${encodeURIComponent(booking.mercadoPagoPaymentId)}`
-            : `https://api.mercadopago.com/v1/payments/search?external_reference=${encodeURIComponent(bookingId)}&sort=date_created&criteria=desc`;
-          const paymentLookup = await fetch(paymentEndpoint, { headers: { Authorization: `Bearer ${credentials.accessToken}` } });
-          if (!paymentLookup.ok) return response.status(502).json({ error: "No se pudo consultar el pago en Mercado Pago." });
-          const lookupResult = await paymentLookup.json();
-          const payment = booking.mercadoPagoPaymentId ? lookupResult : lookupResult.results?.find((item) => ["approved", "pending", "in_process"].includes(item.status));
-          if (!payment || String(payment.external_reference) !== bookingId || payment.currency_id !== "ARS") {
-            return response.status(409).json({ error: "No encontramos un pago cancelable de Mercado Pago asociado a este turno." });
-          }
-          if (Number(payment.transaction_amount) !== Number(booking.totalPrice)) {
-            return response.status(409).json({ error: "El importe del pago no coincide con el total del turno." });
-          }
-          let cancellationStatus;
-          if (payment.status === "approved") {
-            if (refundAmount <= 0) return response.status(403).json({ error: "La política configurada no permite devolver dinero por este pago." });
-            const refundResponse = await fetch(`https://api.mercadopago.com/v1/payments/${encodeURIComponent(payment.id)}/refunds`, {
-              method: "POST",
-              headers: {
-                Authorization: `Bearer ${credentials.accessToken}`,
-                "Content-Type": "application/json",
-                "X-Idempotency-Key": `booking-refund-${bookingId}`,
-              },
-              body: JSON.stringify(refundAmount < Number(booking.totalPrice) ? { amount: refundAmount } : {}),
-            });
-            if (!refundResponse.ok) return response.status(502).json({ error: "Mercado Pago no pudo procesar la devolución. Intentá nuevamente o contactá al profesional." });
-            cancellationStatus = "refunded";
-          } else if (["pending", "in_process"].includes(payment.status)) {
-            const cancelResponse = await fetch(`https://api.mercadopago.com/v1/payments/${encodeURIComponent(payment.id)}`, {
-              method: "PUT",
-              headers: { Authorization: `Bearer ${credentials.accessToken}`, "Content-Type": "application/json" },
-              body: JSON.stringify({ status: "cancelled" }),
-            });
-            if (!cancelResponse.ok) return response.status(502).json({ error: "Mercado Pago no pudo cancelar el pago pendiente." });
-            cancellationStatus = "cancelled";
-          } else {
-            return response.status(409).json({ error: "El estado actual del pago no permite cancelarlo." });
-          }
-          booking.mercadoPagoPaymentId = String(payment.id);
-          booking.paymentCancellationStatus = cancellationStatus;
-          booking.refundAmount = cancellationStatus === "refunded" ? refundAmount : 0;
-          booking.paymentCancellationRequestedAt = new Date().toISOString();
+          booking.paymentCancellationStatus = "requested";
+          booking.refundAmount = refundAmount;
+          booking.refundRequestedAt = new Date().toISOString();
+          booking.paymentCancellationRequestedAt = booking.refundRequestedAt;
           booking.status = "cancelled";
           booking.cancelledBy = "client";
           await db.execute({ sql: "UPDATE bookings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", args: [JSON.stringify(booking), bookingId] });
-          const notice = notificationForAdmin(booking, "payment_refunded", "Pago cancelado por el cliente", `${booking.customer.fullName} ${cancellationStatus === "refunded" ? `solicitó y procesó una devolución de $${refundAmount.toLocaleString("es-AR")}` : "canceló el pago pendiente"} de Mercado Pago.`);
+          const destinationMessage = refundDestination ? ` ${refundDestinationType.toUpperCase()}: ${refundDestination}.` : "";
+          const notice = notificationForAdmin(booking, "payment_refund_requested", "Devolución solicitada", `${booking.customer.fullName} solicita devolver $${refundAmount.toLocaleString("es-AR")} (${policy.refundPercent}% del pago). Método: ${paymentMethod}.${destinationMessage}`);
           if (notice) await db.execute(notice);
-          return response.status(200).json({ booking, cancellationStatus });
+          return response.status(200).json({ booking, cancellationStatus: "requested" });
         }
 
         if (body.action === "update-client-payment-method") {
@@ -1292,6 +1242,33 @@ export default async function handler(request, response) {
       } catch (error) {
         console.error("No se pudieron gestionar los turnos del cliente", error);
         return response.status(500).json({ error: "No se pudieron gestionar tus turnos." });
+      }
+    }
+    if (user && body?.action === "admin-confirm-booking-refund") {
+      try {
+        if (!user.emailVerified) return response.status(403).json({ error: "Verificá tu correo antes de confirmar devoluciones." });
+        const account = await db.execute({ sql: "SELECT role, store_code FROM account_roles WHERE user_id = ?", args: [user.id] });
+        if (account.rows[0]?.role !== "admin") return response.status(403).json({ error: "Solo un profesional puede confirmar la devolución." });
+        const bookingId = typeof body.bookingId === "string" ? body.bookingId.trim() : "";
+        if (!bookingId || bookingId.length > 200) return response.status(400).json({ error: "Identificador de turno inválido." });
+        const stored = await db.execute({ sql: "SELECT value FROM bookings WHERE id = ?", args: [bookingId] });
+        if (!stored.rows[0]) return response.status(404).json({ error: "No encontramos ese turno." });
+        const booking = JSON.parse(String(stored.rows[0].value));
+        if (normalizeStoreCode(booking.storeCode) !== normalizeStoreCode(account.rows[0]?.store_code)) {
+          return response.status(403).json({ error: "El turno no corresponde a tu sucursal." });
+        }
+        if (booking.paymentCancellationStatus !== "requested" || booking.paymentStatus !== "approved" || booking.status !== "cancelled") {
+          return response.status(409).json({ error: "No hay una solicitud de devolución confirmada pendiente." });
+        }
+        booking.paymentCancellationStatus = "refunded";
+        booking.refundConfirmedAt = new Date().toISOString();
+        await db.execute({ sql: "UPDATE bookings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", args: [JSON.stringify(booking), bookingId] });
+        const notice = notificationForClient(booking, "payment_refunded", "Devolución realizada", `El profesional confirmó la devolución de $${Number(booking.refundAmount ?? booking.totalPrice).toLocaleString("es-AR")}.`);
+        if (notice) await db.execute(notice);
+        return response.status(200).json({ booking });
+      } catch (error) {
+        console.error("No se pudo confirmar la devolución del turno", error);
+        return response.status(500).json({ error: "No se pudo confirmar la devolución." });
       }
     }
     if (user && (body?.action === "get-client-profile" || body?.action === "save-client-profile")) {
@@ -2038,7 +2015,7 @@ export default async function handler(request, response) {
           if (prior.customer?.email?.trim().toLowerCase() !== user.email) {
             return response.status(403).json({ error: "No puedes modificar un turno de otra persona." });
           }
-          const immutableFields = ["id", "customer", "barberId", "serviceIds", "date", "time", "duration", "totalPrice", "status", "cancelledBy", "paymentReportedAt", "paymentCancellationStatus", "paymentCancellationRequestedAt", "refundCbu", "refundAmount", "refundRequestedAt", "mercadoPagoPaymentId", "createdAt", "isTest"];
+          const immutableFields = ["id", "customer", "barberId", "serviceIds", "date", "time", "duration", "totalPrice", "status", "cancelledBy", "paymentReportedAt", "paymentCancellationStatus", "paymentCancellationRequestedAt", "refundCbu", "refundDestination", "refundDestinationType", "refundAmount", "refundRequestedAt", "refundConfirmedAt", "mercadoPagoPaymentId", "createdAt", "isTest"];
           if (immutableFields.some((field) => JSON.stringify(prior[field]) !== JSON.stringify(record[field]))) {
             return response.status(403).json({ error: "Solo puedes confirmar tu turno; los datos de la reserva no se pueden modificar desde la cuenta cliente." });
           }
