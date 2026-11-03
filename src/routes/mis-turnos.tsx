@@ -275,7 +275,7 @@ function MyBookingsPage() {
                     ? "Tarjeta o Mercado Pago"
                     : "No especificado";
               const isActiveBooking = booking.status === "confirmed" || booking.status === "pending-payment";
-              const canDelete = isActiveBooking && [
+              const canDelete = isActiveBooking && booking.paymentStatus !== "approved" && [
                 "efectivo",
                 "transferencia",
                 "tarjeta o mercado pago",
@@ -302,7 +302,7 @@ function MyBookingsPage() {
                   {isActiveBooking && <div className="flex flex-wrap gap-2">
                     {booking.paymentStatus !== "approved" && <Button size="sm" disabled={busyBookingId !== null} className="bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-60" onClick={() => { setPaymentBooking(booking); setShowTransferDetails(false); }}>Indicar pago</Button>}
                     {booking.paymentStatus !== "approved" && <Button size="sm" variant="outline" disabled={busyBookingId !== null} onClick={() => void openEditDialog(booking)}>Modificar turno</Button>}
-                    {canDelete && <Button size="sm" variant="destructive" disabled={busyBookingId !== null || booking.paymentStatus === "approved"} title={booking.paymentStatus === "approved" ? "No se puede borrar un turno pagado." : undefined} className={busyBookingId === booking.id || booking.paymentStatus === "approved" ? "opacity-60" : undefined} onClick={() => void deleteBooking(booking)}>{busyBookingId === booking.id ? "Borrando..." : "Borrar turno"}</Button>}
+                    {canDelete && <Button size="sm" variant="destructive" disabled={busyBookingId !== null} className={busyBookingId === booking.id ? "opacity-60" : undefined} onClick={() => void deleteBooking(booking)}>{busyBookingId === booking.id ? "Borrando..." : "Borrar turno"}</Button>}
                   </div>}
                 </article>
               );
