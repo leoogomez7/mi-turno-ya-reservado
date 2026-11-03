@@ -59,8 +59,7 @@ export function AgendaManager() {
 
   useEffect(() => {
     const refresh = () => { void refreshCloudData().catch(() => undefined); };
-    refresh();
-    const intervalId = window.setInterval(refresh, 15000);
+    const intervalId = window.setInterval(refresh, 60_000);
     window.addEventListener("focus", refresh);
     return () => {
       window.clearInterval(intervalId);

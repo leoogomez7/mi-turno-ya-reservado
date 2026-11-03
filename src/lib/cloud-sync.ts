@@ -63,6 +63,7 @@ let storeCode = "";
 let availableStores: Store[] = [];
 let snapshotRevision = 0;
 let activeCloudWrites = 0;
+let cloudRefreshInFlight: Promise<void> | null = null;
 
 function dispatchCloudReady() {
   window.dispatchEvent(new Event("bookings:changed"));
@@ -132,16 +133,26 @@ export async function bootstrapCloudData(account: string, getToken: () => Promis
 
 export async function refreshCloudData() {
   if (!activeAccount || !initialized) return;
+  if (cloudRefreshInFlight) return cloudRefreshInFlight;
   const revisionAtRequest = snapshotRevision;
-  const result = await request<{ data: CloudSnapshot; stores: Store[] }>("GET");
-  if (!result.data || !Array.isArray(result.stores)) throw new Error("Se devolvió una respuesta incompleta.");
-  if (revisionAtRequest !== snapshotRevision || activeCloudWrites > 0) return;
-  availableStores = result.stores;
-  setSnapshot(result.data);
+  const refreshPromise = (async () => {
+    const result = await request<{ data: CloudSnapshot; stores: Store[] }>("GET");
+    if (!result.data || !Array.isArray(result.stores)) throw new Error("Se devolvió una respuesta incompleta.");
+    if (revisionAtRequest !== snapshotRevision || activeCloudWrites > 0) return;
+    availableStores = result.stores;
+    setSnapshot(result.data);
+  })();
+  cloudRefreshInFlight = refreshPromise;
+  try {
+    await refreshPromise;
+  } finally {
+    if (cloudRefreshInFlight === refreshPromise) cloudRefreshInFlight = null;
+  }
 }
 
 export function clearCloudSession() {
   snapshotRevision += 1;
+  cloudRefreshInFlight = null;
   activeAccount = undefined;
   activeRole = "guest";
   tokenGetter = undefined;
