@@ -335,14 +335,14 @@ export function AgendaManager() {
                     : "No especificado";
               const isActiveBooking = booking.status === "confirmed" || booking.status === "pending-payment";
               return (
-                <div key={booking.id} id={`booking-${booking.id}`} className={`flex flex-col items-center gap-3 rounded-xl border p-4 text-center transition-colors duration-300 sm:flex-row sm:items-center sm:gap-4 sm:text-left ${highlightedBookingId === booking.id ? "border-gold bg-gold/20 ring-2 ring-gold/70" : "border-gold/30 bg-card"}`}>
+                <div key={booking.id} id={`booking-${booking.id}`} className={`flex flex-col items-center gap-3 rounded-xl border p-4 text-center transition-colors duration-300 sm:grid sm:grid-cols-[4rem_minmax(12rem,1.15fr)_auto_minmax(15rem,1fr)_auto] sm:items-center sm:gap-4 sm:text-left ${highlightedBookingId === booking.id ? "border-gold bg-gold/20 ring-2 ring-gold/70" : "border-gold/30 bg-card"}`}>
                   <div className="flex w-full items-center justify-center gap-2 sm:contents">
                     <div className="flex w-16 shrink-0 flex-col items-center rounded-lg bg-gold/10 px-1.5 py-2 text-gold">
                       <span className="text-[10px] uppercase tracking-widest">{format(date, "EEE", { locale: es })}</span>
                       <span className="font-display text-2xl font-semibold">{format(date, "d")}</span>
                       <span className="text-[10px]">{booking.time}</span>
                     </div>
-                    <div className="min-w-0 flex-1 text-center sm:text-left">
+                    <div className="min-w-0 flex-1 text-center sm:flex-none sm:text-left">
                       <div className="font-medium">{professional?.name ?? "Profesional"}{professional?.specialty ? ` · ${professional.specialty}` : ""}</div>
                       <div className="text-sm text-muted-foreground">{services || "Servicio"} · {booking.duration} min</div>
                       <div className="mt-1 text-xs text-muted-foreground">
@@ -350,9 +350,9 @@ export function AgendaManager() {
                         {(booking.customer.phone || booking.customer.email) && <span className="block truncate">{[booking.customer.phone, booking.customer.email].filter(Boolean).join(" · ")}</span>}
                       </div>
                     </div>
-                    <div className="shrink-0 font-display text-base font-semibold text-gold sm:text-lg">${booking.totalPrice.toLocaleString("es-AR")}</div>
+                    <div className="shrink-0 font-display text-base font-semibold text-gold sm:justify-self-start sm:text-lg">${booking.totalPrice.toLocaleString("es-AR")}</div>
                   </div>
-                  <div className="flex w-full flex-wrap items-center justify-center gap-2 text-xs text-muted-foreground sm:w-auto sm:flex-1 sm:justify-start">
+                  <div className="flex w-full flex-wrap items-center justify-center gap-2 text-xs text-muted-foreground sm:w-full sm:justify-start sm:justify-self-start">
                       {booking.cancelledBy === "client" && <Badge variant="outline" className="border-red-300 text-red-300">Cancelado por el cliente · Revisar si eliminar</Badge>}
                       {booking.cancelledBy === "professional" && <Badge variant="outline" className="border-red-300 text-red-300">Cancelado por el profesional</Badge>}
                       <Badge variant="outline" className="border-gold/30 text-gold">Pago · {paymentMethodLabel}</Badge>
