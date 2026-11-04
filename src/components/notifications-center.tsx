@@ -226,7 +226,7 @@ export function NotificationsCenter({ isAuthenticated, role }: { isAuthenticated
   const isMobileViewport = typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches;
   const notificationPanelContent = (
     <>
-      <div className="mb-3 flex items-center justify-between gap-2 border-b border-border pb-2">
+      <div className="mb-3 flex items-center justify-between gap-2 border-b border-border pb-2 pr-8 md:pr-0">
         <h2 className="font-semibold">Notificaciones</h2>
         {unreadCount > 0 && <button type="button" disabled={markingAll} className="text-xs text-gold hover:underline disabled:cursor-wait disabled:opacity-70" onClick={() => void markAllRead()}>{markingAll ? "Marcando como leídas..." : "Marcar todas leídas"}</button>}
       </div>
