@@ -12,7 +12,7 @@ import { AuthRequired } from "@/components/auth-required";
 import { useAppAuth } from "@/lib/auth";
 import { getBookingArchiveLabel, type Booking } from "@/lib/booking-store";
 import { getAvailableSlotsForDate, getScheduleForDate, type Professional } from "@/lib/professional-store";
-import { archiveBooking, BOOKING_HIGHLIGHT_KEY, cancelClientBooking, cancelClientPayment, createClientBookingPaymentPreference, getClientBookings, reportClientPayment, restoreArchivedBooking, updateClientBooking, updateClientPaymentMethod, type Store } from "@/lib/cloud-sync";
+import { archiveBooking, BOOKING_HIGHLIGHT_KEY, cancelClientBooking, cancelClientPayment, createClientBookingPaymentPreference, getClientBookings, permanentlyDeleteArchivedBooking, reportClientPayment, restoreArchivedBooking, updateClientBooking, updateClientPaymentMethod, type Store } from "@/lib/cloud-sync";
 import { toast } from "sonner";
 import { LoadingScreen } from "@/components/loading-screen";
 
@@ -44,6 +44,8 @@ function MyBookingsPage() {
   const [bookingSearch, setBookingSearch] = useState("");
   const [archiveSearch, setArchiveSearch] = useState("");
   const [restoringBookingId, setRestoringBookingId] = useState<string | null>(null);
+  const [permanentlyDeletingBookingId, setPermanentlyDeletingBookingId] = useState<string | null>(null);
+  const [bookingToPermanentlyDelete, setBookingToPermanentlyDelete] = useState<Booking | null>(null);
   const [showTransferDetails, setShowTransferDetails] = useState(false);
   const [changingPaymentBooking, setChangingPaymentBooking] = useState<Booking | null>(null);
   const [newPaymentMethod, setNewPaymentMethod] = useState<NonNullable<Booking["customer"]["paymentMethod"]>>("efectivo");
@@ -335,6 +337,21 @@ function MyBookingsPage() {
     }
   }
 
+  async function permanentlyDeleteTurn(booking: Booking) {
+    if (permanentlyDeletingBookingId) return;
+    setPermanentlyDeletingBookingId(booking.id);
+    try {
+      await permanentlyDeleteArchivedBooking(booking.id);
+      setBookings((current) => current.filter((item) => item.id !== booking.id));
+      setBookingToPermanentlyDelete(null);
+      toast.success("Turno eliminado definitivamente.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo borrar definitivamente el turno.");
+    } finally {
+      setPermanentlyDeletingBookingId(null);
+    }
+  }
+
   function cancellationPolicyFor(booking: Booking) {
     return stores.find((store) => store.code === booking.storeCode)?.settings;
   }
@@ -428,7 +445,7 @@ function MyBookingsPage() {
               const canRequestPaymentCancellation = booking.paymentStatus === "approved" && !policy?.noRefunds && policy?.allowRefunds !== false
                 && (policy?.refundPercent ?? 100) > 0 && !cancellationTooLate
                 && ["efectivo", "transferencia", "tarjeta o mercado pago"].includes(booking.customer.paymentMethod ?? "");
-              const canArchive = !getBookingArchiveLabel(booking, currentTime, "client") && booking.paymentCancellationStatus !== "requested";
+              const canArchive = !getBookingArchiveLabel(booking, currentTime, "client");
               return (
                 <article key={booking.id} id={`booking-${booking.id}`} className={`flex flex-col items-center gap-3 rounded-xl border p-4 text-center transition-colors duration-300 sm:flex-row sm:items-center sm:gap-4 sm:text-left ${highlightedBookingId === booking.id ? "border-gold bg-gold/20 ring-2 ring-gold/70" : "border-gold/30 bg-card"}`}>
                   <div className="flex w-full items-center justify-center gap-2 sm:contents">
@@ -518,7 +535,7 @@ function MyBookingsPage() {
         <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl" onOpenAutoFocus={(event) => event.preventDefault()}>
           <DialogHeader>
             <DialogTitle>Turnos borrados/antiguos</DialogTitle>
-            <DialogDescription>Turnos archivados, con asistencia registrada o antiguos. Se conservan aquí; no se eliminan definitivamente.</DialogDescription>
+            <DialogDescription>Turnos archivados, con asistencia registrada o antiguos. Podés restaurarlos o borrarlos definitivamente del listado.</DialogDescription>
           </DialogHeader>
           <label className="relative block">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -539,12 +556,28 @@ function MyBookingsPage() {
                   </div>
                   <p className="mt-1 text-muted-foreground">{format(appointmentDate, "EEEE d 'de' MMMM, yyyy", { locale: es })} · {booking.time}</p>
                   <p className="mt-1 text-muted-foreground">Pago: {paymentMethod} · ${booking.totalPrice.toLocaleString("es-AR")}</p>
-                  {booking.clientArchivedAt && <div className="mt-3 flex justify-end"><Button type="button" size="sm" variant="outline" disabled={restoringBookingId !== null} onClick={() => void restoreTurn(booking)}>{restoringBookingId === booking.id ? "Restaurando…" : "Restaurar a mis turnos"}</Button></div>}
+                  <div className="mt-3 flex flex-wrap justify-end gap-2">
+                    {booking.clientArchivedAt && <Button type="button" size="sm" variant="outline" disabled={restoringBookingId !== null} onClick={() => void restoreTurn(booking)}>{restoringBookingId === booking.id ? "Restaurando…" : "Restaurar a mis turnos"}</Button>}
+                    <Button type="button" size="sm" variant="destructive" disabled={permanentlyDeletingBookingId !== null} onClick={() => setBookingToPermanentlyDelete(booking)}>{permanentlyDeletingBookingId === booking.id ? "Borrando…" : "Borrar turno"}</Button>
+                  </div>
                 </article>;
               })}
             </div>
           )}
           <DialogFooter><Button type="button" variant="outline" onClick={() => setArchiveDialogOpen(false)}>Cerrar</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={bookingToPermanentlyDelete !== null} onOpenChange={(open) => { if (!open && permanentlyDeletingBookingId === null) setBookingToPermanentlyDelete(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>¿Borrar el turno definitivamente?</DialogTitle>
+            <DialogDescription>Esta acción no se puede deshacer. El turno dejará de aparecer en “Turnos borrados/antiguos”.</DialogDescription>
+          </DialogHeader>
+          {bookingToPermanentlyDelete && <p className="rounded-xl border border-border bg-card p-3 text-sm">{bookingToPermanentlyDelete.date} · {bookingToPermanentlyDelete.time}</p>}
+          <DialogFooter>
+            <Button type="button" variant="outline" disabled={permanentlyDeletingBookingId !== null} onClick={() => setBookingToPermanentlyDelete(null)}>Cancelar</Button>
+            {bookingToPermanentlyDelete && <Button type="button" variant="destructive" disabled={permanentlyDeletingBookingId !== null} onClick={() => void permanentlyDeleteTurn(bookingToPermanentlyDelete)}>{permanentlyDeletingBookingId === bookingToPermanentlyDelete.id ? "Borrando…" : "Sí, borrar definitivamente"}</Button>}
+          </DialogFooter>
         </DialogContent>
       </Dialog>
       <Dialog open={paymentBooking !== null} onOpenChange={(open) => { if (!open && !busyBookingId) { setPaymentBooking(null); setShowTransferDetails(false); } }}>
@@ -599,7 +632,7 @@ function MyBookingsPage() {
               {(paymentBooking.customer.paymentMethod === "transferencia" || paymentBooking.customer.paymentMethod === "efectivo") ? <>
                 <p>Ingresá el dato donde el profesional debe devolver el dinero. Indicá si es CBU o alias. Al enviar la solicitud, el turno se cancela y el horario queda disponible.</p>
                 <label className="grid gap-2 text-muted-foreground">
-                  <span>Tipo de dato</span>
+                  <span>Seleccionar CBU/Alias</span>
                   <select value={refundDestinationType} onChange={(event) => { setRefundDestinationType(event.target.value as "cbu" | "alias"); setRefundDestination(""); }} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-foreground">
                     <option value="cbu">CBU (22 dígitos)</option>
                     <option value="alias">Alias</option>
@@ -613,7 +646,7 @@ function MyBookingsPage() {
                 const windowMinutes = cancellationPolicyFor(paymentBooking)?.cancellationWindowMinutes ?? 30;
                 return minutesRemaining < windowMinutes
                   ? <p role="alert" className="text-red-300">La solicitud solo está disponible con al menos {windowMinutes} minutos de anticipación.</p>
-                  : <p className="text-xs text-muted-foreground">La solicitud está disponible hasta {windowMinutes} minutos antes del turno.</p>;
+                  : null;
               })()}
             </div>
           ) : paymentBooking ? (

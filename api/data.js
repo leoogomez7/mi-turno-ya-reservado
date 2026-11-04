@@ -863,9 +863,6 @@ export default async function handler(request, response) {
         if (!existing.rows[0]) return response.status(404).json({ error: "No encontramos ese turno." });
         const booking = JSON.parse(String(existing.rows[0].value));
         const storeCode = normalizeStoreCode(booking.storeCode);
-        if (booking.paymentCancellationStatus === "requested") {
-          return response.status(409).json({ error: "No se puede archivar el turno mientras la devolución esté pendiente." });
-        }
         if (role === "client") {
           if (booking.customer?.email?.trim().toLowerCase() !== user.email) return response.status(403).json({ error: "Solo puedes archivar tus propios turnos." });
         } else if (storeCode !== normalizeStoreCode(account.rows[0]?.store_code)) {
@@ -908,6 +905,46 @@ export default async function handler(request, response) {
       } catch (error) {
         console.error("No se pudo restaurar el turno", error);
         return response.status(500).json({ error: "No se pudo restaurar el turno." });
+      }
+    }
+    if (user && body?.action === "permanently-delete-archived-booking") {
+      try {
+        if (!user.emailVerified) return response.status(403).json({ error: "Verificá tu correo antes de borrar turnos." });
+        const account = await db.execute({ sql: "SELECT role, store_code FROM account_roles WHERE user_id = ?", args: [user.id] });
+        const role = String(account.rows[0]?.role ?? "");
+        if (role !== "admin" && role !== "client") return response.status(403).json({ error: "Configurá tu cuenta para borrar turnos." });
+        const bookingId = typeof body.bookingId === "string" ? body.bookingId.trim() : "";
+        if (!bookingId || bookingId.length > 200) return response.status(400).json({ error: "Identificador de turno inválido." });
+        const existing = await db.execute({ sql: "SELECT value FROM bookings WHERE id = ?", args: [bookingId] });
+        if (!existing.rows[0]) return response.status(404).json({ error: "No encontramos ese turno." });
+        const booking = JSON.parse(String(existing.rows[0].value));
+        if (role === "client") {
+          if (booking.customer?.email?.trim().toLowerCase() !== user.email) return response.status(403).json({ error: "Solo puedes borrar definitivamente tus propios turnos." });
+        } else if (normalizeStoreCode(booking.storeCode) !== normalizeStoreCode(account.rows[0]?.store_code)) {
+          return response.status(403).json({ error: "El turno no corresponde a tu sucursal." });
+        }
+        const archiveField = role === "client" ? "clientArchivedAt" : "adminArchivedAt";
+        const restoredField = role === "client" ? "clientRestoredAt" : "adminRestoredAt";
+        const appointmentAt = Date.parse(`${booking.date}T${booking.time}:00-03:00`);
+        const isAutomaticallyArchived = !booking[restoredField] && (
+          booking.status === "completed"
+          || booking.status === "no-show"
+          || (Number.isFinite(appointmentAt) && Date.now() >= appointmentAt + 24 * 60 * 60 * 1000)
+        );
+        if (!booking[archiveField] && !isAutomaticallyArchived) {
+          return response.status(409).json({ error: "Primero archivá el turno desde la lista principal." });
+        }
+        if (booking.paymentCancellationStatus === "requested") {
+          return response.status(409).json({ error: "No se puede borrar definitivamente mientras la devolución esté pendiente." });
+        }
+        if (booking.paymentStatus === "approved" && !["refunded", "cancelled"].includes(booking.paymentCancellationStatus)) {
+          return response.status(409).json({ error: "No se puede borrar un turno con un pago confirmado que todavía no fue devuelto." });
+        }
+        await db.execute({ sql: "DELETE FROM bookings WHERE id = ?", args: [bookingId] });
+        return response.status(200).json({ ok: true, bookingId });
+      } catch (error) {
+        console.error("No se pudo borrar definitivamente el turno", error);
+        return response.status(500).json({ error: "No se pudo borrar definitivamente el turno." });
       }
     }
     if (user && ["get-notifications", "check-notification-booking", "set-notification-read", "delete-notification"].includes(body?.action)) {

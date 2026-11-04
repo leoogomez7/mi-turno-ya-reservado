@@ -14,7 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { bookingStore, getBarber, getBookingArchiveLabel, type Booking } from "@/lib/booking-store";
 import { useAppAuth } from "@/lib/auth";
-import { archiveBooking, BOOKING_HIGHLIGHT_KEY, confirmBookingRefund, refreshCloudData, restoreArchivedBooking } from "@/lib/cloud-sync";
+import { archiveBooking, BOOKING_HIGHLIGHT_KEY, confirmBookingRefund, permanentlyDeleteArchivedBooking, refreshCloudData, restoreArchivedBooking } from "@/lib/cloud-sync";
 import { getAvailableSlotsForDate, getProfessionalService, getScheduleForDate, professionalStore } from "@/lib/professional-store";
 
 export function AgendaManager() {
@@ -36,6 +36,8 @@ export function AgendaManager() {
   const [archiveSearch, setArchiveSearch] = useState("");
   const [bookingSearch, setBookingSearch] = useState("");
   const [restoringBookingId, setRestoringBookingId] = useState<string | null>(null);
+  const [permanentlyDeletingBookingId, setPermanentlyDeletingBookingId] = useState<string | null>(null);
+  const [bookingToPermanentlyDelete, setBookingToPermanentlyDelete] = useState<Booking | null>(null);
   const [refundDetailsBooking, setRefundDetailsBooking] = useState<Booking | null>(null);
   const [refundConfirmationBooking, setRefundConfirmationBooking] = useState<Booking | null>(null);
   const [confirmingRefundId, setConfirmingRefundId] = useState<string | null>(null);
@@ -216,6 +218,21 @@ export function AgendaManager() {
     }
   }
 
+  async function permanentlyDeleteTurn(booking: Booking) {
+    if (permanentlyDeletingBookingId) return;
+    setPermanentlyDeletingBookingId(booking.id);
+    try {
+      await permanentlyDeleteArchivedBooking(booking.id);
+      setBookings((current) => current.filter((item) => item.id !== booking.id));
+      setBookingToPermanentlyDelete(null);
+      toast.success("Turno eliminado definitivamente.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo borrar definitivamente el turno.");
+    } finally {
+      setPermanentlyDeletingBookingId(null);
+    }
+  }
+
   async function cancelBooking(booking: Booking) {
     if (cancellingBookingId || booking.status === "cancelled") return;
     setCancellingBookingId(booking.id);
@@ -350,9 +367,9 @@ export function AgendaManager() {
                         {(booking.customer.phone || booking.customer.email) && <span className="block truncate">{[booking.customer.phone, booking.customer.email].filter(Boolean).join(" · ")}</span>}
                       </div>
                     </div>
-                    <div className="shrink-0 font-display text-base font-semibold text-gold sm:justify-self-start sm:text-lg">${booking.totalPrice.toLocaleString("es-AR")}</div>
+                    <div className="shrink-0 font-display text-base font-semibold text-gold sm:col-start-3 sm:justify-self-start sm:rounded-lg sm:border sm:border-gold/20 sm:bg-gold/5 sm:px-3 sm:py-2 sm:text-center sm:text-lg">${booking.totalPrice.toLocaleString("es-AR")}</div>
                   </div>
-                  <div className="flex w-full flex-wrap items-center justify-center gap-2 text-xs text-muted-foreground sm:w-full sm:justify-start sm:justify-self-start">
+                  <div className="flex w-full flex-wrap items-center justify-center gap-2 text-xs text-muted-foreground sm:col-start-4 sm:w-full sm:justify-start sm:justify-self-start">
                       {booking.cancelledBy === "client" && <Badge variant="outline" className="border-red-300 text-red-300">Cancelado por el cliente · Revisar si eliminar</Badge>}
                       {booking.cancelledBy === "professional" && <Badge variant="outline" className="border-red-300 text-red-300">Cancelado por el profesional</Badge>}
                       <Badge variant="outline" className="border-gold/30 text-gold">Pago · {paymentMethodLabel}</Badge>
@@ -367,7 +384,7 @@ export function AgendaManager() {
                       {booking.status === "completed" && <Badge variant="outline" className="border-emerald-300 text-emerald-400">Asistió</Badge>}
                       {booking.status === "no-show" && <Badge variant="outline" className="border-red-500/30 bg-red-500/10 text-red-300">No asistió</Badge>}
                   </div>
-                  <div className="flex w-full flex-wrap justify-center gap-2 sm:w-auto sm:justify-end">
+                  <div className="flex w-full flex-wrap justify-center gap-2 sm:col-start-5 sm:w-auto sm:justify-end">
                     {!booking.paymentCancellationStatus && booking.paymentStatus !== "approved" && (booking.status === "pending-payment" || booking.paymentStatus === "pending" || (booking.paymentReportedAt && booking.paymentStatus !== "approved")) && <Button size="sm" disabled={processingBookingId !== null} onClick={() => openDialog(booking, "payment")} className="bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-60">{booking.paymentReportedAt ? "Revisar pago" : "Indicar pago"}</Button>}
                     {booking.status === "confirmed" && <Button size="sm" variant="outline" onClick={() => openDialog(booking, "attendance")}>Indicar asistencia</Button>}
                     {isActiveBooking && !booking.paymentCancellationStatus && booking.paymentStatus !== "approved" && !booking.paymentReportedAt && <Button size="sm" variant="outline" onClick={() => openDialog(booking, "turno")}>Modificar turno</Button>}
@@ -419,7 +436,7 @@ export function AgendaManager() {
           <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
             <DialogHeader>
               <DialogTitle>Turnos borrados/antiguos</DialogTitle>
-              <DialogDescription>Turnos archivados, con asistencia registrada o antiguos. Se conservan aquí; no se eliminan definitivamente.</DialogDescription>
+              <DialogDescription>Turnos archivados, con asistencia registrada o antiguos. Podés restaurarlos o borrarlos definitivamente del listado.</DialogDescription>
             </DialogHeader>
             <label className="relative block">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -433,18 +450,37 @@ export function AgendaManager() {
                   const appointmentDate = parseISO(`${booking.date}T${booking.time}`);
                   const paymentMethod = booking.customer.paymentMethod === "transferencia" ? "Transferencia bancaria" : booking.customer.paymentMethod === "tarjeta o mercado pago" ? "Tarjeta o Mercado Pago" : booking.customer.paymentMethod === "efectivo" ? "Efectivo" : "No especificado";
                   return <article key={booking.id} className="rounded-xl border border-border bg-card p-3 text-sm">
-                    <div className="flex flex-wrap items-start justify-between gap-2">
-                      <p className="font-semibold">{booking.customer.fullName} · {professional?.name ?? "Profesional"}</p>
-                      <Badge variant="outline" className="border-gold/40 text-gold">{getBookingArchiveLabel(booking, currentTime, "admin")}</Badge>
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="min-w-0 flex-1 font-semibold">{booking.customer.fullName} · {professional?.name ?? "Profesional"}</p>
+                      <div className="flex shrink-0 flex-col items-end gap-2">
+                        <Badge variant="outline" className="border-gold/40 text-gold">{getBookingArchiveLabel(booking, currentTime, "admin")}</Badge>
+                        <div className="flex flex-wrap justify-end gap-2">
+                          {booking.adminArchivedAt && <Button type="button" size="sm" variant="outline" disabled={restoringBookingId !== null} onClick={() => void restoreTurn(booking)}>{restoringBookingId === booking.id ? "Restaurando…" : "Restaurar"}</Button>}
+                          <Button type="button" size="sm" variant="destructive" disabled={permanentlyDeletingBookingId !== null} onClick={() => setBookingToPermanentlyDelete(booking)}>{permanentlyDeletingBookingId === booking.id ? "Borrando…" : "Borrar turno"}</Button>
+                        </div>
+                      </div>
                     </div>
                     <p className="mt-1 text-muted-foreground">{services || "Servicio"} · {format(appointmentDate, "EEEE d 'de' MMMM, yyyy", { locale: es })} · {booking.time}</p>
                     <p className="mt-1 text-muted-foreground">Pago: {paymentMethod} · ${booking.totalPrice.toLocaleString("es-AR")}</p>
-                    {booking.adminArchivedAt && <div className="mt-3 flex justify-end"><Button type="button" size="sm" variant="outline" disabled={restoringBookingId !== null} onClick={() => void restoreTurn(booking)}>{restoringBookingId === booking.id ? "Restaurando…" : "Restaurar a la agenda"}</Button></div>}
                   </article>;
                 })}
               </div>
             )}
             <DialogFooter><Button type="button" variant="outline" onClick={() => setArchiveDialogOpen(false)}>Cerrar</Button></DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={bookingToPermanentlyDelete !== null} onOpenChange={(open) => { if (!open && permanentlyDeletingBookingId === null) setBookingToPermanentlyDelete(null); }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>¿Borrar el turno definitivamente?</DialogTitle>
+              <DialogDescription>Esta acción no se puede deshacer. El turno dejará de aparecer en “Turnos borrados/antiguos”.</DialogDescription>
+            </DialogHeader>
+            {bookingToPermanentlyDelete && <p className="rounded-xl border border-border bg-card p-3 text-sm">{bookingToPermanentlyDelete.customer.fullName} · {bookingToPermanentlyDelete.date} · {bookingToPermanentlyDelete.time}</p>}
+            <DialogFooter>
+              <Button type="button" variant="outline" disabled={permanentlyDeletingBookingId !== null} onClick={() => setBookingToPermanentlyDelete(null)}>Cancelar</Button>
+              {bookingToPermanentlyDelete && <Button type="button" variant="destructive" disabled={permanentlyDeletingBookingId !== null} onClick={() => void permanentlyDeleteTurn(bookingToPermanentlyDelete)}>{permanentlyDeletingBookingId === bookingToPermanentlyDelete.id ? "Borrando…" : "Sí, borrar definitivamente"}</Button>}
+            </DialogFooter>
           </DialogContent>
         </Dialog>
 

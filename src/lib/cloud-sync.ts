@@ -351,6 +351,12 @@ export async function restoreArchivedBooking(bookingId: string) {
   return result;
 }
 
+export async function permanentlyDeleteArchivedBooking(bookingId: string) {
+  const result = await request<{ ok: boolean; bookingId: string }>("POST", { action: "permanently-delete-archived-booking", bookingId });
+  setSnapshot({ ...snapshot, bookings: snapshot.bookings.filter((item) => item.id !== bookingId) });
+  return result;
+}
+
 export async function getStoreMercadoPagoCredentials() {
   return request<StoreMercadoPagoCredentials>("POST", { action: "get-store-payment-credentials" });
 }

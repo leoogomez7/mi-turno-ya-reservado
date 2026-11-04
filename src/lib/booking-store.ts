@@ -42,13 +42,13 @@ export interface Booking {
 }
 
 export function getBookingArchiveLabel(booking: Booking, now = Date.now(), audience: "client" | "admin" = "client") {
-  if (booking.paymentCancellationStatus === "requested") return null;
   const archivedAt = audience === "client" ? booking.clientArchivedAt : booking.adminArchivedAt;
   const restoredAt = audience === "client" ? booking.clientRestoredAt : booking.adminRestoredAt;
   if (restoredAt) return null;
   if (archivedAt) {
     return audience === "admin" ? "Eliminado de la agenda" : "Eliminado de tu lista";
   }
+  if (booking.paymentCancellationStatus === "requested") return null;
   if (booking.status === "completed") return "Asistencia confirmada · Asistió";
   if (booking.status === "no-show") return "Asistencia confirmada · No asistió";
   const appointmentAt = Date.parse(`${booking.date}T${booking.time}:00-03:00`);
