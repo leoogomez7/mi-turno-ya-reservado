@@ -447,20 +447,20 @@ function MyBookingsPage() {
                 && ["efectivo", "transferencia", "tarjeta o mercado pago"].includes(booking.customer.paymentMethod ?? "");
               const canArchive = !getBookingArchiveLabel(booking, currentTime, "client");
               return (
-                <article key={booking.id} id={`booking-${booking.id}`} className={`flex flex-col items-center gap-3 rounded-xl border p-4 text-center transition-colors duration-300 sm:flex-row sm:items-center sm:gap-4 sm:text-left ${highlightedBookingId === booking.id ? "border-gold bg-gold/20 ring-2 ring-gold/70" : "border-gold/30 bg-card"}`}>
-                  <div className="flex w-full items-center justify-center gap-2 sm:contents">
+                <article key={booking.id} id={`booking-${booking.id}`} className={`flex flex-col items-center gap-3 rounded-xl border p-4 text-center transition-colors duration-300 xl:grid xl:grid-cols-[4rem_minmax(12rem,1fr)_auto_minmax(14rem,0.8fr)_minmax(22rem,1.3fr)] xl:items-center xl:gap-4 xl:text-left ${highlightedBookingId === booking.id ? "border-gold bg-gold/20 ring-2 ring-gold/70" : "border-gold/30 bg-card"}`}>
+                  <div className="flex w-full items-center justify-center gap-2 xl:contents">
                     <div className="flex w-16 shrink-0 flex-col items-center rounded-lg bg-gold/10 px-1.5 py-2 text-gold">
                       <span className="text-[10px] uppercase tracking-widest">{format(appointmentDate, "EEE", { locale: es })}</span>
                       <span className="font-display text-2xl font-semibold">{format(appointmentDate, "d")}</span>
                       <span className="text-[10px]">{booking.time}</span>
                     </div>
-                    <div className="min-w-0 flex-1 text-center sm:text-left">
+                    <div className="min-w-0 flex-1 text-center xl:text-left">
                       <div className="font-medium">{professional?.name ?? "Profesional"}</div>
                       <div className="text-sm text-muted-foreground">{serviceNames || "Servicio"} · {booking.duration} min</div>
                     </div>
-                    <div className="shrink-0 font-display text-base font-semibold text-gold sm:text-lg">${booking.totalPrice.toLocaleString("es-AR")}</div>
+                    <div className="shrink-0 font-display text-base font-semibold text-gold xl:col-start-3 xl:rounded-lg xl:border xl:border-gold/20 xl:bg-gold/5 xl:px-3 xl:py-2 xl:text-center xl:text-lg">${booking.totalPrice.toLocaleString("es-AR")}</div>
                   </div>
-                  <div className="flex w-full flex-wrap items-center justify-center gap-2 text-xs text-muted-foreground sm:w-auto sm:flex-1 sm:justify-start">
+                  <div className="flex w-full flex-col items-center gap-1 text-xs text-muted-foreground xl:col-start-4 xl:items-start xl:justify-self-start">
                       <Badge variant="outline" className={statusClass}>{statusLabel}</Badge>
                       <Badge variant="outline" className="border-gold/30 text-gold">Pago · {paymentMethodLabel}</Badge>
                       {(booking.status === "pending-payment" || booking.paymentStatus === "pending") && <Badge variant="outline" className="border-amber-300 text-amber-300">Pago pendiente</Badge>}
@@ -470,12 +470,12 @@ function MyBookingsPage() {
                       {booking.paymentCancellationStatus === "refunded" && <Badge variant="outline" className="border-emerald-300 text-emerald-400">Pago devuelto</Badge>}
                       {booking.paymentCancellationStatus === "cancelled" && <Badge variant="outline" className="border-red-300 text-red-300">Pago cancelado</Badge>}
                   </div>
-                  {(isActiveBooking || canArchive) && <div className="flex w-full flex-wrap justify-center gap-2 sm:w-auto sm:justify-end">
-                    {!hasPaymentReport && booking.paymentStatus !== "approved" && <Button size="sm" disabled={busyBookingId !== null} className="bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-60" onClick={() => { setPaymentBooking(booking); setShowTransferDetails(false); }}>Indicar pago</Button>}
-                    {canRequestPaymentCancellation && !booking.paymentCancellationStatus && <Button size="sm" className="bg-gold text-primary-foreground hover:bg-gold-soft" disabled={busyBookingId !== null} onClick={() => { setRefundDestination(""); setRefundDestinationType("cbu"); setPaymentBooking(booking); setShowTransferDetails(false); }}>Solicitar devolución</Button>}
-                    {booking.paymentStatus !== "approved" && !hasPaymentReport && !booking.paymentCancellationStatus && <Button size="sm" variant="outline" disabled={busyBookingId !== null || preparingEditBookingId !== null} onClick={() => void openEditDialog(booking)}>{preparingEditBookingId === booking.id ? <><LoaderCircle className="mr-2 h-4 w-4 animate-spin text-gold" />Preparando...</> : "Modificar turno"}</Button>}
-                    {canCancel && <Button size="sm" variant="destructive" disabled={busyBookingId !== null} className={cancelingBookingId === booking.id ? "opacity-60" : undefined} onClick={() => void cancelBooking(booking)}>{cancelingBookingId === booking.id ? "Cancelando turno..." : "Cancelar turno"}</Button>}
-                    {canArchive && <Button size="sm" variant="destructive" disabled={busyBookingId !== null} className={deletingBookingId === booking.id ? "opacity-60" : undefined} onClick={() => void archiveTurn(booking)}>{deletingBookingId === booking.id ? "Borrando turno..." : "Borrar turno"}</Button>}
+                  {(isActiveBooking || canArchive) && <div className="grid w-full grid-cols-2 gap-2 xl:col-start-5 xl:grid-cols-3">
+                    {!hasPaymentReport && booking.paymentStatus !== "approved" && <Button size="sm" disabled={busyBookingId !== null} className="min-w-0 whitespace-normal px-2 text-center leading-tight bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-60" onClick={() => { setPaymentBooking(booking); setShowTransferDetails(false); }}>Indicar pago</Button>}
+                    {canRequestPaymentCancellation && !booking.paymentCancellationStatus && <Button size="sm" className="min-w-0 whitespace-normal px-2 text-center leading-tight bg-gold text-primary-foreground hover:bg-gold-soft" disabled={busyBookingId !== null} onClick={() => { setRefundDestination(""); setRefundDestinationType("cbu"); setPaymentBooking(booking); setShowTransferDetails(false); }}>Solicitar devolución</Button>}
+                    {booking.paymentStatus !== "approved" && !hasPaymentReport && !booking.paymentCancellationStatus && <Button size="sm" variant="outline" className="min-w-0 whitespace-normal px-2 text-center leading-tight" disabled={busyBookingId !== null || preparingEditBookingId !== null} onClick={() => void openEditDialog(booking)}>{preparingEditBookingId === booking.id ? <><LoaderCircle className="mr-2 h-4 w-4 animate-spin text-gold" />Preparando...</> : "Modificar turno"}</Button>}
+                    {canCancel && <Button size="sm" variant="destructive" className={`min-w-0 whitespace-normal px-2 text-center leading-tight ${cancelingBookingId === booking.id ? "opacity-60" : ""}`} disabled={busyBookingId !== null} onClick={() => void cancelBooking(booking)}>{cancelingBookingId === booking.id ? "Cancelando turno..." : "Cancelar turno"}</Button>}
+                    {canArchive && <Button size="sm" variant="destructive" className={`min-w-0 whitespace-normal px-2 text-center leading-tight ${deletingBookingId === booking.id ? "opacity-60" : ""}`} disabled={busyBookingId !== null} onClick={() => void archiveTurn(booking)}>{deletingBookingId === booking.id ? "Borrando turno..." : "Borrar turno"}</Button>}
                   </div>}
                 </article>
               );
