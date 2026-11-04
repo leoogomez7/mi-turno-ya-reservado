@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
-import { Search } from "lucide-react";
+import { CalendarDays, Clock3, Scissors, Search, UserRound } from "lucide-react";
 import { toast } from "sonner";
 
 import { AuthRequired } from "@/components/auth-required";
@@ -121,6 +121,11 @@ export function AgendaManager() {
     });
   }, [bookings, editedDate, editedProfessional, editedService, selectedBooking]);
 
+  useEffect(() => {
+    if (!selectedBooking || editMode !== "turno" || !editedDate || !editedService || !editedTime) return;
+    if (!availableSlots.includes(editedTime)) setEditedTime("");
+  }, [availableSlots, editMode, editedDate, editedTime, editedService, selectedBooking]);
+
   if (isLoading) return <LoadingScreen message="Preparando tu agenda" />;
   if (!isAuthenticated || role !== "admin") return <><SiteHeader /><AuthRequired role="admin" title="Agenda" /></>;
 
@@ -189,7 +194,7 @@ export function AgendaManager() {
     try {
       const result = await archiveBooking(booking.id);
       setBookings((current) => current.map((item) => item.id === booking.id ? result.booking : item));
-      toast.success("Turno archivado. Podés consultarlo en Turnos eliminados/antiguos.");
+      toast.success("Turno archivado. Podés consultarlo en Turnos borrados/antiguos.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "No se pudo archivar el turno.");
     } finally {
@@ -305,13 +310,13 @@ export function AgendaManager() {
               <h1 className="mt-1 font-display text-2xl font-semibold">Agenda</h1>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Button type="button" variant="outline" onClick={() => setArchiveDialogOpen(true)}>Turnos eliminados/antiguos</Button>
+              <Button type="button" variant="outline" onClick={() => setArchiveDialogOpen(true)}>Turnos borrados/antiguos</Button>
               <Link to="/reserva" className="inline-flex h-10 items-center rounded-md bg-gold px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-gold-soft">Nuevo turno</Link>
             </div>
           </div>
           <label className="relative mb-4 block">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input value={bookingSearch} onChange={(event) => setBookingSearch(event.target.value)} placeholder="Buscar por cliente, profesional, servicio, fecha u horario…" className="pl-9" aria-label="Buscar turnos" />
+            <Input value={bookingSearch} onChange={(event) => setBookingSearch(event.target.value)} placeholder="Buscar turno..." className="pl-9" aria-label="Buscar turnos" />
           </label>
           {!filteredVisibleBookings.length ? (
             <p className="text-sm text-muted-foreground">{visibleBookings.length ? "No encontramos turnos con esa búsqueda." : "No hay turnos agendados todavía."}</p>
@@ -413,7 +418,7 @@ export function AgendaManager() {
         <Dialog open={archiveDialogOpen} onOpenChange={setArchiveDialogOpen}>
           <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
             <DialogHeader>
-              <DialogTitle>Turnos eliminados/antiguos</DialogTitle>
+              <DialogTitle>Turnos borrados/antiguos</DialogTitle>
               <DialogDescription>Turnos archivados, con asistencia registrada o antiguos. Se conservan aquí; no se eliminan definitivamente.</DialogDescription>
             </DialogHeader>
             <label className="relative block">
@@ -473,14 +478,14 @@ export function AgendaManager() {
               )}
               {editMode === "turno" && (
                 <div className="grid gap-4">
-                  <label className="block text-sm text-muted-foreground">Profesional<select className="mt-2 block w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground" value={editedProfessionalId} onChange={(event) => { setEditedProfessionalId(event.target.value); setEditedServiceId(professionals.find((item) => item.id === event.target.value)?.services[0]?.id ?? ""); }}>
+                  <label className="block text-sm text-muted-foreground"><span className="flex items-center gap-2"><UserRound className="h-4 w-4 text-gold" />Profesional</span><select className="mt-2 block w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground" value={editedProfessionalId} onChange={(event) => { setEditedProfessionalId(event.target.value); setEditedServiceId(professionals.find((item) => item.id === event.target.value)?.services[0]?.id ?? ""); setEditedDate(""); setEditedTime(""); }}>
                     {professionals.map((item) => <option key={item.id} value={item.id}>{item.name} — {item.specialty}</option>)}
                   </select></label>
-                  <label className="block text-sm text-muted-foreground">Servicio<select className="mt-2 block w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground" value={editedServiceId} onChange={(event) => setEditedServiceId(event.target.value)}>
+                  <label className="block text-sm text-muted-foreground"><span className="flex items-center gap-2"><Scissors className="h-4 w-4 text-gold" />Servicio</span><select className="mt-2 block w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground" value={editedServiceId} onChange={(event) => { setEditedServiceId(event.target.value); setEditedTime(""); }}>
                     {(editedProfessional?.services ?? []).map((service) => <option key={service.id} value={service.id}>{service.name}</option>)}
                   </select></label>
-                  <label className="block text-sm text-muted-foreground">Fecha<input type="date" className="mt-2 block w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground" value={editedDate} onChange={(event) => { setEditedDate(event.target.value); setEditedTime(""); }} /></label>
-                  <label className="block text-sm text-muted-foreground">Hora<select className="mt-2 block w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground" value={editedTime} onChange={(event) => setEditedTime(event.target.value)}>
+                  <label className="block text-sm text-muted-foreground"><span className="flex items-center gap-2"><CalendarDays className="h-4 w-4 text-gold" />Fecha</span><input type="date" className="mt-2 block w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground" value={editedDate} onChange={(event) => { setEditedDate(event.target.value); setEditedTime(""); }} /></label>
+                  <label className="block text-sm text-muted-foreground"><span className="flex items-center gap-2"><Clock3 className="h-4 w-4 text-gold" />Horario</span><select className="mt-2 block w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground" value={editedTime} onChange={(event) => setEditedTime(event.target.value)}>
                     <option value="">Seleccionar hora</option>{availableSlots.map((slot) => <option key={slot} value={slot}>{slot}</option>)}
                   </select></label>
                 </div>

@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
-import { CalendarDays, Clock3, Copy, Search } from "lucide-react";
+import { CalendarDays, Clock3, Copy, LoaderCircle, Scissors, Search, UserRound } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -34,6 +34,7 @@ function MyBookingsPage() {
   const [cancelingBookingId, setCancelingBookingId] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState(Date.now());
   const [editingBooking, setEditingBooking] = useState<Booking | null>(null);
+  const [preparingEditBookingId, setPreparingEditBookingId] = useState<string | null>(null);
   const [editedProfessionalId, setEditedProfessionalId] = useState("");
   const [editedServiceId, setEditedServiceId] = useState("");
   const [editedDate, setEditedDate] = useState("");
@@ -88,6 +89,11 @@ function MyBookingsPage() {
     });
   }, [editedDate, editingBooking, editingProfessional, editingService, occupiedSlots]);
 
+  useEffect(() => {
+    if (!editingBooking || preparingEditBookingId === editingBooking.id || !editedDate || !editingService || !editedTime) return;
+    if (!availableEditSlots.includes(editedTime)) setEditedTime("");
+  }, [availableEditSlots, editedDate, editedTime, editingBooking, editingService, preparingEditBookingId]);
+
   const reload = useCallback(async () => {
     try {
       const result = await getClientBookings();
@@ -103,12 +109,17 @@ function MyBookingsPage() {
   }, []);
 
   async function openEditDialog(booking: Booking) {
-    await reload();
     setEditingBooking(booking);
     setEditedProfessionalId(booking.barberId);
     setEditedServiceId(booking.serviceIds[0] ?? "");
     setEditedDate(booking.date);
     setEditedTime(booking.time);
+    setPreparingEditBookingId(booking.id);
+    try {
+      await reload();
+    } finally {
+      setPreparingEditBookingId(null);
+    }
   }
 
   useEffect(() => {
@@ -301,7 +312,7 @@ function MyBookingsPage() {
     try {
       const result = await archiveBooking(booking.id);
       setBookings((current) => current.map((item) => item.id === booking.id ? result.booking : item));
-      toast.success("Turno archivado. Podés consultarlo en Turnos eliminados/antiguos.");
+      toast.success("Turno archivado. Podés consultarlo en Turnos borrados/antiguos.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "No se pudo archivar el turno.");
     } finally {
@@ -376,7 +387,7 @@ function MyBookingsPage() {
               <h1 className="mt-1 font-display text-2xl font-semibold">Mis turnos</h1>
             </div>
             <div className="flex shrink-0 flex-nowrap gap-2">
-              <Button type="button" variant="outline" className="h-9 min-w-0 whitespace-nowrap px-2 text-[11px] sm:px-4 sm:text-sm" onClick={() => setArchiveDialogOpen(true)}>Turnos eliminados/antiguos</Button>
+              <Button type="button" variant="outline" className="h-9 min-w-0 whitespace-nowrap px-2 text-[11px] sm:px-4 sm:text-sm" onClick={() => setArchiveDialogOpen(true)}>Turnos borrados/antiguos</Button>
               <Link to="/reserva" className="inline-flex h-9 shrink-0 items-center rounded-md bg-gold px-3 text-xs font-medium text-primary-foreground transition-colors hover:bg-gold-soft sm:h-10 sm:px-4 sm:text-sm">Nuevo turno</Link>
             </div>
           </div>
@@ -445,7 +456,7 @@ function MyBookingsPage() {
                   {(isActiveBooking || canArchive) && <div className="flex w-full flex-wrap justify-center gap-2 sm:w-auto sm:justify-end">
                     {!hasPaymentReport && booking.paymentStatus !== "approved" && <Button size="sm" disabled={busyBookingId !== null} className="bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-60" onClick={() => { setPaymentBooking(booking); setShowTransferDetails(false); }}>Indicar pago</Button>}
                     {canRequestPaymentCancellation && !booking.paymentCancellationStatus && <Button size="sm" className="bg-gold text-primary-foreground hover:bg-gold-soft" disabled={busyBookingId !== null} onClick={() => { setRefundDestination(""); setRefundDestinationType("cbu"); setPaymentBooking(booking); setShowTransferDetails(false); }}>Solicitar devolución</Button>}
-                    {booking.paymentStatus !== "approved" && !hasPaymentReport && !booking.paymentCancellationStatus && <Button size="sm" variant="outline" disabled={busyBookingId !== null} onClick={() => void openEditDialog(booking)}>Modificar turno</Button>}
+                    {booking.paymentStatus !== "approved" && !hasPaymentReport && !booking.paymentCancellationStatus && <Button size="sm" variant="outline" disabled={busyBookingId !== null || preparingEditBookingId !== null} onClick={() => void openEditDialog(booking)}>{preparingEditBookingId === booking.id ? <><LoaderCircle className="mr-2 h-4 w-4 animate-spin text-gold" />Preparando...</> : "Modificar turno"}</Button>}
                     {canCancel && <Button size="sm" variant="destructive" disabled={busyBookingId !== null} className={cancelingBookingId === booking.id ? "opacity-60" : undefined} onClick={() => void cancelBooking(booking)}>{cancelingBookingId === booking.id ? "Cancelando turno..." : "Cancelar turno"}</Button>}
                     {canArchive && <Button size="sm" variant="destructive" disabled={busyBookingId !== null} className={deletingBookingId === booking.id ? "opacity-60" : undefined} onClick={() => void archiveTurn(booking)}>{deletingBookingId === booking.id ? "Borrando turno..." : "Borrar turno"}</Button>}
                   </div>}
@@ -460,11 +471,11 @@ function MyBookingsPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Modificar turno</DialogTitle>
-            <DialogDescription>Elegí profesional, servicio, fecha y horario. Revisaremos la disponibilidad antes de guardar.</DialogDescription>
+            <DialogDescription>{preparingEditBookingId === editingBooking?.id ? "Preparando horarios disponibles…" : "Elegí profesional, servicio, fecha y horario. Revisaremos la disponibilidad antes de guardar."}</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-3">
             <label className="space-y-2 text-sm text-muted-foreground">
-              <span>👤 Profesional</span>
+              <span className="flex items-center gap-2"><UserRound className="h-4 w-4 text-gold" />Profesional</span>
               <select value={editedProfessionalId} onChange={(event) => {
                 const nextProfessionalId = event.target.value;
                 setEditedProfessionalId(nextProfessionalId);
@@ -477,35 +488,36 @@ function MyBookingsPage() {
               </select>
             </label>
             <label className="space-y-2 text-sm text-muted-foreground">
-              <span>✂️ Servicio</span>
+              <span className="flex items-center gap-2"><Scissors className="h-4 w-4 text-gold" />Servicio</span>
               <select value={editedServiceId} onChange={(event) => { setEditedServiceId(event.target.value); setEditedDate(""); setEditedTime(""); }} className="block w-full rounded-lg border border-border bg-background px-3 py-2 text-foreground" disabled={!editingProfessional}>
                 <option value="">Seleccionar servicio</option>
                 {(editingProfessional?.services ?? []).map((service) => <option key={service.id} value={service.id}>{service.name} · {service.duration} min · ${service.price.toLocaleString("es-AR")}</option>)}
               </select>
             </label>
             <label className="space-y-2 text-sm text-muted-foreground">
-              <span className="flex items-center gap-2"><CalendarDays className="h-4 w-4 text-gold" />📅 Fecha</span>
+              <span className="flex items-center gap-2"><CalendarDays className="h-4 w-4 text-gold" />Fecha</span>
               <input type="date" min={format(new Date(), "yyyy-MM-dd")} value={editedDate} disabled={!editingProfessional || !editingService} onChange={(event) => { setEditedDate(event.target.value); setEditedTime(""); }} className="block w-full rounded-lg border border-border bg-background px-3 py-2 text-foreground disabled:cursor-not-allowed disabled:opacity-60" />
             </label>
             <label className="space-y-2 text-sm text-muted-foreground">
-              <span className="flex items-center gap-2"><Clock3 className="h-4 w-4 text-gold" />🕒 Horario</span>
-              <select value={editedTime} onChange={(event) => setEditedTime(event.target.value)} className="block w-full rounded-lg border border-border bg-background px-3 py-2 text-foreground" disabled={!editedDate || !editingProfessional}>
+              <span className="flex items-center gap-2"><Clock3 className="h-4 w-4 text-gold" />Horario</span>
+              <select value={editedTime} onChange={(event) => setEditedTime(event.target.value)} className="block w-full rounded-lg border border-border bg-background px-3 py-2 text-foreground" disabled={!editedDate || !editingProfessional || preparingEditBookingId === editingBooking?.id}>
                 <option value="">Seleccionar horario</option>
                 {availableEditSlots.map((slot) => <option key={slot} value={slot}>{slot}</option>)}
               </select>
-              {editedDate && editingService && !availableEditSlots.length && <span className="block text-xs">No hay horarios disponibles para ese servicio en esa fecha.</span>}
+              {preparingEditBookingId === editingBooking?.id && <span className="block text-xs text-gold">Actualizando disponibilidad…</span>}
+              {preparingEditBookingId !== editingBooking?.id && editedDate && editingService && !availableEditSlots.length && <span className="block text-xs">No hay horarios disponibles para ese servicio en esa fecha.</span>}
             </label>
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" disabled={busyBookingId !== null} onClick={() => setEditingBooking(null)}>Cancelar</Button>
-            <Button type="button" disabled={!editingBooking || busyBookingId !== null} className="bg-gold text-primary-foreground hover:bg-gold-soft" onClick={() => void saveBookingTime()}>{busyBookingId === editingBooking?.id ? "Guardando..." : "Guardar cambios"}</Button>
+            <Button type="button" disabled={!editingBooking || busyBookingId !== null || preparingEditBookingId !== null} className="bg-gold text-primary-foreground hover:bg-gold-soft" onClick={() => void saveBookingTime()}>{busyBookingId === editingBooking?.id ? "Guardando..." : preparingEditBookingId === editingBooking?.id ? "Preparando..." : "Guardar cambios"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
       <Dialog open={archiveDialogOpen} onOpenChange={setArchiveDialogOpen}>
         <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl" onOpenAutoFocus={(event) => event.preventDefault()}>
           <DialogHeader>
-            <DialogTitle>Turnos eliminados/antiguos</DialogTitle>
+            <DialogTitle>Turnos borrados/antiguos</DialogTitle>
             <DialogDescription>Turnos archivados, con asistencia registrada o antiguos. Se conservan aquí; no se eliminan definitivamente.</DialogDescription>
           </DialogHeader>
           <label className="relative block">
