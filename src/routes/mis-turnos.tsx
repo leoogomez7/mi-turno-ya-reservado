@@ -45,7 +45,6 @@ function MyBookingsPage() {
   const [archiveSearch, setArchiveSearch] = useState("");
   const [restoringBookingId, setRestoringBookingId] = useState<string | null>(null);
   const [permanentlyDeletingBookingId, setPermanentlyDeletingBookingId] = useState<string | null>(null);
-  const [deleteAllArchiveConfirmationOpen, setDeleteAllArchiveConfirmationOpen] = useState(false);
   const [deletingAllArchivedBookings, setDeletingAllArchivedBookings] = useState(false);
   const [showTransferDetails, setShowTransferDetails] = useState(false);
   const [changingPaymentBooking, setChangingPaymentBooking] = useState<Booking | null>(null);
@@ -367,7 +366,6 @@ function MyBookingsPage() {
         }
       }
       if (deletedIds.length) setBookings((current) => current.filter((booking) => !deletedIds.includes(booking.id)));
-      setDeleteAllArchiveConfirmationOpen(false);
       if (failedCount) {
         toast.error(`Se eliminaron ${deletedIds.length} turnos; ${failedCount} no pudieron borrarse definitivamente.`);
       } else {
@@ -565,7 +563,7 @@ function MyBookingsPage() {
           </DialogHeader>
           {archivedBookings.length > 0 && <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-xs text-muted-foreground">Borrar todos los turnos de este listado, aunque haya una búsqueda activa.</p>
-            <Button type="button" size="sm" variant="destructive" disabled={deletingAllArchivedBookings || permanentlyDeletingBookingId !== null} onClick={() => setDeleteAllArchiveConfirmationOpen(true)}>Borrar todos</Button>
+            <Button type="button" size="sm" variant="destructive" disabled={deletingAllArchivedBookings || permanentlyDeletingBookingId !== null} onClick={() => void permanentlyDeleteAllArchivedTurns()}>{deletingAllArchivedBookings ? "Borrando…" : "Borrar todos"}</Button>
           </div>}
           <label className="relative block">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -595,18 +593,6 @@ function MyBookingsPage() {
             </div>
           )}
           <DialogFooter><Button type="button" variant="outline" onClick={() => setArchiveDialogOpen(false)}>Cerrar</Button></DialogFooter>
-        </DialogContent>
-      </Dialog>
-      <Dialog open={deleteAllArchiveConfirmationOpen} onOpenChange={(open) => { if (!deletingAllArchivedBookings) setDeleteAllArchiveConfirmationOpen(open); }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>¿Borrar todos los turnos definitivamente?</DialogTitle>
-            <DialogDescription>Se eliminarán los {archivedBookings.length} turnos del listado, incluso los que no coincidan con la búsqueda. Esta acción no se puede deshacer.</DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button type="button" variant="outline" disabled={deletingAllArchivedBookings} onClick={() => setDeleteAllArchiveConfirmationOpen(false)}>Cancelar</Button>
-            <Button type="button" variant="destructive" disabled={deletingAllArchivedBookings || archivedBookings.length === 0} onClick={() => void permanentlyDeleteAllArchivedTurns()}>{deletingAllArchivedBookings ? "Borrando turnos…" : "Sí, borrar todos"}</Button>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
       <Dialog open={paymentBooking !== null} onOpenChange={(open) => { if (!open && !busyBookingId) { setPaymentBooking(null); setShowTransferDetails(false); } }}>
