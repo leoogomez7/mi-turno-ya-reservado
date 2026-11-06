@@ -944,11 +944,9 @@ export default async function handler(request, response) {
         if (booking.paymentCancellationStatus === "requested") {
           return response.status(409).json({ error: "No se puede borrar definitivamente mientras la devolución esté pendiente." });
         }
-        if (booking.paymentStatus === "approved" && !["refunded", "cancelled"].includes(booking.paymentCancellationStatus)) {
-          return response.status(409).json({ error: "No se puede borrar un turno con un pago confirmado que todavía no fue devuelto." });
-        }
-        await db.execute({ sql: "DELETE FROM bookings WHERE id = ?", args: [bookingId] });
-        return response.status(200).json({ ok: true, bookingId });
+        booking[role === "client" ? "clientPermanentlyDeletedAt" : "adminPermanentlyDeletedAt"] = new Date().toISOString();
+        await db.execute({ sql: "UPDATE bookings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", args: [JSON.stringify(booking), bookingId] });
+        return response.status(200).json({ ok: true, booking });
       } catch (error) {
         console.error("No se pudo borrar definitivamente el turno", error);
         return response.status(500).json({ error: "No se pudo borrar definitivamente el turno." });
@@ -2137,11 +2135,12 @@ export default async function handler(request, response) {
         if (removedBooking.paymentCancellationStatus === "requested") {
           return response.status(409).json({ error: "No se puede borrar el turno mientras la devolución esté pendiente." });
         }
-        if (removedBooking.paymentStatus === "approved" && !["refunded", "cancelled"].includes(removedBooking.paymentCancellationStatus)) {
-          return response.status(409).json({ error: "No se puede borrar un turno con el pago confirmado." });
-        }
-        const notice = notificationForClient(removedBooking, "booking_cancelled", "Turno eliminado", "El profesional eliminó definitivamente el turno de la agenda.");
-        if (notice) statements.push(notice);
+        removedBooking.adminPermanentlyDeletedAt = new Date().toISOString();
+        statements.push({
+          sql: "UPDATE bookings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+          args: [JSON.stringify(removedBooking), databaseId],
+        });
+        continue;
       }
       statements.push({ sql: `DELETE FROM ${body.collection} WHERE id = ?`, args: [databaseId] });
     }

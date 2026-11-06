@@ -25,6 +25,8 @@ export interface Booking {
   adminArchivedAt?: string;
   clientRestoredAt?: string;
   adminRestoredAt?: string;
+  clientPermanentlyDeletedAt?: string;
+  adminPermanentlyDeletedAt?: string;
   paymentStatus?: "pending" | "approved";
   paymentReportedAt?: string;
   paymentCancellationStatus?: "requested" | "cancelled" | "refunded";

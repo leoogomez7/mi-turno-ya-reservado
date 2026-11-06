@@ -381,9 +381,9 @@ function MyBookingsPage() {
   }
 
   const archivedBookings = bookings
-    .filter((booking) => getBookingArchiveLabel(booking, currentTime, "client"))
+    .filter((booking) => !booking.clientPermanentlyDeletedAt && getBookingArchiveLabel(booking, currentTime, "client"))
     .sort((a, b) => (b.clientArchivedAt ?? `${b.date}T${b.time}`).localeCompare(a.clientArchivedAt ?? `${a.date}T${a.time}`));
-  const visibleBookings = bookings.filter((booking) => !getBookingArchiveLabel(booking, currentTime, "client"));
+  const visibleBookings = bookings.filter((booking) => !booking.clientPermanentlyDeletedAt && !getBookingArchiveLabel(booking, currentTime, "client"));
   const normalizeSearch = (value: string) => value.trim().toLocaleLowerCase("es-AR").normalize("NFD").replace(/[\u0300-\u036f]/g, "");
   const filterBookings = (list: Booking[], query: string) => {
     const terms = normalizeSearch(query).split(/\s+/).filter(Boolean);

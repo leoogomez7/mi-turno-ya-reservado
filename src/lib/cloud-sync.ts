@@ -352,8 +352,8 @@ export async function restoreArchivedBooking(bookingId: string) {
 }
 
 export async function permanentlyDeleteArchivedBooking(bookingId: string) {
-  const result = await request<{ ok: boolean; bookingId: string }>("POST", { action: "permanently-delete-archived-booking", bookingId });
-  setSnapshot({ ...snapshot, bookings: snapshot.bookings.filter((item) => item.id !== bookingId) });
+  const result = await request<{ ok: boolean; booking: Booking }>("POST", { action: "permanently-delete-archived-booking", bookingId });
+  setSnapshot({ ...snapshot, bookings: snapshot.bookings.map((item) => item.id === bookingId ? result.booking : item) });
   return result;
 }
 

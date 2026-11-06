@@ -287,7 +287,7 @@ export function AgendaManager() {
   }
 
   const archivedBookings = bookings
-    .filter((booking) => getBookingArchiveLabel(booking, currentTime, "admin"))
+    .filter((booking) => !booking.adminPermanentlyDeletedAt && getBookingArchiveLabel(booking, currentTime, "admin"))
     .sort((a, b) => (b.adminArchivedAt ?? `${b.date}T${b.time}`).localeCompare(a.adminArchivedAt ?? `${a.date}T${a.time}`));
   const normalizedArchiveSearch = archiveSearch.trim().toLocaleLowerCase("es-AR").normalize("NFD").replace(/[\u0300-\u036f]/g, "");
   const filteredArchivedBookings = archivedBookings.filter((booking) => {
@@ -312,7 +312,7 @@ export function AgendaManager() {
     return normalizedArchiveSearch.split(/\s+/).every((term) => searchable.includes(term));
   });
   const visibleBookings = bookings
-    .filter((booking) => !getBookingArchiveLabel(booking, currentTime, "admin"))
+    .filter((booking) => !booking.adminPermanentlyDeletedAt && !getBookingArchiveLabel(booking, currentTime, "admin"))
     .sort((a, b) => {
       if (!!a.isTest === !!b.isTest) return (a.date + a.time).localeCompare(b.date + b.time);
       return a.isTest ? 1 : -1;
