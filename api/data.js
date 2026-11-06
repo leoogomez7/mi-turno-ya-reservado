@@ -897,9 +897,16 @@ export default async function handler(request, response) {
           return response.status(403).json({ error: "El turno no corresponde a tu sucursal." });
         }
         const archiveField = role === "client" ? "clientArchivedAt" : "adminArchivedAt";
-        if (!booking[archiveField]) return response.status(409).json({ error: "Este turno no está eliminado de tu lista." });
+        const restoredField = role === "client" ? "clientRestoredAt" : "adminRestoredAt";
+        const appointmentAt = Date.parse(`${booking.date}T${booking.time}:00-03:00`);
+        const isAutomaticallyArchived = !booking[restoredField] && (
+          booking.status === "completed"
+          || booking.status === "no-show"
+          || (Number.isFinite(appointmentAt) && Date.now() >= appointmentAt + 24 * 60 * 60 * 1000)
+        );
+        if (!booking[archiveField] && !isAutomaticallyArchived) return response.status(409).json({ error: "Este turno no está eliminado de tu lista." });
         delete booking[archiveField];
-        booking[role === "client" ? "clientRestoredAt" : "adminRestoredAt"] = new Date().toISOString();
+        booking[restoredField] = new Date().toISOString();
         await db.execute({ sql: "UPDATE bookings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", args: [JSON.stringify(booking), bookingId] });
         return response.status(200).json({ booking });
       } catch (error) {

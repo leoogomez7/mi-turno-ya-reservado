@@ -171,6 +171,16 @@
   .mobile-scrollbar-hidden::-webkit-scrollbar {
     display: none;
   }
+
+  .gold-scrollbar {
+    -ms-overflow-style: auto;
+    scrollbar-width: thin;
+  }
+
+  .gold-scrollbar::-webkit-scrollbar {
+    display: block;
+    width: 6px;
+  }
 }
 
 input[type="time"]::-webkit-calendar-picker-indicator {

@@ -45,7 +45,8 @@ function MyBookingsPage() {
   const [archiveSearch, setArchiveSearch] = useState("");
   const [restoringBookingId, setRestoringBookingId] = useState<string | null>(null);
   const [permanentlyDeletingBookingId, setPermanentlyDeletingBookingId] = useState<string | null>(null);
-  const [bookingToPermanentlyDelete, setBookingToPermanentlyDelete] = useState<Booking | null>(null);
+  const [deleteAllArchiveConfirmationOpen, setDeleteAllArchiveConfirmationOpen] = useState(false);
+  const [deletingAllArchivedBookings, setDeletingAllArchivedBookings] = useState(false);
   const [showTransferDetails, setShowTransferDetails] = useState(false);
   const [changingPaymentBooking, setChangingPaymentBooking] = useState<Booking | null>(null);
   const [newPaymentMethod, setNewPaymentMethod] = useState<NonNullable<Booking["customer"]["paymentMethod"]>>("efectivo");
@@ -338,17 +339,42 @@ function MyBookingsPage() {
   }
 
   async function permanentlyDeleteTurn(booking: Booking) {
-    if (permanentlyDeletingBookingId) return;
+    if (permanentlyDeletingBookingId || deletingAllArchivedBookings) return;
     setPermanentlyDeletingBookingId(booking.id);
     try {
       await permanentlyDeleteArchivedBooking(booking.id);
       setBookings((current) => current.filter((item) => item.id !== booking.id));
-      setBookingToPermanentlyDelete(null);
       toast.success("Turno eliminado definitivamente.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "No se pudo borrar definitivamente el turno.");
     } finally {
       setPermanentlyDeletingBookingId(null);
+    }
+  }
+
+  async function permanentlyDeleteAllArchivedTurns() {
+    if (permanentlyDeletingBookingId || deletingAllArchivedBookings || !archivedBookings.length) return;
+    setDeletingAllArchivedBookings(true);
+    const deletedIds: string[] = [];
+    let failedCount = 0;
+    try {
+      for (const booking of archivedBookings) {
+        try {
+          await permanentlyDeleteArchivedBooking(booking.id);
+          deletedIds.push(booking.id);
+        } catch {
+          failedCount += 1;
+        }
+      }
+      if (deletedIds.length) setBookings((current) => current.filter((booking) => !deletedIds.includes(booking.id)));
+      setDeleteAllArchiveConfirmationOpen(false);
+      if (failedCount) {
+        toast.error(`Se eliminaron ${deletedIds.length} turnos; ${failedCount} no pudieron borrarse definitivamente.`);
+      } else {
+        toast.success(`Se eliminaron ${deletedIds.length} turnos definitivamente.`);
+      }
+    } finally {
+      setDeletingAllArchivedBookings(false);
     }
   }
 
@@ -532,11 +558,15 @@ function MyBookingsPage() {
         </DialogContent>
       </Dialog>
       <Dialog open={archiveDialogOpen} onOpenChange={setArchiveDialogOpen}>
-        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl" onOpenAutoFocus={(event) => event.preventDefault()}>
+        <DialogContent className="gold-scrollbar max-h-[85vh] overflow-y-auto sm:max-w-2xl" onOpenAutoFocus={(event) => event.preventDefault()}>
           <DialogHeader>
             <DialogTitle>Turnos borrados/antiguos</DialogTitle>
             <DialogDescription>Turnos archivados, con asistencia registrada o antiguos. Podés restaurarlos o borrarlos definitivamente del listado.</DialogDescription>
           </DialogHeader>
+          {archivedBookings.length > 0 && <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-xs text-muted-foreground">Borrar todos los turnos de este listado, aunque haya una búsqueda activa.</p>
+            <Button type="button" size="sm" variant="destructive" disabled={deletingAllArchivedBookings || permanentlyDeletingBookingId !== null} onClick={() => setDeleteAllArchiveConfirmationOpen(true)}>Borrar todos</Button>
+          </div>}
           <label className="relative block">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input value={archiveSearch} onChange={(event) => setArchiveSearch(event.target.value)} placeholder="Buscar en los turnos archivados…" className="pl-9" aria-label="Buscar turnos archivados" />
@@ -557,8 +587,8 @@ function MyBookingsPage() {
                   <p className="mt-1 text-muted-foreground">{format(appointmentDate, "EEEE d 'de' MMMM, yyyy", { locale: es })} · {booking.time}</p>
                   <p className="mt-1 text-muted-foreground">Pago: {paymentMethod} · ${booking.totalPrice.toLocaleString("es-AR")}</p>
                   <div className="mt-3 flex flex-wrap justify-end gap-2">
-                    {booking.clientArchivedAt && <Button type="button" size="sm" variant="outline" disabled={restoringBookingId !== null} onClick={() => void restoreTurn(booking)}>{restoringBookingId === booking.id ? "Restaurando…" : "Restaurar a mis turnos"}</Button>}
-                    <Button type="button" size="sm" variant="destructive" disabled={permanentlyDeletingBookingId !== null} onClick={() => setBookingToPermanentlyDelete(booking)}>{permanentlyDeletingBookingId === booking.id ? "Borrando…" : "Borrar turno"}</Button>
+                    <Button type="button" size="sm" variant="outline" disabled={restoringBookingId !== null || deletingAllArchivedBookings} onClick={() => void restoreTurn(booking)}>{restoringBookingId === booking.id ? "Restaurando…" : "Restaurar a mis turnos"}</Button>
+                    <Button type="button" size="sm" variant="destructive" disabled={permanentlyDeletingBookingId !== null || deletingAllArchivedBookings} onClick={() => void permanentlyDeleteTurn(booking)}>{permanentlyDeletingBookingId === booking.id ? "Borrando…" : "Borrar turno"}</Button>
                   </div>
                 </article>;
               })}
@@ -567,16 +597,15 @@ function MyBookingsPage() {
           <DialogFooter><Button type="button" variant="outline" onClick={() => setArchiveDialogOpen(false)}>Cerrar</Button></DialogFooter>
         </DialogContent>
       </Dialog>
-      <Dialog open={bookingToPermanentlyDelete !== null} onOpenChange={(open) => { if (!open && permanentlyDeletingBookingId === null) setBookingToPermanentlyDelete(null); }}>
+      <Dialog open={deleteAllArchiveConfirmationOpen} onOpenChange={(open) => { if (!deletingAllArchivedBookings) setDeleteAllArchiveConfirmationOpen(open); }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>¿Borrar el turno definitivamente?</DialogTitle>
-            <DialogDescription>Esta acción no se puede deshacer. El turno dejará de aparecer en “Turnos borrados/antiguos”.</DialogDescription>
+            <DialogTitle>¿Borrar todos los turnos definitivamente?</DialogTitle>
+            <DialogDescription>Se eliminarán los {archivedBookings.length} turnos del listado, incluso los que no coincidan con la búsqueda. Esta acción no se puede deshacer.</DialogDescription>
           </DialogHeader>
-          {bookingToPermanentlyDelete && <p className="rounded-xl border border-border bg-card p-3 text-sm">{bookingToPermanentlyDelete.date} · {bookingToPermanentlyDelete.time}</p>}
           <DialogFooter>
-            <Button type="button" variant="outline" disabled={permanentlyDeletingBookingId !== null} onClick={() => setBookingToPermanentlyDelete(null)}>Cancelar</Button>
-            {bookingToPermanentlyDelete && <Button type="button" variant="destructive" disabled={permanentlyDeletingBookingId !== null} onClick={() => void permanentlyDeleteTurn(bookingToPermanentlyDelete)}>{permanentlyDeletingBookingId === bookingToPermanentlyDelete.id ? "Borrando…" : "Sí, borrar definitivamente"}</Button>}
+            <Button type="button" variant="outline" disabled={deletingAllArchivedBookings} onClick={() => setDeleteAllArchiveConfirmationOpen(false)}>Cancelar</Button>
+            <Button type="button" variant="destructive" disabled={deletingAllArchivedBookings || archivedBookings.length === 0} onClick={() => void permanentlyDeleteAllArchivedTurns()}>{deletingAllArchivedBookings ? "Borrando turnos…" : "Sí, borrar todos"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
