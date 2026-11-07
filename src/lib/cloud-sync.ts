@@ -305,6 +305,10 @@ export async function deleteNotification(notificationId: string) {
   return request<{ ok: boolean }>("POST", { action: "delete-notification", notificationId });
 }
 
+export async function deleteAllNotifications() {
+  return request<{ ok: boolean }>("POST", { action: "delete-all-notifications" });
+}
+
 export async function confirmClientBooking(bookingId: string) {
   return request<{ booking: Booking }>("POST", { action: "confirm-client-booking", bookingId });
 }

@@ -980,7 +980,7 @@ export default async function handler(request, response) {
         return response.status(500).json({ error: "No se pudo borrar definitivamente el turno." });
       }
     }
-    if (user && ["get-notifications", "check-notification-booking", "set-notification-read", "delete-notification"].includes(body?.action)) {
+    if (user && ["get-notifications", "check-notification-booking", "set-notification-read", "delete-notification", "delete-all-notifications"].includes(body?.action)) {
       try {
         if (!user.emailVerified) return response.status(403).json({ error: "Verificá tu correo para consultar tus notificaciones." });
         const account = await db.execute({ sql: "SELECT role, store_code FROM account_roles WHERE user_id = ?", args: [user.id] });
@@ -1017,6 +1017,11 @@ export default async function handler(request, response) {
             })), "write");
           }
           return response.status(200).json({ notifications, newForPrompt });
+        }
+
+        if (body.action === "delete-all-notifications") {
+          await db.execute({ sql: "DELETE FROM notifications WHERE recipient_key = ?", args: [recipientKey] });
+          return response.status(200).json({ ok: true });
         }
 
         const notificationId = typeof body.notificationId === "string" ? body.notificationId : "";

@@ -4,7 +4,7 @@ import { Bell, Check, ExternalLink, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { BOOKING_HIGHLIGHT_KEY, deleteNotification, getNotifications, notificationBookingExists, setNotificationRead, type BookingNotification } from "@/lib/cloud-sync";
+import { BOOKING_HIGHLIGHT_KEY, deleteAllNotifications, deleteNotification, getNotifications, notificationBookingExists, setNotificationRead, type BookingNotification } from "@/lib/cloud-sync";
 import type { AccountRole } from "@/lib/auth";
 
 function parseNotificationTimestamp(value: string) {
@@ -36,6 +36,7 @@ export function NotificationsCenter({ isAuthenticated, role }: { isAuthenticated
   const [error, setError] = useState("");
   const [markingIds, setMarkingIds] = useState<Set<string>>(() => new Set());
   const [markingAll, setMarkingAll] = useState(false);
+  const [deletingAll, setDeletingAll] = useState(false);
   const [checkingBookingIds, setCheckingBookingIds] = useState<Set<string>>(() => new Set());
   const [deletingIds, setDeletingIds] = useState<Set<string>>(() => new Set());
   const checkingBookingIdsRef = useRef(new Set<string>());
@@ -133,7 +134,7 @@ export function NotificationsCenter({ isAuthenticated, role }: { isAuthenticated
 
   async function markAllRead() {
     const unread = notifications.filter((item) => !item.readAt);
-    if (!unread.length || markingAll) return;
+    if (!unread.length || markingAll || deletingAll) return;
     setMarkingAll(true);
     const now = new Date().toISOString();
     for (const notification of unread) {
@@ -167,7 +168,7 @@ export function NotificationsCenter({ isAuthenticated, role }: { isAuthenticated
   }
 
   async function removeNotification(notification: BookingNotification) {
-    if (deletingIdsRef.current.has(notification.id)) return;
+    if (deletingAll || deletingIdsRef.current.has(notification.id)) return;
     deletingIdsRef.current.add(notification.id);
     deletedNotificationIdsRef.current.add(notification.id);
     setDeletingIds((current) => new Set(current).add(notification.id));
@@ -186,6 +187,27 @@ export function NotificationsCenter({ isAuthenticated, role }: { isAuthenticated
         next.delete(notification.id);
         return next;
       });
+    }
+  }
+
+  async function removeAllNotifications() {
+    if (deletingAll || markingAll || markingIds.size > 0 || deletingIds.size > 0 || notifications.length === 0) return;
+    setDeletingAll(true);
+    const previousNotifications = notifications;
+    const previousDeletedIds = new Set(deletedNotificationIdsRef.current);
+    setNotifications([]);
+    pendingReadRef.current.clear();
+    previousNotifications.forEach((notification) => deletedNotificationIdsRef.current.add(notification.id));
+    try {
+      await deleteAllNotifications();
+      setError("");
+      toast.success("Se eliminaron todas las notificaciones.");
+    } catch (reason) {
+      deletedNotificationIdsRef.current = previousDeletedIds;
+      setNotifications(previousNotifications);
+      setError(reason instanceof Error ? reason.message : "No se pudieron eliminar todas las notificaciones.");
+    } finally {
+      setDeletingAll(false);
     }
   }
 
@@ -228,7 +250,10 @@ export function NotificationsCenter({ isAuthenticated, role }: { isAuthenticated
     <>
       <div className="mb-3 flex items-center justify-between gap-2 border-b border-border pb-2 pr-8 md:pr-0">
         <h2 className="font-semibold">Notificaciones</h2>
-        {unreadCount > 0 && <button type="button" disabled={markingAll} className="text-xs text-gold hover:underline disabled:cursor-wait disabled:opacity-70" onClick={() => void markAllRead()}>{markingAll ? "Marcando como leídas..." : "Marcar todas leídas"}</button>}
+        <div className="flex items-center gap-3">
+          {unreadCount > 0 && <button type="button" disabled={markingAll || deletingAll || deletingIds.size > 0} className="text-xs text-gold hover:underline disabled:cursor-wait disabled:opacity-70" onClick={() => void markAllRead()}>{markingAll ? "Marcando como leídas..." : "Marcar todas leídas"}</button>}
+          {notifications.length > 0 && <button type="button" disabled={deletingAll || markingAll || markingIds.size > 0 || deletingIds.size > 0} className="text-xs text-red-300 hover:underline disabled:cursor-wait disabled:opacity-70" onClick={() => void removeAllNotifications()}>{deletingAll ? "Borrando…" : "Borrar todas"}</button>}
+        </div>
       </div>
       {error && <p role="alert" className="mb-2 rounded-lg bg-red-500/10 p-2 text-xs text-red-300">{error}</p>}
       {loading ? <p className="py-5 text-center text-sm text-muted-foreground">Cargando…</p>
