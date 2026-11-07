@@ -276,8 +276,8 @@ export function NotificationsCenter({ isAuthenticated, role }: { isAuthenticated
                   <span className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${notification.readAt ? "bg-border" : "bg-gold"}`} aria-label={notification.readAt ? "Leída" : "Sin leer"} />
                 </div>
                 {notification.bookingExists === false ? (
-                  <div className="mt-2 flex w-full min-w-0 items-center gap-2 rounded-md border border-white/15 bg-black px-2 py-1.5 text-xs text-white">
-                    <span className="min-w-0 flex-1">No se encuentra el turno.</span>
+                  <div className="mt-2 flex w-full min-w-0 items-center gap-2">
+                    <span className="min-w-0 flex-1 rounded-md border border-white/15 bg-black px-2 py-1.5 text-xs text-white">No se encuentra el turno.</span>
                     <div className="flex shrink-0 items-center gap-2">
                       {markingIds.has(notification.id)
                         ? <span className="text-[11px] text-muted-foreground">Marcando...</span>

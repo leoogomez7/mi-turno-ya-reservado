@@ -460,7 +460,7 @@ function MyBookingsPage() {
                 ?? professionals.find((item) => item.id === booking.barberId);
               const serviceNames = booking.serviceIds.map((id) => professional?.services.find((service) => service.id === id)?.name).filter(Boolean).join(", ");
               const appointmentDate = parseISO(`${booking.date}T${booking.time}`);
-              const statusLabel = booking.status === "completed" ? "Asistió" : booking.status === "no-show" ? "No asistió" : booking.status === "cancelled" ? booking.cancelledBy === "professional" ? "Cancelado por el profesional" : "Cancelado por vos" : "Reservado";
+              const statusLabel = booking.status === "completed" ? "Asistió" : booking.status === "no-show" ? "No asistió" : booking.status === "cancelled" ? booking.cancelledBy === "professional" ? "Cancelado por el profesional" : "Cancelado por el cliente" : "Reservado";
               const statusClass = booking.status === "completed" ? "border-emerald-300 text-emerald-400" : booking.status === "cancelled" || booking.status === "no-show" ? "border-red-500/30 bg-red-500/10 text-red-300" : "border-gold/40 text-gold";
               const paymentMethodLabel = booking.customer.paymentMethod === "efectivo"
                 ? "Efectivo"
