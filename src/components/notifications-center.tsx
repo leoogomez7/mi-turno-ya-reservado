@@ -64,15 +64,19 @@ export function NotificationsCenter({ isAuthenticated, role }: { isAuthenticated
       try {
         const { notifications: loaded, newForPrompt } = await getNotifications();
         if (!active || requestSequence !== refreshSequenceRef.current) return;
-        setNotifications(loaded.filter((notification) => !deletedNotificationIdsRef.current.has(notification.id)).map((notification) => {
-          const pendingReadAt = pendingReadRef.current.get(notification.id);
-          if (!pendingReadAt) return notification;
-          if (notification.readAt) {
-            pendingReadRef.current.delete(notification.id);
-            return notification;
-          }
-          return { ...notification, readAt: pendingReadAt };
-        }));
+        setNotifications((current) => {
+          const unavailableIds = new Set(current.filter((item) => item.bookingExists === false).map((item) => item.id));
+          return loaded.filter((notification) => !deletedNotificationIdsRef.current.has(notification.id)).map((notification) => {
+            const pendingReadAt = pendingReadRef.current.get(notification.id);
+            const updated = unavailableIds.has(notification.id) ? { ...notification, bookingExists: false } : notification;
+            if (!pendingReadAt) return updated;
+            if (notification.readAt) {
+              pendingReadRef.current.delete(notification.id);
+              return updated;
+            }
+            return { ...updated, readAt: pendingReadAt };
+          });
+        });
         if (showWelcome) {
           setNewCount(newForPrompt.length);
           setPromptOpen(newForPrompt.length > 0);
@@ -268,25 +272,40 @@ export function NotificationsCenter({ isAuthenticated, role }: { isAuthenticated
                     <time className="mt-2 block text-[11px] text-muted-foreground" dateTime={parseNotificationTimestamp(notification.createdAt).toISOString()}>
                       {formatBuenosAiresTimestamp(notification.createdAt)}
                     </time>
-                    {notification.bookingExists === false && <p className="mt-2 rounded-md border border-white/15 bg-black px-2 py-1.5 text-xs text-white">No se encuentra el turno.</p>}
                   </div>
                   <span className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${notification.readAt ? "bg-border" : "bg-gold"}`} aria-label={notification.readAt ? "Leída" : "Sin leer"} />
                 </div>
-                <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-                  {notification.bookingExists !== false && <button type="button" disabled={checkingBookingIds.has(notification.id)} className="inline-flex items-center gap-1 text-xs text-gold hover:underline disabled:cursor-wait disabled:opacity-70" onClick={() => void viewBooking(notification)}>
-                    {checkingBookingIds.has(notification.id) ? "Buscando turno..." : <>Ver turno <ExternalLink className="h-3 w-3" /></>}
-                  </button>}
-                  <div className="flex items-center gap-3">
-                    {markingIds.has(notification.id)
-                      ? <span className="text-xs text-muted-foreground">Marcando como leída...</span>
-                      : notification.readAt
-                      ? <span className="inline-flex items-center gap-1 text-xs text-muted-foreground"><Check className="h-3 w-3" /> Leída</span>
-                      : <button type="button" disabled={markingAll} className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground disabled:cursor-wait disabled:opacity-70" onClick={() => void markRead(notification)}><Check className="h-3 w-3" /> Marcar como leída</button>}
-                    <button type="button" disabled={deletingIds.has(notification.id)} aria-label="Eliminar notificación" title="Eliminar notificación" className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-red-500/10 hover:text-red-300 disabled:cursor-wait disabled:opacity-60" onClick={() => void removeNotification(notification)}>
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
+                {notification.bookingExists === false ? (
+                  <div className="mt-2 flex items-center justify-between gap-2 rounded-md border border-white/15 bg-black px-2 py-1.5 text-xs text-white">
+                    <span className="min-w-0 flex-1">No se encuentra el turno.</span>
+                    <div className="flex shrink-0 items-center gap-2">
+                      {markingIds.has(notification.id)
+                        ? <span className="text-[11px] text-muted-foreground">Marcando...</span>
+                        : notification.readAt
+                          ? <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground"><Check className="h-3 w-3" /> Leída</span>
+                          : <button type="button" disabled={markingAll} className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground disabled:opacity-70" onClick={() => void markRead(notification)}><Check className="h-3 w-3" /> Leída</button>}
+                      <button type="button" disabled={deletingIds.has(notification.id)} aria-label="Eliminar notificación" title="Eliminar notificación" className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-red-500/10 hover:text-red-300 disabled:opacity-60" onClick={() => void removeNotification(notification)}>
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                    <button type="button" disabled={checkingBookingIds.has(notification.id)} className="inline-flex items-center gap-1 text-xs text-gold hover:underline disabled:cursor-wait disabled:opacity-70" onClick={() => void viewBooking(notification)}>
+                      {checkingBookingIds.has(notification.id) ? "Buscando turno..." : <>Ver turno <ExternalLink className="h-3 w-3" /></>}
+                    </button>
+                    <div className="flex items-center gap-3">
+                      {markingIds.has(notification.id)
+                        ? <span className="text-xs text-muted-foreground">Marcando como leída...</span>
+                        : notification.readAt
+                          ? <span className="inline-flex items-center gap-1 text-xs text-muted-foreground"><Check className="h-3 w-3" /> Leída</span>
+                          : <button type="button" disabled={markingAll} className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground disabled:cursor-wait disabled:opacity-70" onClick={() => void markRead(notification)}><Check className="h-3 w-3" /> Marcar como leída</button>}
+                      <button type="button" disabled={deletingIds.has(notification.id)} aria-label="Eliminar notificación" title="Eliminar notificación" className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-red-500/10 hover:text-red-300 disabled:cursor-wait disabled:opacity-60" onClick={() => void removeNotification(notification)}>
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                )}
               </li>
             ))}
           </ul>}

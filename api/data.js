@@ -1008,15 +1008,16 @@ export default async function handler(request, response) {
             sql: `SELECT notifications.id, notifications.booking_id AS bookingId, notifications.type, notifications.title,
               notifications.message, notifications.created_at AS createdAt, notifications.read_at AS readAt,
               notifications.prompted_at AS promptedAt,
-              EXISTS(SELECT 1 FROM bookings WHERE bookings.id = notifications.booking_id
-                AND upper(json_extract(bookings.value, '$.storeCode')) = upper(notifications.store_code)) AS bookingExists
+              (SELECT bookings.value FROM bookings WHERE bookings.id = notifications.booking_id
+                AND upper(json_extract(bookings.value, '$.storeCode')) = upper(notifications.store_code) LIMIT 1) AS bookingValue
               FROM notifications WHERE notifications.recipient_key = ? ORDER BY notifications.created_at DESC LIMIT 100`,
             args: [recipientKey],
           });
           const notifications = result.rows.map((row) => ({
             id: String(row.id), bookingId: String(row.bookingId), type: String(row.type), title: String(row.title),
             message: String(row.message), createdAt: String(row.createdAt), readAt: row.readAt ? String(row.readAt) : null,
-            bookingExists: Boolean(row.bookingExists),
+            bookingExists: Boolean(row.bookingValue)
+              && isBookingVisibleInMainList(JSON.parse(String(row.bookingValue)), role),
           }));
           const newForPrompt = notifications.filter((notification) => {
             const row = result.rows.find((item) => String(item.id) === notification.id);
