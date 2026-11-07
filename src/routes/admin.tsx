@@ -73,7 +73,7 @@ function Stat({ icon: Icon, label, value }: { icon: any; label: string; value: s
 }
 
 function computeStats(bookings: Booking[]) {
-  const active = bookings.filter((b) => b.status !== "cancelled");
+  const active = bookings.filter((b) => b.status !== "cancelled" && b.status !== "no-show");
   const today = active.filter((b) => isToday(parseISO(b.date))).length;
   const week = active.filter((b) => isThisWeek(parseISO(b.date), { weekStartsOn: 1 })).length;
   const monthBookings = active.filter((b) => isThisMonth(parseISO(b.date)));

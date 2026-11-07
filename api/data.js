@@ -2073,6 +2073,12 @@ export default async function handler(request, response) {
         if (normalizeStoreCode(priorRecord.storeCode) !== storeCode) {
           return response.status(403).json({ error: "El registro no pertenece a la sucursal seleccionada." });
         }
+        if (body.collection === "bookings" && role === "admin"
+          && priorRecord.status !== record.status
+          && ["completed", "no-show"].includes(record.status)
+          && record.paymentStatus !== "approved") {
+          return response.status(409).json({ error: "Solo puedes indicar asistencia en turnos con el pago confirmado por el administrador." });
+        }
       }
       if (body.collection === "bookings" && role !== "admin") {
         if (normalizeStoreCode(record.storeCode) !== storeCode) return response.status(403).json({ error: "La reserva no corresponde a la sucursal seleccionada." });
