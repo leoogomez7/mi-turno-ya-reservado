@@ -71,6 +71,18 @@ function canDeleteBooking(booking) {
     || booking.paymentCancellationStatus === "refunded";
 }
 
+function isBookingVisibleInMainList(booking, role) {
+  const audience = role === "admin" ? "admin" : "client";
+  if (booking[`${audience}PermanentlyDeletedAt`]) return false;
+  const archivedAt = booking[`${audience}ArchivedAt`];
+  const restoredAt = booking[`${audience}RestoredAt`];
+  if (restoredAt) return true;
+  if (archivedAt || booking.paymentCancellationStatus === "requested") return !archivedAt;
+  if (booking.status === "completed" || booking.status === "no-show") return false;
+  const appointmentAt = Date.parse(`${booking.date}T${booking.time}:00-03:00`);
+  return !Number.isFinite(appointmentAt) || Date.now() < appointmentAt + 24 * 60 * 60 * 1000;
+}
+
 function storedRecordId(storeCode, id) {
   return `${storeCode}:${id}`;
 }
@@ -1041,7 +1053,8 @@ export default async function handler(request, response) {
           });
           const bookingValue = booking.rows[0] ? JSON.parse(String(booking.rows[0].value)) : null;
           const exists = Boolean(bookingValue)
-            && normalizeStoreCode(bookingValue.storeCode) === normalizeStoreCode(notice.rows[0].store_code);
+            && normalizeStoreCode(bookingValue.storeCode) === normalizeStoreCode(notice.rows[0].store_code)
+            && isBookingVisibleInMainList(bookingValue, role);
           return response.status(200).json({ exists });
         }
         if (body.action === "delete-notification") {
