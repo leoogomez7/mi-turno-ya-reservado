@@ -192,6 +192,10 @@ export function AgendaManager() {
 
   async function archiveTurn(booking: Booking) {
     if (deletingBookingId) return;
+    if (booking.paymentCancellationStatus === "requested") {
+      toast.error("No se puede borrar el turno mientras la devolución solicitada esté pendiente.");
+      return;
+    }
     setDeletingBookingId(booking.id);
     try {
       const result = await archiveBooking(booking.id);
@@ -394,7 +398,7 @@ export function AgendaManager() {
                     <div className="shrink-0 font-display text-base font-semibold text-gold xl:col-start-3 xl:justify-self-start xl:rounded-lg xl:border xl:border-gold/20 xl:bg-gold/5 xl:px-3 xl:py-2 xl:text-center xl:text-lg">${booking.totalPrice.toLocaleString("es-AR")}</div>
                   </div>
                   <div className="flex w-full flex-col items-center gap-1 text-xs text-muted-foreground xl:col-start-4 xl:items-start xl:justify-self-start">
-                      {booking.cancelledBy === "client" && <Badge variant="outline" className="border-red-300 text-red-300">Cancelado por el cliente · Revisar si eliminar</Badge>}
+                      {booking.cancelledBy === "client" && <Badge variant="outline" className="border-red-300 text-red-300">Cancelado por el cliente</Badge>}
                       {booking.cancelledBy === "professional" && <Badge variant="outline" className="border-red-300 text-red-300">Cancelado por el profesional</Badge>}
                       <Badge variant="outline" className="border-gold/30 text-gold">Pago · {paymentMethodLabel}</Badge>
                       {booking.isTest && <Badge variant="outline" className="border-emerald-300 text-emerald-400">Turno de prueba</Badge>}
@@ -415,7 +419,7 @@ export function AgendaManager() {
                     {isActiveBooking && !booking.paymentCancellationStatus && booking.paymentStatus !== "approved" && !booking.paymentReportedAt && <Button size="sm" variant="destructive" className={`min-w-0 whitespace-normal px-2 text-center leading-tight ${cancellingBookingId === booking.id ? "opacity-60" : ""}`} disabled={cancellingBookingId !== null} onClick={() => void cancelBooking(booking)}>{cancellingBookingId === booking.id ? "Cancelando turno..." : "Cancelar turno"}</Button>}
                     {["requested", "refunded"].includes(booking.paymentCancellationStatus ?? "") && (booking.refundDestination || booking.refundCbu) && <Button size="sm" variant="outline" className="min-w-0 whitespace-normal border-gold/40 px-2 text-center leading-tight text-gold hover:bg-gold/10 hover:text-gold" onClick={() => setRefundDetailsBooking(booking)}>Ver CBU/Alias</Button>}
                     {booking.paymentCancellationStatus === "requested" && <Button size="sm" className="min-w-0 whitespace-normal px-2 text-center leading-tight bg-gold text-primary-foreground hover:bg-gold-soft" disabled={confirmingRefundId !== null} onClick={() => setRefundConfirmationBooking(booking)}>Indicar devolución</Button>}
-                    <Button size="sm" variant="destructive" className="min-w-0 whitespace-normal px-2 text-center leading-tight" disabled={deletingBookingId === booking.id} onClick={() => void archiveTurn(booking)}>{deletingBookingId === booking.id ? "Borrando turno..." : "Borrar turno"}</Button>
+                    <Button size="sm" variant="destructive" className="min-w-0 whitespace-normal px-2 text-center leading-tight" disabled={deletingBookingId === booking.id || booking.paymentCancellationStatus === "requested"} onClick={() => void archiveTurn(booking)}>{deletingBookingId === booking.id ? "Borrando turno..." : "Borrar turno"}</Button>
                   </div>
                 </div>
               );

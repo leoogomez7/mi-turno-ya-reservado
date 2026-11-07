@@ -186,7 +186,6 @@ export function BookPage() {
     }
     const needsStore = !currentCode || !hasActiveStore;
     if (needsStore) {
-      setStorePickerOpen(step === 0);
       if (step !== 0) {
         setStep(0);
         void navigate({ to: "/reserva", replace: true });

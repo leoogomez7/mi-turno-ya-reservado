@@ -868,6 +868,9 @@ export default async function handler(request, response) {
         } else if (storeCode !== normalizeStoreCode(account.rows[0]?.store_code)) {
           return response.status(403).json({ error: "El turno no corresponde a tu sucursal." });
         }
+        if (booking.paymentCancellationStatus === "requested") {
+          return response.status(409).json({ error: "No se puede borrar el turno mientras la devolución solicitada esté pendiente." });
+        }
         const archiveField = role === "client" ? "clientArchivedAt" : "adminArchivedAt";
         if (!booking[archiveField]) {
           booking[archiveField] = new Date().toISOString();
