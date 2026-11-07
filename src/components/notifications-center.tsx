@@ -220,7 +220,7 @@ export function NotificationsCenter({ isAuthenticated, role }: { isAuthenticated
       if (!exists) {
         setNotifications((current) => current.map((item) => item.id === notification.id ? { ...item, bookingExists: false } : item));
         void markRead(notification);
-        toast("El turno fue eliminado o ya no está disponible para consultar.", {
+        toast("No se encuentra el turno.", {
           className: "!border-white/20 !bg-black !text-white",
         });
         return;
@@ -268,7 +268,7 @@ export function NotificationsCenter({ isAuthenticated, role }: { isAuthenticated
                     <time className="mt-2 block text-[11px] text-muted-foreground" dateTime={parseNotificationTimestamp(notification.createdAt).toISOString()}>
                       {formatBuenosAiresTimestamp(notification.createdAt)}
                     </time>
-                    {notification.bookingExists === false && <p className="mt-2 rounded-md border border-white/15 bg-black px-2 py-1.5 text-xs text-white">El turno fue eliminado o ya no está disponible para consultar.</p>}
+                    {notification.bookingExists === false && <p className="mt-2 rounded-md border border-white/15 bg-black px-2 py-1.5 text-xs text-white">No se encuentra el turno.</p>}
                   </div>
                   <span className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${notification.readAt ? "bg-border" : "bg-gold"}`} aria-label={notification.readAt ? "Leída" : "Sin leer"} />
                 </div>
