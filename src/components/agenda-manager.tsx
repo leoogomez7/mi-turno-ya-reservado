@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { bookingStore, getBarber, getBookingArchiveLabel, type Booking } from "@/lib/booking-store";
+import { bookingStore, canDeleteBooking, getBarber, getBookingArchiveLabel, type Booking } from "@/lib/booking-store";
 import { useAppAuth } from "@/lib/auth";
 import { archiveBooking, BOOKING_HIGHLIGHT_KEY, confirmBookingRefund, permanentlyDeleteArchivedBooking, refreshCloudData, restoreArchivedBooking } from "@/lib/cloud-sync";
 import { getAvailableSlotsForDate, getProfessionalService, getScheduleForDate, professionalStore } from "@/lib/professional-store";
@@ -191,8 +191,8 @@ export function AgendaManager() {
 
   async function archiveTurn(booking: Booking) {
     if (deletingBookingId) return;
-    if (booking.paymentCancellationStatus === "requested") {
-      toast.error("No se puede borrar el turno mientras la devolución solicitada esté pendiente.");
+    if (!canDeleteBooking(booking)) {
+      toast.error("Solo se puede borrar un turno pagado, asistido, cancelado o con la devolución realizada.");
       return;
     }
     setDeletingBookingId(booking.id);
@@ -223,6 +223,10 @@ export function AgendaManager() {
 
   async function permanentlyDeleteTurn(booking: Booking) {
     if (permanentlyDeletingBookingId || deletingAllArchivedBookings) return;
+    if (!canDeleteBooking(booking)) {
+      toast.error("Solo se puede borrar un turno pagado, asistido, cancelado o con la devolución realizada.");
+      return;
+    }
     setPermanentlyDeletingBookingId(booking.id);
     try {
       await permanentlyDeleteArchivedBooking(booking.id);
@@ -237,11 +241,16 @@ export function AgendaManager() {
 
   async function permanentlyDeleteAllArchivedTurns() {
     if (permanentlyDeletingBookingId || deletingAllArchivedBookings || !archivedBookings.length) return;
+    const deletableBookings = archivedBookings.filter(canDeleteBooking);
+    if (!deletableBookings.length) {
+      toast.error("No hay turnos pagados, asistidos, cancelados o con la devolución realizada para borrar.");
+      return;
+    }
     setDeletingAllArchivedBookings(true);
     const deletedIds: string[] = [];
-    let failedCount = 0;
+    let failedCount = archivedBookings.length - deletableBookings.length;
     try {
-      for (const booking of archivedBookings) {
+      for (const booking of deletableBookings) {
         try {
           await permanentlyDeleteArchivedBooking(booking.id);
           deletedIds.push(booking.id);
@@ -251,7 +260,7 @@ export function AgendaManager() {
       }
       if (deletedIds.length) setBookings((current) => current.filter((booking) => !deletedIds.includes(booking.id)));
       if (failedCount) {
-        toast.error(`Se eliminaron ${deletedIds.length} turnos; ${failedCount} no pudieron borrarse definitivamente.`);
+        toast.error(`Se eliminaron ${deletedIds.length} turnos; ${failedCount} no cumplen los requisitos para borrarse.`);
       } else {
         toast.success(`Se eliminaron ${deletedIds.length} turnos definitivamente.`);
       }
@@ -417,7 +426,7 @@ export function AgendaManager() {
                     {isActiveBooking && !booking.paymentCancellationStatus && booking.paymentStatus !== "approved" && !booking.paymentReportedAt && <Button size="sm" variant="destructive" className={`min-w-0 whitespace-normal px-2 text-center leading-tight ${cancellingBookingId === booking.id ? "opacity-60" : ""}`} disabled={cancellingBookingId !== null} onClick={() => void cancelBooking(booking)}>{cancellingBookingId === booking.id ? "Cancelando turno..." : "Cancelar turno"}</Button>}
                     {booking.paymentCancellationStatus === "refunded" && (booking.refundDestination || booking.refundCbu) && <Button size="sm" variant="outline" className="min-w-0 whitespace-normal border-gold/40 px-2 text-center leading-tight text-gold hover:bg-gold/10 hover:text-gold" onClick={() => setRefundDialogBooking(booking)}>Ver CBU/Alias</Button>}
                     {booking.paymentCancellationStatus === "requested" && <Button size="sm" className="min-w-0 whitespace-normal px-2 text-center leading-tight bg-gold text-primary-foreground hover:bg-gold-soft" disabled={confirmingRefundId !== null} onClick={() => setRefundDialogBooking(booking)}>Indicar devolución</Button>}
-                    <Button size="sm" variant="destructive" className="min-w-0 whitespace-normal px-2 text-center leading-tight" disabled={deletingBookingId === booking.id || booking.paymentCancellationStatus === "requested"} onClick={() => void archiveTurn(booking)}>{deletingBookingId === booking.id ? "Borrando turno..." : "Borrar turno"}</Button>
+                    <Button size="sm" variant="destructive" className="min-w-0 whitespace-normal px-2 text-center leading-tight" disabled={deletingBookingId === booking.id || !canDeleteBooking(booking)} onClick={() => void archiveTurn(booking)}>{deletingBookingId === booking.id ? "Borrando turno..." : "Borrar turno"}</Button>
                   </div>
                 </div>
               );
@@ -477,7 +486,7 @@ export function AgendaManager() {
                       </div>
                       <div className="flex flex-wrap justify-end gap-2">
                         <Button type="button" size="sm" variant="outline" disabled={restoringBookingId !== null || deletingAllArchivedBookings} onClick={() => void restoreTurn(booking)}>{restoringBookingId === booking.id ? "Restaurando…" : "Restaurar"}</Button>
-                        <Button type="button" size="sm" variant="destructive" disabled={permanentlyDeletingBookingId !== null || deletingAllArchivedBookings} onClick={() => void permanentlyDeleteTurn(booking)}>{permanentlyDeletingBookingId === booking.id ? "Borrando…" : "Borrar turno"}</Button>
+                        <Button type="button" size="sm" variant="destructive" disabled={permanentlyDeletingBookingId !== null || deletingAllArchivedBookings || !canDeleteBooking(booking)} onClick={() => void permanentlyDeleteTurn(booking)}>{permanentlyDeletingBookingId === booking.id ? "Borrando…" : "Borrar turno"}</Button>
                       </div>
                     </div>
                   </article>;

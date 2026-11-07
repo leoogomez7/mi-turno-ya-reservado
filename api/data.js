@@ -60,6 +60,17 @@ function normalizeStoreCode(value) {
   return typeof value === "string" ? value.trim().toUpperCase() : "";
 }
 
+function canDeleteBooking(booking) {
+  if (booking.paymentCancellationStatus === "requested"
+    || booking.paymentStatus === "pending"
+    || booking.status === "pending-payment"
+    || (Boolean(booking.paymentReportedAt) && booking.paymentStatus !== "approved")) return false;
+  return booking.status === "cancelled"
+    || booking.status === "completed"
+    || booking.paymentStatus === "approved"
+    || booking.paymentCancellationStatus === "refunded";
+}
+
 function storedRecordId(storeCode, id) {
   return `${storeCode}:${id}`;
 }
@@ -868,8 +879,15 @@ export default async function handler(request, response) {
         } else if (storeCode !== normalizeStoreCode(account.rows[0]?.store_code)) {
           return response.status(403).json({ error: "El turno no corresponde a tu sucursal." });
         }
-        if (booking.paymentCancellationStatus === "requested") {
-          return response.status(409).json({ error: "No se puede borrar el turno mientras la devolución solicitada esté pendiente." });
+        if (!canDeleteBooking(booking)) {
+          const pendingRefund = booking.paymentCancellationStatus === "requested";
+          const pendingPayment = booking.paymentStatus === "pending" || booking.status === "pending-payment"
+            || (Boolean(booking.paymentReportedAt) && booking.paymentStatus !== "approved");
+          return response.status(409).json({ error: pendingRefund
+            ? "No se puede borrar el turno mientras la devolución solicitada esté pendiente."
+            : pendingPayment
+              ? "No se puede borrar el turno mientras haya un pago pendiente de confirmación."
+              : "Solo se puede borrar un turno pagado, asistido, cancelado o con la devolución realizada." });
         }
         const archiveField = role === "client" ? "clientArchivedAt" : "adminArchivedAt";
         if (!booking[archiveField]) {
@@ -944,8 +962,15 @@ export default async function handler(request, response) {
         if (!booking[archiveField] && !isAutomaticallyArchived) {
           return response.status(409).json({ error: "Primero archivá el turno desde la lista principal." });
         }
-        if (booking.paymentCancellationStatus === "requested") {
-          return response.status(409).json({ error: "No se puede borrar definitivamente mientras la devolución esté pendiente." });
+        if (!canDeleteBooking(booking)) {
+          const pendingRefund = booking.paymentCancellationStatus === "requested";
+          const pendingPayment = booking.paymentStatus === "pending" || booking.status === "pending-payment"
+            || (Boolean(booking.paymentReportedAt) && booking.paymentStatus !== "approved");
+          return response.status(409).json({ error: pendingRefund
+            ? "No se puede borrar definitivamente mientras la devolución esté pendiente."
+            : pendingPayment
+              ? "No se puede borrar definitivamente mientras haya un pago pendiente de confirmación."
+              : "Solo se puede borrar un turno pagado, asistido, cancelado o con la devolución realizada." });
         }
         booking[role === "client" ? "clientPermanentlyDeletedAt" : "adminPermanentlyDeletedAt"] = new Date().toISOString();
         await db.execute({ sql: "UPDATE bookings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", args: [JSON.stringify(booking), bookingId] });

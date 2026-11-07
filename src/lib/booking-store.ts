@@ -43,6 +43,17 @@ export interface Booking {
   isTest?: boolean;
 }
 
+export function canDeleteBooking(booking: Booking) {
+  if (booking.paymentCancellationStatus === "requested"
+    || booking.paymentStatus === "pending"
+    || booking.status === "pending-payment"
+    || (Boolean(booking.paymentReportedAt) && booking.paymentStatus !== "approved")) return false;
+  return booking.status === "cancelled"
+    || booking.status === "completed"
+    || booking.paymentStatus === "approved"
+    || booking.paymentCancellationStatus === "refunded";
+}
+
 export function getBookingArchiveLabel(booking: Booking, now = Date.now(), audience: "client" | "admin" = "client") {
   const archivedAt = audience === "client" ? booking.clientArchivedAt : booking.adminArchivedAt;
   const restoredAt = audience === "client" ? booking.clientRestoredAt : booking.adminRestoredAt;
