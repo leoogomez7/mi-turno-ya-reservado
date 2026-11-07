@@ -83,18 +83,29 @@ function computeStats(bookings: Booking[]) {
   const allProfessionals = professionalStore.all();
   const serviceLookup = new Map<string, string>();
   const serviceDurationLookup = new Map<string, number>();
+  const serviceProfessionalLookup = new Map<string, Set<string>>();
   allProfessionals.forEach((prof) => prof.services.forEach((svc) => {
     serviceLookup.set(svc.id, svc.name);
     serviceDurationLookup.set(svc.id, svc.duration);
   }));
 
   const svcCount: Record<string, number> = {};
-  active.forEach((b) => b.serviceIds.forEach((id) => { svcCount[id] = (svcCount[id] ?? 0) + 1; }));
+  active.forEach((booking) => booking.serviceIds.forEach((id) => {
+    svcCount[id] = (svcCount[id] ?? 0) + 1;
+    const professionalName = getProfessional(booking.barberId)?.name;
+    if (!professionalName) return;
+    const names = serviceProfessionalLookup.get(id) ?? new Set<string>();
+    names.add(professionalName);
+    serviceProfessionalLookup.set(id, names);
+  }));
   const servicesChart = Object.entries(svcCount)
     .map(([id, v]) => ({
       name: serviceLookup.get(id) ?? getProfessionalService("", id)?.name ?? id,
       value: v,
-      subtitle: `${serviceDurationLookup.get(id) ?? getProfessionalService("", id)?.duration ?? 0} min`,
+      subtitle: [
+        `${serviceDurationLookup.get(id) ?? getProfessionalService("", id)?.duration ?? 0} min`,
+        [...(serviceProfessionalLookup.get(id) ?? [])].join(", "),
+      ].filter(Boolean).join(" · "),
     }))
     .sort((a, b) => b.value - a.value).slice(0, 6);
 
