@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
-import { CalendarDays, Clock3, Scissors, Search, UserRound } from "lucide-react";
+import { CalendarDays, Clock3, Copy, Scissors, Search, UserRound } from "lucide-react";
 import { toast } from "sonner";
 
 import { AuthRequired } from "@/components/auth-required";
@@ -297,6 +297,17 @@ export function AgendaManager() {
     }
   }
 
+  async function copyRefundDestination(booking: Booking) {
+    const destination = booking.refundDestination ?? booking.refundCbu;
+    if (!destination) return;
+    try {
+      await navigator.clipboard.writeText(destination);
+      toast.success(`${booking.refundDestinationType === "alias" ? "Alias" : "CBU"} copiado.`);
+    } catch {
+      toast.error("No se pudo copiar el CBU o alias.");
+    }
+  }
+
   const archivedBookings = bookings
     .filter((booking) => !booking.adminPermanentlyDeletedAt && getBookingArchiveLabel(booking, currentTime, "admin"))
     .sort((a, b) => (b.adminArchivedAt ?? `${b.date}T${b.time}`).localeCompare(a.adminArchivedAt ?? `${a.date}T${a.time}`));
@@ -424,7 +435,6 @@ export function AgendaManager() {
                     {booking.status === "confirmed" && <Button size="sm" variant="outline" className="min-w-0 whitespace-normal px-2 text-center leading-tight" onClick={() => openDialog(booking, "attendance")}>Indicar asistencia</Button>}
                     {isActiveBooking && !booking.paymentCancellationStatus && booking.paymentStatus !== "approved" && !booking.paymentReportedAt && <Button size="sm" variant="outline" className="min-w-0 whitespace-normal px-2 text-center leading-tight" onClick={() => openDialog(booking, "turno")}>Modificar turno</Button>}
                     {isActiveBooking && !booking.paymentCancellationStatus && booking.paymentStatus !== "approved" && !booking.paymentReportedAt && <Button size="sm" variant="destructive" className={`min-w-0 whitespace-normal px-2 text-center leading-tight ${cancellingBookingId === booking.id ? "opacity-60" : ""}`} disabled={cancellingBookingId !== null} onClick={() => void cancelBooking(booking)}>{cancellingBookingId === booking.id ? "Cancelando turno..." : "Cancelar turno"}</Button>}
-                    {booking.paymentCancellationStatus === "refunded" && (booking.refundDestination || booking.refundCbu) && <Button size="sm" variant="outline" className="min-w-0 whitespace-normal border-gold/40 px-2 text-center leading-tight text-gold hover:bg-gold/10 hover:text-gold" onClick={() => setRefundDialogBooking(booking)}>Ver CBU/Alias</Button>}
                     {booking.paymentCancellationStatus === "requested" && <Button size="sm" className="min-w-0 whitespace-normal px-2 text-center leading-tight bg-gold text-primary-foreground hover:bg-gold-soft" disabled={confirmingRefundId !== null} onClick={() => setRefundDialogBooking(booking)}>Indicar devolución</Button>}
                     <Button size="sm" variant="destructive" className="min-w-0 whitespace-normal px-2 text-center leading-tight" disabled={deletingBookingId === booking.id || !canDeleteBooking(booking)} onClick={() => void archiveTurn(booking)}>{deletingBookingId === booking.id ? "Borrando turno..." : "Borrar turno"}</Button>
                   </div>
@@ -444,7 +454,10 @@ export function AgendaManager() {
             {refundDialogBooking && <div className="space-y-2 rounded-xl border border-gold/30 bg-gold/5 p-4 text-sm">
               <p>Cliente: <span className="font-medium text-foreground">{refundDialogBooking.customer.fullName}</span></p>
               <p>Importe a devolver: <span className="font-semibold text-gold">${(refundDialogBooking.refundAmount ?? refundDialogBooking.totalPrice).toLocaleString("es-AR")}</span></p>
-              {(refundDialogBooking.refundDestination || refundDialogBooking.refundCbu) && <p>{refundDialogBooking.refundDestinationType === "alias" ? "Alias" : "CBU"}: <span className="break-all font-mono font-semibold text-foreground">{refundDialogBooking.refundDestination ?? refundDialogBooking.refundCbu}</span></p>}
+              {(refundDialogBooking.refundDestination || refundDialogBooking.refundCbu) && <div className="flex items-center justify-between gap-3">
+                <p className="min-w-0 break-all">{refundDialogBooking.refundDestinationType === "alias" ? "Alias" : "CBU"}: <span className="font-mono font-semibold text-foreground">{refundDialogBooking.refundDestination ?? refundDialogBooking.refundCbu}</span></p>
+                <Button type="button" size="icon" variant="outline" className="h-9 w-9 shrink-0 border-gold/40 text-gold hover:bg-gold/10 hover:text-gold" aria-label={`Copiar ${refundDialogBooking.refundDestinationType === "alias" ? "alias" : "CBU"}`} title={`Copiar ${refundDialogBooking.refundDestinationType === "alias" ? "alias" : "CBU"}`} onClick={() => void copyRefundDestination(refundDialogBooking)}><Copy className="h-4 w-4" /></Button>
+              </div>}
             </div>}
             <DialogFooter className="flex-col gap-2 sm:flex-row">
               <Button type="button" variant="outline" disabled={confirmingRefundId !== null} onClick={() => setRefundDialogBooking(null)}>{refundDialogBooking?.paymentCancellationStatus === "requested" ? "Todavía no" : "Cerrar"}</Button>
