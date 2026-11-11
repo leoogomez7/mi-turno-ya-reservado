@@ -49,6 +49,7 @@ export type Store = {
   code: string;
   name: string;
   settings: StoreSettings;
+  logo?: string;
   mercadoPagoConfigured?: boolean;
   subscriptionExpiresAt?: string | null;
   subscriptionActive?: boolean;
@@ -267,6 +268,14 @@ export async function updateStoreSettings(settings: StoreSettings) {
   availableStores = availableStores.map((store) => store.code === response.code ? { ...store, settings: response.settings } : store);
   window.dispatchEvent(new Event("mi-turno-ya:store-changed"));
   return response.settings;
+}
+
+export async function updateStoreLogo(logo: string) {
+  if (!tokenGetter) throw new Error("Iniciá sesión como administrador para editar el logo de la sucursal.");
+  const response = await request<{ code: string; logo: string }>("POST", { action: "update-store-logo", logo });
+  availableStores = availableStores.map((store) => store.code === response.code ? { ...store, logo: response.logo } : store);
+  window.dispatchEvent(new Event("mi-turno-ya:store-changed"));
+  return response.logo;
 }
 
 export async function updateStoreContact(contact: StoreContactSettings) {

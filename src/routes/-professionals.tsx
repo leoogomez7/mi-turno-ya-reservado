@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, Plus, Trash2, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
+import { Check, ImagePlus, Plus, Trash2, X } from "lucide-react";
 import { format, getDay, startOfToday } from "date-fns";
 import { es } from "date-fns/locale";
 import { SiteHeader } from "@/components/site-header";
@@ -11,7 +11,7 @@ import { toast } from "sonner";
 import { professionalStore, type Professional, type ProfessionalService } from "@/lib/professional-store";
 import { AuthRequired } from "@/components/auth-required";
 import { useAppAuth } from "@/lib/auth";
-import { createStore, getAvailableStores, getCurrentStoreCode, getStoreMercadoPagoCredentials, isCloudInitialized, saveStoreMercadoPagoCredentials, updateStoreCancellationPolicy, updateStoreContact, updateStoreSettings, type StoreSettings } from "@/lib/cloud-sync";
+import { createStore, getAvailableStores, getCurrentStoreCode, getStoreMercadoPagoCredentials, isCloudInitialized, saveStoreMercadoPagoCredentials, updateStoreCancellationPolicy, updateStoreContact, updateStoreLogo, updateStoreSettings, type StoreSettings } from "@/lib/cloud-sync";
 import { LoadingScreen } from "@/components/loading-screen";
 import { Calendar } from "@/components/ui/calendar";
 
@@ -53,6 +53,38 @@ const emptyStoreSettings: StoreSettings = {
   refundPercent: 100,
   cancellationWindowMinutes: 30,
 };
+
+async function prepareStoreLogo(file: File) {
+  if (!/^image\/(jpeg|png|webp|gif)$/.test(file.type)) {
+    throw new Error("Elegí una imagen JPG, PNG, WEBP o GIF.");
+  }
+  if (file.size > 8 * 1024 * 1024) throw new Error("La imagen original no puede superar los 8 MB.");
+  const image = await createImageBitmap(file);
+  const scale = Math.min(1, 512 / Math.max(image.width, image.height));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(image.width * scale));
+  canvas.height = Math.max(1, Math.round(image.height * scale));
+  const context = canvas.getContext("2d");
+  if (!context) {
+    image.close();
+    throw new Error("No se pudo preparar la imagen.");
+  }
+  context.fillStyle = "#ffffff";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+  image.close();
+  const blob = await new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob((result) => result ? resolve(result) : reject(new Error("No se pudo comprimir la imagen.")), "image/jpeg", 0.8);
+  });
+  if (blob.size > 500 * 1024) throw new Error("El logo optimizado supera los 500 KB. Probá con otra imagen.");
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => typeof reader.result === "string" ? resolve(reader.result) : reject(new Error("No se pudo leer la imagen."));
+    reader.onerror = () => reject(new Error("No se pudo leer la imagen."));
+    reader.readAsDataURL(blob);
+  });
+}
+
 export function ProfessionalsManager() {
   const { isAuthenticated, isLoading, role, getIdToken } = useAppAuth();
   const [professionals, setProfessionals] = useState<Professional[]>([]);
@@ -65,6 +97,9 @@ export function ProfessionalsManager() {
   const [storeCode, setStoreCode] = useState(getCurrentStoreCode());
   const [storeDraftLoaded, setStoreDraftLoaded] = useState(isCloudInitialized());
   const [savingStore, setSavingStore] = useState(false);
+  const [storeLogoDraft, setStoreLogoDraft] = useState("");
+  const [savedStoreLogo, setSavedStoreLogo] = useState("");
+  const [savingStoreLogo, setSavingStoreLogo] = useState(false);
   const [currentStoreCode, setCurrentStoreCode] = useState(getCurrentStoreCode());
   const [currentStoreName, setCurrentStoreName] = useState(() => getAvailableStores().find((store) => store.code === getCurrentStoreCode())?.name ?? "");
   const [storeSettings, setStoreSettings] = useState<StoreSettings>(emptyStoreSettings);
@@ -97,6 +132,7 @@ export function ProfessionalsManager() {
   const [scheduleDateEnd, setScheduleDateEnd] = useState("18:00");
   const [scheduleDateCapacity, setScheduleDateCapacity] = useState(1);
   const professionalDialogTitleRef = useRef<HTMLHeadingElement>(null);
+  const storeLogoInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const load = () => setProfessionals(professionalStore.all());
@@ -143,6 +179,8 @@ export function ProfessionalsManager() {
         setStoreName(store.name);
         setStoreCode(store.code);
         setStoreSettings(store.settings ?? emptyStoreSettings);
+        setStoreLogoDraft(store.logo ?? "");
+        setSavedStoreLogo(store.logo ?? "");
         setLoadingStoreSettings(false);
       } else if (cloudReady || isCloudInitialized()) {
         setCurrentStoreName("");
@@ -150,6 +188,8 @@ export function ProfessionalsManager() {
         setStoreCode("");
         setStoreDraftLoaded(true);
         setStoreSettings(emptyStoreSettings);
+        setStoreLogoDraft("");
+        setSavedStoreLogo("");
         setLoadingStoreSettings(false);
       }
       if (store || cloudReady || isCloudInitialized()) setStoreDraftLoaded(true);
@@ -440,6 +480,45 @@ export function ProfessionalsManager() {
     }
   }
 
+  async function saveBranchLogo() {
+    setSavingStoreLogo(true);
+    try {
+      const saved = await updateStoreLogo(storeLogoDraft);
+      setStoreLogoDraft(saved);
+      setSavedStoreLogo(saved);
+      toast.success("Logo de la sucursal guardado.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo guardar el logo de la sucursal.");
+    } finally {
+      setSavingStoreLogo(false);
+    }
+  }
+
+  async function removeBranchLogo() {
+    setSavingStoreLogo(true);
+    try {
+      await updateStoreLogo("");
+      setStoreLogoDraft("");
+      setSavedStoreLogo("");
+      toast.success("Logo de la sucursal quitado.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo quitar el logo de la sucursal.");
+    } finally {
+      setSavingStoreLogo(false);
+    }
+  }
+
+  async function handleStoreLogoFile(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.currentTarget.files?.[0];
+    event.currentTarget.value = "";
+    if (!file) return;
+    try {
+      setStoreLogoDraft(await prepareStoreLogo(file));
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo preparar el logo.");
+    }
+  }
+
   async function deleteProfessional(id: string) {
     if (deletingProfessionalId) return;
     setDeletingProfessionalId(id);
@@ -639,6 +718,34 @@ export function ProfessionalsManager() {
                 <Button disabled={!storeDraftLoaded || savingStore || storeName.trim().length < 2 || storeCode.trim().length < 3} className="bg-gold text-primary-foreground hover:bg-gold-soft" onClick={() => void saveStore()}>
                   {savingStore ? "Guardando…" : "Guardar sucursal"}
               </Button>
+            </div>
+            <div className="mt-4 flex flex-col gap-4 rounded-2xl border border-border bg-background/60 p-4 sm:flex-row sm:items-center">
+              <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-gold/30 bg-white p-2">
+                {storeLogoDraft
+                  ? <img src={storeLogoDraft} alt={`Logo de ${currentStoreName || "la sucursal"}`} className="h-full w-full object-contain" />
+                  : <ImagePlus aria-hidden="true" className="h-8 w-8 text-muted-foreground" />}
+              </div>
+              <div className="min-w-0 flex-1">
+                <h3 className="font-medium">Logo de la sucursal</h3>
+                <p className="mt-1 text-sm text-muted-foreground">Opcional. Lo verán tus clientes al confirmar el turno; no modifica el logo principal del sitio.</p>
+                <p className="mt-1 text-xs text-muted-foreground">JPG, PNG, WEBP o GIF · hasta 500 KB una vez optimizado.</p>
+              </div>
+              <input ref={storeLogoInputRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif" className="hidden" onChange={(event) => void handleStoreLogoFile(event)} />
+              <div className="flex flex-wrap gap-2 sm:justify-end">
+                <Button type="button" variant="outline" disabled={!storeDraftLoaded || !currentStoreCode || savingStoreLogo} onClick={() => storeLogoInputRef.current?.click()}>
+                  <ImagePlus className="mr-2 h-4 w-4" /> Agregar logo sucursal
+                </Button>
+                {storeLogoDraft !== savedStoreLogo && (
+                  <Button type="button" disabled={savingStoreLogo} className="bg-gold text-primary-foreground hover:bg-gold-soft" onClick={() => void saveBranchLogo()}>
+                    {savingStoreLogo ? "Guardando…" : "Guardar logo"}
+                  </Button>
+                )}
+                {savedStoreLogo && (
+                  <Button type="button" variant="outline" disabled={!storeDraftLoaded || savingStoreLogo} onClick={() => void removeBranchLogo()}>
+                    <Trash2 className="mr-1 h-4 w-4" /> Quitar
+                  </Button>
+                )}
+              </div>
             </div>
               <p className="mt-3 text-xs text-muted-foreground">El código debe tener entre 3 y 20 caracteres (letras, números, guion o guion bajo). El código es único, compartilo con tus clientes para que encuentren tu sucursal al reservar.</p>
           </section>

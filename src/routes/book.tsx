@@ -706,7 +706,7 @@ Observaciones: ${customer.notes || "Ninguna"}`;
           {step === 1 && <StepBarber professionals={reservationProfessionals} value={barberId} onChange={setBarberId} />}
           {step === 2 && <StepServices professional={selectedProfessional} value={serviceIds} onChange={setServiceIds} />}
           {step === 3 && <StepDateTime professional={selectedProfessional} bookings={reservationBookings} date={date} setDate={setDate} time={time} setTime={setTime} barberId={barberId} duration={duration} />}
-          {step === 4 && (date ? <StepConfirm professional={selectedProfessional} storeName={selectedStore?.name ?? selectedStoreCode} storeCode={selectedStoreCode} storeAddress={storeSettings?.address ?? ""} cancellationPolicy={storeSettings} customer={customer} serviceIds={serviceIds} date={date} time={time} duration={duration} price={price} /> : <p className="py-8 text-center text-sm text-muted-foreground">Seleccioná fecha y horario para ver el resumen.</p>)}
+          {step === 4 && (date ? <StepConfirm professional={selectedProfessional} storeName={selectedStore?.name ?? selectedStoreCode} storeCode={selectedStoreCode} storeLogo={selectedStore?.logo} storeAddress={storeSettings?.address ?? ""} cancellationPolicy={storeSettings} customer={customer} serviceIds={serviceIds} date={date} time={time} duration={duration} price={price} /> : <p className="py-8 text-center text-sm text-muted-foreground">Seleccioná fecha y horario para ver el resumen.</p>)}
         </div>
 
         {stepError && (
@@ -782,6 +782,16 @@ Observaciones: ${customer.notes || "Ninguna"}`;
                       : "El pago no se completó y el horario fue liberado. Podés volver a elegir fecha y hora."}
             </DialogDescription>
           </DialogHeader>
+          {(reservationResult?.kind === "confirmed" || reservationResult?.kind === "payment-success" || reservationResult?.kind === "payment-pending") && (
+            <div className="flex items-center gap-3 rounded-xl border border-gold/30 bg-card p-3">
+              {selectedStore?.logo && <img src={selectedStore.logo} alt={`Logo de ${selectedStore.name}`} className="h-14 w-14 shrink-0 rounded-lg bg-white p-1.5 object-contain" />}
+              <div className="min-w-0">
+                <p className="text-xs uppercase tracking-wider text-muted-foreground">Sucursal</p>
+                <p className="truncate font-semibold">{selectedStore?.name ?? selectedStoreCode}</p>
+                <p className="text-xs text-muted-foreground">Código: {selectedStoreCode}</p>
+              </div>
+            </div>
+          )}
           {reservationResult?.date && reservationResult.time && (
             <div className="rounded-xl border border-border bg-card p-4 text-sm">
               {storeSettings?.address && <p className="mb-1"><span className="text-muted-foreground">Dirección: </span>{storeSettings.address}</p>}
@@ -1198,10 +1208,10 @@ function StepDateTime({
 }
 
 function StepConfirm({
-  professional, storeName, storeCode, storeAddress, cancellationPolicy, customer, serviceIds, date, time, duration, price,
+  professional, storeName, storeCode, storeLogo, storeAddress, cancellationPolicy, customer, serviceIds, date, time, duration, price,
 }: {
   professional?: Professional;
-  storeName: string; storeCode: string; storeAddress: string;
+  storeName: string; storeCode: string; storeLogo?: string; storeAddress: string;
   cancellationPolicy?: Store["settings"];
   customer: Customer; serviceIds: string[];
   date: Date; time: string; duration: number; price: number;
@@ -1221,7 +1231,13 @@ function StepConfirm({
         <p className="mt-1">Podés solicitar cancelación hasta {cancellationPolicy?.cancellationWindowMinutes ?? 30} minutos antes del turno. Las solicitudes fuera de ese plazo no estarán disponibles.</p>
       </div>
       <div className="grid gap-3 text-sm">
-        <Row label="Sucursal" value={`${storeName} · ${storeCode}`} />
+        <div className="flex items-center justify-between gap-4 border-b border-border/60 py-3">
+          <span className="text-xs uppercase tracking-wider text-muted-foreground">Sucursal</span>
+          <span className="flex min-w-0 items-center gap-2 text-right font-medium">
+            {storeLogo && <img src={storeLogo} alt={`Logo de ${storeName}`} className="h-10 w-10 shrink-0 rounded-md bg-white p-1 object-contain" />}
+            <span className="min-w-0">{storeName} · {storeCode}</span>
+          </span>
+        </div>
         {storeAddress && <Row label="Dirección" value={storeAddress} />}
         <Row label="Cliente" value={customer.fullName} />
         <Row label="Contacto" value={`${customer.email} · ${customer.phone}`} />

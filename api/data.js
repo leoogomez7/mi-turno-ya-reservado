@@ -101,6 +101,13 @@ async function ensureStoreSettingsColumn(db) {
   }
 }
 
+async function ensureStoreLogoColumn(db) {
+  const columns = await db.execute("PRAGMA table_info(stores)");
+  if (!columns.rows.some((column) => column.name === "logo")) {
+    await db.execute("ALTER TABLE stores ADD COLUMN logo TEXT NOT NULL DEFAULT ''");
+  }
+}
+
 async function ensureStoreSubscriptionColumn(db) {
   const columns = await db.execute("PRAGMA table_info(stores)");
   if (!columns.rows.some((column) => column.name === "subscription_expires_at")) {
@@ -308,6 +315,7 @@ async function database() {
       code TEXT PRIMARY KEY,
       name TEXT NOT NULL,
       owner_id TEXT NOT NULL,
+      logo TEXT NOT NULL DEFAULT '',
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     )`,
     `CREATE TABLE IF NOT EXISTS store_payment_credentials (
@@ -351,6 +359,7 @@ async function database() {
   await schemaReady;
   await ensureRoleStoreColumn(db);
   await ensureStoreSettingsColumn(db);
+  await ensureStoreLogoColumn(db);
   await ensureStoreSubscriptionColumn(db);
   await ensureSubscriptionOrderDurationColumn(db);
   await removeDemoStore(db);
@@ -804,7 +813,7 @@ export default async function handler(request, response) {
         : db.execute("SELECT id, value FROM professionals ORDER BY updated_at DESC");
       const storesQuery = role === "admin" && !reservationMode && userStoreCode
         ? db.execute({
-          sql: `SELECT stores.code, stores.name, stores.owner_id, stores.settings,
+          sql: `SELECT stores.code, stores.name, stores.owner_id, stores.settings, stores.logo,
             stores.subscription_expires_at, stores.subscription_plan_type,
             EXISTS(SELECT 1 FROM store_payment_credentials credentials
               WHERE credentials.store_code = stores.code
@@ -813,7 +822,7 @@ export default async function handler(request, response) {
             FROM stores WHERE upper(stores.code) = ?`,
           args: [userStoreCode],
         })
-        : db.execute(`SELECT stores.code, stores.name, stores.owner_id, stores.settings,
+        : db.execute(`SELECT stores.code, stores.name, stores.owner_id, stores.settings, stores.logo,
           stores.subscription_expires_at, stores.subscription_plan_type,
           EXISTS(SELECT 1 FROM store_payment_credentials credentials
             WHERE credentials.store_code = stores.code
@@ -855,6 +864,7 @@ export default async function handler(request, response) {
           code: String(row.code),
           name: String(row.name),
           settings: parseStoreSettings(row.settings),
+          logo: typeof row.logo === "string" ? String(row.logo) : "",
           mercadoPagoConfigured: Boolean(row.mercado_pago_configured),
           subscriptionExpiresAt: row.subscription_expires_at ? String(row.subscription_expires_at) : null,
           subscriptionActive: isSubscriptionActive(row.subscription_expires_at),
@@ -1930,6 +1940,26 @@ export default async function handler(request, response) {
       } catch (error) {
         console.error("No se pudieron guardar los datos de la sucursal", error);
         return response.status(500).json({ error: "No se pudieron guardar los datos de la sucursal." });
+      }
+    }
+    if (user && body?.action === "update-store-logo") {
+      try {
+        const roleResult = await db.execute({ sql: "SELECT role, store_code FROM account_roles WHERE user_id = ?", args: [user.id] });
+        const storeCode = normalizeStoreCode(roleResult.rows[0]?.store_code);
+        const logo = body.logo ?? "";
+        const validLogo = typeof logo === "string" && logo.length <= 700_000
+          && (logo === "" || /^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(logo));
+        if (roleResult.rows[0]?.role !== "admin" || !user.emailVerified || !storeCode) {
+          return response.status(403).json({ error: "Solo el administrador de una sucursal puede modificar su logo." });
+        }
+        if (!validLogo) return response.status(400).json({ error: "El logo debe ser una imagen válida de hasta 500 KB." });
+        const storeResult = await db.execute({ sql: "SELECT code FROM stores WHERE code = ? AND owner_id = ?", args: [storeCode, user.id] });
+        if (!storeResult.rows[0]) return response.status(404).json({ error: "No encontramos la sucursal." });
+        await db.execute({ sql: "UPDATE stores SET logo = ? WHERE code = ?", args: [logo, storeCode] });
+        return response.status(200).json({ code: storeCode, logo });
+      } catch (error) {
+        console.error("No se pudo guardar el logo de la sucursal", error);
+        return response.status(500).json({ error: "No se pudo guardar el logo de la sucursal." });
       }
     }
     if (user && body?.action === "update-store-contact") {
