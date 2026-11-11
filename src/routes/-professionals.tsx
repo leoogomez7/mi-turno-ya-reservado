@@ -58,7 +58,7 @@ async function prepareStoreLogo(file: File) {
   if (!/^image\/(jpeg|png|webp|gif)$/.test(file.type)) {
     throw new Error("Elegí una imagen JPG, PNG, WEBP o GIF.");
   }
-  if (file.size > 8 * 1024 * 1024) throw new Error("La imagen original no puede superar los 8 MB.");
+  if (file.size > 2 * 1024 * 1024) throw new Error("La imagen no puede superar los 2 MB.");
   const image = await createImageBitmap(file);
   const scale = Math.min(1, 512 / Math.max(image.width, image.height));
   const canvas = document.createElement("canvas");
@@ -76,7 +76,7 @@ async function prepareStoreLogo(file: File) {
   const blob = await new Promise<Blob>((resolve, reject) => {
     canvas.toBlob((result) => result ? resolve(result) : reject(new Error("No se pudo comprimir la imagen.")), "image/jpeg", 0.8);
   });
-  if (blob.size > 500 * 1024) throw new Error("El logo optimizado supera los 500 KB. Probá con otra imagen.");
+  if (blob.size > 2 * 1024 * 1024) throw new Error("El logo optimizado supera los 2 MB. Probá con otra imagen.");
   return new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => typeof reader.result === "string" ? resolve(reader.result) : reject(new Error("No se pudo leer la imagen."));
@@ -727,8 +727,8 @@ export function ProfessionalsManager() {
               </div>
               <div className="min-w-0 flex-1">
                 <h3 className="font-medium">Logo de la sucursal</h3>
-                <p className="mt-1 text-sm text-muted-foreground">Opcional. Lo verán tus clientes al confirmar el turno; no modifica el logo principal del sitio.</p>
-                <p className="mt-1 text-xs text-muted-foreground">JPG, PNG, WEBP o GIF · hasta 500 KB una vez optimizado.</p>
+                <p className="mt-1 text-sm text-muted-foreground">Opcional. Lo verán tus clientes al confirmar el turno.</p>
+                <p className="mt-1 text-xs text-muted-foreground">JPG, PNG, WEBP o GIF · hasta 2 MB.</p>
               </div>
               <input ref={storeLogoInputRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif" className="hidden" onChange={(event) => void handleStoreLogoFile(event)} />
               <div className="flex flex-wrap gap-2 sm:justify-end">

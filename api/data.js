@@ -1947,12 +1947,12 @@ export default async function handler(request, response) {
         const roleResult = await db.execute({ sql: "SELECT role, store_code FROM account_roles WHERE user_id = ?", args: [user.id] });
         const storeCode = normalizeStoreCode(roleResult.rows[0]?.store_code);
         const logo = body.logo ?? "";
-        const validLogo = typeof logo === "string" && logo.length <= 700_000
+        const validLogo = typeof logo === "string" && logo.length <= 2_800_000
           && (logo === "" || /^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(logo));
         if (roleResult.rows[0]?.role !== "admin" || !user.emailVerified || !storeCode) {
           return response.status(403).json({ error: "Solo el administrador de una sucursal puede modificar su logo." });
         }
-        if (!validLogo) return response.status(400).json({ error: "El logo debe ser una imagen válida de hasta 500 KB." });
+        if (!validLogo) return response.status(400).json({ error: "El logo debe ser una imagen válida de hasta 2 MB." });
         const storeResult = await db.execute({ sql: "SELECT code FROM stores WHERE code = ? AND owner_id = ?", args: [storeCode, user.id] });
         if (!storeResult.rows[0]) return response.status(404).json({ error: "No encontramos la sucursal." });
         await db.execute({ sql: "UPDATE stores SET logo = ? WHERE code = ?", args: [logo, storeCode] });
