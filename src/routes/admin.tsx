@@ -1,8 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
-import { isToday, isThisWeek, isThisMonth, parseISO } from "date-fns";
+import { format, isToday, isThisWeek, isThisMonth, parseISO, subMonths } from "date-fns";
 import { es } from "date-fns/locale";
-import { Calendar, TrendingDown, TrendingUp, Users } from "lucide-react";
+import { Calendar, CalendarDays, DollarSign, Scissors, TrendingDown, TrendingUp, Users, type LucideIcon } from "lucide-react";
 
 import { SiteHeader } from "@/components/site-header";
 import { bookingStore, type Booking } from "@/lib/booking-store";
@@ -12,6 +12,7 @@ import { useAppAuth } from "@/lib/auth";
 import { LoadingScreen } from "@/components/loading-screen";
 
 const ChartCard = lazy(() => import("@/components/admin-charts").then((module) => ({ default: module.ChartCard })));
+const MonthlyComparisonChart = lazy(() => import("@/components/admin-charts").then((module) => ({ default: module.MonthlyComparisonChart })));
 
 export const Route = createFileRoute("/admin")({
   head: () => ({ meta: [{ title: "Estadísticas" }] }),
@@ -22,6 +23,8 @@ export function AdminPage() {
   const { isAuthenticated, isLoading, role } = useAppAuth();
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [statsReady, setStatsReady] = useState(false);
+  const [startMonth, setStartMonth] = useState(() => format(subMonths(new Date(), 11), "yyyy-MM"));
+  const [endMonth, setEndMonth] = useState(() => format(new Date(), "yyyy-MM"));
 
   useEffect(() => {
     const reload = () => {
@@ -34,6 +37,8 @@ export function AdminPage() {
   }, []);
 
   const stats = useMemo(() => computeStats(bookings), [bookings]);
+  const periodStats = useMemo(() => computePeriodStats(bookings, startMonth, endMonth), [bookings, endMonth, startMonth]);
+  const validMonthRange = startMonth <= endMonth;
 
   if (isLoading || (isAuthenticated && role === "admin" && !statsReady)) return <LoadingScreen message="Preparando tus estadísticas" />;
   if (!isAuthenticated || role !== "admin") return <><SiteHeader /><AuthRequired role="admin" title="Administración" /></>;
@@ -49,6 +54,46 @@ export function AdminPage() {
           <Stat icon={Calendar} label="Último profesional" value={stats.lastBarber} />
         </div>
 
+        <section className="space-y-4 rounded-3xl border border-gold/30 bg-card p-4 sm:p-6">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <p className="text-xs uppercase tracking-[0.2em] text-gold">Análisis del negocio</p>
+              <h2 className="mt-1 font-display text-2xl font-semibold">Resumen y evolución mensual</h2>
+              <p className="mt-1 text-sm text-muted-foreground">Compará turnos, servicios e ingresos en el período que elijas.</p>
+            </div>
+            <div className="grid grid-cols-2 gap-3 sm:flex sm:items-end">
+              <label className="grid gap-1 text-xs text-muted-foreground">
+                Desde
+                <input type="month" value={startMonth} max={endMonth} onChange={(event) => setStartMonth(event.target.value)} className="h-10 rounded-lg border border-border bg-background px-3 text-sm text-foreground scheme-dark" />
+              </label>
+              <label className="grid gap-1 text-xs text-muted-foreground">
+                Hasta
+                <input type="month" value={endMonth} min={startMonth} max={format(new Date(), "yyyy-MM")} onChange={(event) => setEndMonth(event.target.value)} className="h-10 rounded-lg border border-border bg-background px-3 text-sm text-foreground scheme-dark" />
+              </label>
+            </div>
+          </div>
+
+          {validMonthRange ? (
+            <>
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                <Stat icon={DollarSign} label="Dinero ingresado" value={formatCurrency(periodStats.totalRevenue)} />
+                <Stat icon={Scissors} label="Servicios realizados" value={periodStats.totalServices.toLocaleString("es-AR")} />
+                <Stat icon={CalendarDays} label="Mes con más turnos" value={periodStats.mostBookingsMonth} />
+                <Stat icon={TrendingUp} label="Mes con más ingresos" value={periodStats.highestRevenueMonth} />
+              </div>
+              <div className="grid items-stretch gap-4 lg:grid-cols-2">
+                <Suspense fallback={<div className="h-80 animate-pulse rounded-2xl border border-gold/30 bg-background/50" />}>
+                  <MonthlyComparisonChart title="Turnos por mes" data={periodStats.monthly} dataKey="turns" color="#F59E0B" />
+                  <MonthlyComparisonChart title="Ingresos por mes" data={periodStats.monthly} dataKey="revenue" color="#34D399" currency />
+                </Suspense>
+              </div>
+            </>
+          ) : (
+            <p role="alert" className="rounded-xl border border-amber-400/30 bg-amber-400/10 p-4 text-sm text-amber-200">El mes inicial no puede ser posterior al mes final.</p>
+          )}
+          <p className="text-xs text-muted-foreground">No se cuentan turnos cancelados o liberados ni ausencias sin pago aprobado. Los ingresos corresponden a turnos asistidos o con pago aprobado.</p>
+        </section>
+
         <div className="grid items-stretch gap-4 md:grid-cols-2">
           <Suspense fallback={<div className="h-80 animate-pulse rounded-2xl border border-gold/30 bg-card" />}>
             <ChartCard title="Servicios más solicitados" data={stats.servicesChart} />
@@ -60,7 +105,7 @@ export function AdminPage() {
   );
 }
 
-function Stat({ icon: Icon, label, value }: { icon: any; label: string; value: string | number }) {
+function Stat({ icon: Icon, label, value }: { icon: LucideIcon; label: string; value: string | number }) {
   return (
     <div className="rounded-2xl border border-gold/30 bg-card p-5">
       <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-gold/15 text-gold">
@@ -73,11 +118,11 @@ function Stat({ icon: Icon, label, value }: { icon: any; label: string; value: s
 }
 
 function computeStats(bookings: Booking[]) {
-  const active = bookings.filter((b) => b.status !== "cancelled" && b.status !== "no-show");
+  const active = bookings.filter(isCountableBooking);
   const today = active.filter((b) => isToday(parseISO(b.date))).length;
   const week = active.filter((b) => isThisWeek(parseISO(b.date), { weekStartsOn: 1 })).length;
   const monthBookings = active.filter((b) => isThisMonth(parseISO(b.date)));
-  const monthRevenue = monthBookings.reduce((a, b) => a + b.totalPrice, 0);
+  const monthRevenue = monthBookings.filter(hasReceivedPayment).reduce((a, b) => a + b.totalPrice, 0);
   const uniqueClients = new Set(active.map((b) => b.customer.email.toLowerCase())).size;
 
   const allProfessionals = professionalStore.all();
@@ -128,4 +173,66 @@ function computeStats(bookings: Booking[]) {
   const lastBarber = lastBooking ? getProfessional(lastBooking.barberId)?.name ?? "-" : "-";
 
   return { today, week, monthRevenue, uniqueClients, servicesChart, barbersChart, topBarber, lowBarber, lastClient, lastBarber };
+}
+
+type MonthlyStats = { month: string; label: string; turns: number; services: number; revenue: number };
+
+function isCountableBooking(booking: Booking) {
+  if (booking.status === "cancelled" || booking.paymentCancellationStatus === "cancelled" || booking.paymentCancellationStatus === "refunded") return false;
+  return booking.status !== "no-show" || booking.paymentStatus === "approved";
+}
+
+function hasReceivedPayment(booking: Booking) {
+  return booking.status === "completed" || booking.paymentStatus === "approved";
+}
+
+function formatCurrency(value: number) {
+  return `$${value.toLocaleString("es-AR", { maximumFractionDigits: 0 })}`;
+}
+
+function formatMonth(month: string) {
+  const [year, monthNumber] = month.split("-").map(Number);
+  const label = format(new Date(year, monthNumber - 1, 1), "MMM yyyy", { locale: es });
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+function computePeriodStats(bookings: Booking[], startMonth: string, endMonth: string) {
+  if (!startMonth || !endMonth || startMonth > endMonth) {
+    return { totalRevenue: 0, totalServices: 0, mostBookingsMonth: "—", highestRevenueMonth: "—", monthly: [] as MonthlyStats[] };
+  }
+
+  const monthly: MonthlyStats[] = [];
+  const cursor = new Date(Number(startMonth.slice(0, 4)), Number(startMonth.slice(5, 7)) - 1, 1);
+  const last = new Date(Number(endMonth.slice(0, 4)), Number(endMonth.slice(5, 7)) - 1, 1);
+  while (cursor <= last) {
+    const month = format(cursor, "yyyy-MM");
+    monthly.push({ month, label: formatMonth(month), turns: 0, services: 0, revenue: 0 });
+    cursor.setMonth(cursor.getMonth() + 1);
+  }
+
+  const statsByMonth = new Map(monthly.map((entry) => [entry.month, entry]));
+  bookings.filter(isCountableBooking).forEach((booking) => {
+    const month = statsByMonth.get(booking.date.slice(0, 7));
+    if (!month) return;
+    month.turns += 1;
+    month.services += booking.serviceIds.length;
+    if (hasReceivedPayment(booking)) month.revenue += booking.totalPrice;
+  });
+
+  const monthWithMostBookings = monthly.reduce<MonthlyStats | null>((best, month) => month.turns > (best?.turns ?? 0) ? month : best, null);
+  const monthWithHighestRevenue = monthly.reduce<MonthlyStats | null>((best, month) => month.revenue > (best?.revenue ?? 0) ? month : best, null);
+  const mostBookingsMonth = monthWithMostBookings?.turns
+    ? `${monthWithMostBookings.label} · ${monthWithMostBookings.turns}`
+    : "Sin datos";
+  const highestRevenueMonth = monthWithHighestRevenue?.revenue
+    ? `${monthWithHighestRevenue.label} · ${formatCurrency(monthWithHighestRevenue.revenue)}`
+    : "Sin datos";
+
+  return {
+    totalRevenue: monthly.reduce((total, month) => total + month.revenue, 0),
+    totalServices: monthly.reduce((total, month) => total + month.services, 0),
+    mostBookingsMonth,
+    highestRevenueMonth,
+    monthly,
+  };
 }
