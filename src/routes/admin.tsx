@@ -75,11 +75,16 @@ export function AdminPage() {
 
           {validMonthRange ? (
             <>
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 <Stat icon={DollarSign} label="Dinero ingresado" value={formatCurrency(periodStats.totalRevenue)} />
+                <Stat icon={CalendarDays} label="Cantidad total de turnos" value={periodStats.totalTurns.toLocaleString("es-AR")} />
                 <Stat icon={Scissors} label="Servicios realizados" value={periodStats.totalServices.toLocaleString("es-AR")} />
-                <Stat icon={CalendarDays} label="Mes con más turnos" value={periodStats.mostBookingsMonth} />
+                <Stat icon={TrendingUp} label="Mes con más turnos" value={periodStats.mostBookingsMonth} />
+                <Stat icon={TrendingUp} label="Mes con más servicios" value={periodStats.mostServicesMonth} />
                 <Stat icon={TrendingUp} label="Mes con más ingresos" value={periodStats.highestRevenueMonth} />
+                <Stat icon={TrendingDown} label="Mes con menos turnos" value={periodStats.leastBookingsMonth} />
+                <Stat icon={TrendingDown} label="Mes con menos servicios" value={periodStats.leastServicesMonth} />
+                <Stat icon={TrendingDown} label="Mes con menos ingresos" value={periodStats.leastRevenueMonth} />
               </div>
               <div className="grid items-stretch gap-4 lg:grid-cols-2">
                 <Suspense fallback={<div className="h-80 animate-pulse rounded-2xl border border-gold/30 bg-background/50" />}>
@@ -198,7 +203,18 @@ function formatMonth(month: string) {
 
 function computePeriodStats(bookings: Booking[], startMonth: string, endMonth: string) {
   if (!startMonth || !endMonth || startMonth > endMonth) {
-    return { totalRevenue: 0, totalServices: 0, mostBookingsMonth: "—", highestRevenueMonth: "—", monthly: [] as MonthlyStats[] };
+    return {
+      totalRevenue: 0,
+      totalTurns: 0,
+      totalServices: 0,
+      mostBookingsMonth: "—",
+      mostServicesMonth: "—",
+      highestRevenueMonth: "—",
+      leastBookingsMonth: "—",
+      leastServicesMonth: "—",
+      leastRevenueMonth: "—",
+      monthly: [] as MonthlyStats[],
+    };
   }
 
   const monthly: MonthlyStats[] = [];
@@ -219,20 +235,38 @@ function computePeriodStats(bookings: Booking[], startMonth: string, endMonth: s
     if (hasReceivedPayment(booking)) month.revenue += booking.totalPrice;
   });
 
-  const monthWithMostBookings = monthly.reduce<MonthlyStats | null>((best, month) => month.turns > (best?.turns ?? 0) ? month : best, null);
-  const monthWithHighestRevenue = monthly.reduce<MonthlyStats | null>((best, month) => month.revenue > (best?.revenue ?? 0) ? month : best, null);
-  const mostBookingsMonth = monthWithMostBookings?.turns
-    ? `${monthWithMostBookings.label} · ${monthWithMostBookings.turns}`
-    : "Sin datos";
-  const highestRevenueMonth = monthWithHighestRevenue?.revenue
-    ? `${monthWithHighestRevenue.label} · ${formatCurrency(monthWithHighestRevenue.revenue)}`
-    : "Sin datos";
+  const mostBookingsMonth = formatMonthMetric(monthly, "turns", "max");
+  const mostServicesMonth = formatMonthMetric(monthly, "services", "max");
+  const highestRevenueMonth = formatMonthMetric(monthly, "revenue", "max", true);
+  const leastBookingsMonth = formatMonthMetric(monthly, "turns", "min");
+  const leastServicesMonth = formatMonthMetric(monthly, "services", "min");
+  const leastRevenueMonth = formatMonthMetric(monthly, "revenue", "min", true);
 
   return {
     totalRevenue: monthly.reduce((total, month) => total + month.revenue, 0),
+    totalTurns: monthly.reduce((total, month) => total + month.turns, 0),
     totalServices: monthly.reduce((total, month) => total + month.services, 0),
     mostBookingsMonth,
+    mostServicesMonth,
     highestRevenueMonth,
+    leastBookingsMonth,
+    leastServicesMonth,
+    leastRevenueMonth,
     monthly,
   };
+}
+
+function formatMonthMetric(
+  months: MonthlyStats[],
+  metric: "turns" | "services" | "revenue",
+  direction: "min" | "max",
+  currency = false,
+) {
+  if (!months.some((month) => month[metric] > 0)) return "Sin datos";
+  const selected = months.reduce((best, month) => {
+    const isBetter = direction === "max" ? month[metric] > best[metric] : month[metric] < best[metric];
+    return isBetter ? month : best;
+  });
+  const value = currency ? formatCurrency(selected[metric]) : selected[metric].toLocaleString("es-AR");
+  return `${selected.label} · ${value}`;
 }
