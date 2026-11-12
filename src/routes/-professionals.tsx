@@ -734,12 +734,12 @@ export function ProfessionalsManager() {
                 <Button type="button" variant="outline" disabled={!storeDraftLoaded || !currentStoreCode || savingStoreLogo} onClick={() => storeLogoInputRef.current?.click()}>
                   <ImagePlus className="mr-2 h-4 w-4" />
                   {storeLogoOperation === "upload"
-                    ? savedStoreLogo ? "cambiando logo..." : "agregando logo..."
-                    : savedStoreLogo ? "cambiar logo" : "agregar logo"}
+                    ? savedStoreLogo ? "Cambiando logo..." : "Agregando logo..."
+                    : savedStoreLogo ? "Cambiar logo" : "Agregar logo"}
                 </Button>
                 {savedStoreLogo && (
-                  <Button type="button" variant="ghost" className="text-red-500 hover:bg-red-500/10 hover:text-red-400" disabled={!storeDraftLoaded || savingStoreLogo} onClick={() => void removeBranchLogo()}>
-                    {storeLogoOperation === "delete" ? "eliminando..." : "eliminar"}
+                  <Button type="button" variant="outline" className="border-red-500/40 bg-red-500/10 text-red-300 hover:bg-red-500/20 hover:text-red-200" disabled={!storeDraftLoaded || savingStoreLogo} onClick={() => void removeBranchLogo()}>
+                    {storeLogoOperation === "delete" ? "Eliminando..." : "Eliminar"}
                   </Button>
                 )}
               </div>
