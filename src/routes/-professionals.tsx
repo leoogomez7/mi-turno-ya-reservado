@@ -100,6 +100,7 @@ export function ProfessionalsManager() {
   const [storeLogoDraft, setStoreLogoDraft] = useState("");
   const [savedStoreLogo, setSavedStoreLogo] = useState("");
   const [savingStoreLogo, setSavingStoreLogo] = useState(false);
+  const [storeLogoOperation, setStoreLogoOperation] = useState<"upload" | "delete" | null>(null);
   const [currentStoreCode, setCurrentStoreCode] = useState(getCurrentStoreCode());
   const [currentStoreName, setCurrentStoreName] = useState(() => getAvailableStores().find((store) => store.code === getCurrentStoreCode())?.name ?? "");
   const [storeSettings, setStoreSettings] = useState<StoreSettings>(emptyStoreSettings);
@@ -480,42 +481,40 @@ export function ProfessionalsManager() {
     }
   }
 
-  async function saveBranchLogo() {
-    setSavingStoreLogo(true);
-    try {
-      const saved = await updateStoreLogo(storeLogoDraft);
-      setStoreLogoDraft(saved);
-      setSavedStoreLogo(saved);
-      toast.success("Logo de la sucursal guardado.");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "No se pudo guardar el logo de la sucursal.");
-    } finally {
-      setSavingStoreLogo(false);
-    }
-  }
-
   async function removeBranchLogo() {
+    if (savingStoreLogo) return;
     setSavingStoreLogo(true);
+    setStoreLogoOperation("delete");
     try {
       await updateStoreLogo("");
       setStoreLogoDraft("");
       setSavedStoreLogo("");
-      toast.success("Logo de la sucursal quitado.");
+      toast.success("Logo de la sucursal eliminado.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "No se pudo quitar el logo de la sucursal.");
     } finally {
       setSavingStoreLogo(false);
+      setStoreLogoOperation(null);
     }
   }
 
   async function handleStoreLogoFile(event: ChangeEvent<HTMLInputElement>) {
     const file = event.currentTarget.files?.[0];
     event.currentTarget.value = "";
-    if (!file) return;
+    if (!file || savingStoreLogo) return;
+    setSavingStoreLogo(true);
+    setStoreLogoOperation("upload");
     try {
-      setStoreLogoDraft(await prepareStoreLogo(file));
+      const preparedLogo = await prepareStoreLogo(file);
+      const saved = await updateStoreLogo(preparedLogo);
+      setStoreLogoDraft(saved);
+      setSavedStoreLogo(saved);
+      toast.success("Logo de la sucursal guardado.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "No se pudo preparar el logo.");
+    } finally {
+      setSavingStoreLogo(false);
+      setStoreLogoOperation(null);
     }
   }
 
@@ -720,7 +719,7 @@ export function ProfessionalsManager() {
               </Button>
             </div>
             <div className="mt-4 flex flex-col gap-4 rounded-2xl border border-border bg-background/60 p-4 sm:flex-row sm:items-center">
-              <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-gold/30 bg-white p-2">
+              <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden">
                 {storeLogoDraft
                   ? <img src={storeLogoDraft} alt={`Logo de ${currentStoreName || "la sucursal"}`} className="h-full w-full object-contain" />
                   : <ImagePlus aria-hidden="true" className="h-8 w-8 text-muted-foreground" />}
@@ -733,16 +732,14 @@ export function ProfessionalsManager() {
               <input ref={storeLogoInputRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif" className="hidden" onChange={(event) => void handleStoreLogoFile(event)} />
               <div className="flex flex-wrap gap-2 sm:justify-end">
                 <Button type="button" variant="outline" disabled={!storeDraftLoaded || !currentStoreCode || savingStoreLogo} onClick={() => storeLogoInputRef.current?.click()}>
-                  <ImagePlus className="mr-2 h-4 w-4" /> Agregar logo sucursal
+                  <ImagePlus className="mr-2 h-4 w-4" />
+                  {storeLogoOperation === "upload"
+                    ? savedStoreLogo ? "cambiando logo..." : "agregando logo..."
+                    : savedStoreLogo ? "cambiar logo" : "agregar logo"}
                 </Button>
-                {storeLogoDraft !== savedStoreLogo && (
-                  <Button type="button" disabled={savingStoreLogo} className="bg-gold text-primary-foreground hover:bg-gold-soft" onClick={() => void saveBranchLogo()}>
-                    {savingStoreLogo ? "Guardando…" : "Guardar logo"}
-                  </Button>
-                )}
                 {savedStoreLogo && (
-                  <Button type="button" variant="outline" disabled={!storeDraftLoaded || savingStoreLogo} onClick={() => void removeBranchLogo()}>
-                    <Trash2 className="mr-1 h-4 w-4" /> Quitar
+                  <Button type="button" variant="ghost" className="text-red-500 hover:bg-red-500/10 hover:text-red-400" disabled={!storeDraftLoaded || savingStoreLogo} onClick={() => void removeBranchLogo()}>
+                    {storeLogoOperation === "delete" ? "eliminando..." : "eliminar"}
                   </Button>
                 )}
               </div>
