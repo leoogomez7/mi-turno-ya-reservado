@@ -69,12 +69,16 @@ async function prepareStoreLogo(file: File) {
     image.close();
     throw new Error("No se pudo preparar la imagen.");
   }
-  context.fillStyle = "#ffffff";
-  context.fillRect(0, 0, canvas.width, canvas.height);
   context.drawImage(image, 0, 0, canvas.width, canvas.height);
   image.close();
   const blob = await new Promise<Blob>((resolve, reject) => {
-    canvas.toBlob((result) => result ? resolve(result) : reject(new Error("No se pudo comprimir la imagen.")), "image/jpeg", 0.8);
+    canvas.toBlob((result) => {
+      if (result?.type === "image/webp") {
+        resolve(result);
+        return;
+      }
+      canvas.toBlob((pngResult) => pngResult ? resolve(pngResult) : reject(new Error("No se pudo comprimir la imagen.")), "image/png");
+    }, "image/webp", 0.8);
   });
   if (blob.size > 2 * 1024 * 1024) throw new Error("El logo optimizado supera los 2 MB. Probá con otra imagen.");
   return new Promise<string>((resolve, reject) => {
