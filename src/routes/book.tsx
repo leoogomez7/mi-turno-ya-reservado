@@ -636,8 +636,12 @@ Observaciones: ${customer.notes || "Ninguna"}`;
             }
           }}
         >
-          <div className="flex flex-wrap items-end justify-between gap-3">
-            <div>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-3">
+              {selectedStore?.logo && (
+                <img src={selectedStore.logo} alt={`Logo de ${selectedStore.name}`} className="h-14 w-14 shrink-0 object-contain" />
+              )}
+              <div className="min-w-0">
               <p className="text-xs uppercase tracking-widest text-gold">{selectedStore ? "Sucursal seleccionada" : "Antes de reservar"}</p>
               <h2 className="mt-1 flex flex-wrap items-baseline gap-x-2 font-display text-2xl font-semibold">
                 {selectedStore ? (
@@ -647,6 +651,7 @@ Observaciones: ${customer.notes || "Ninguna"}`;
                   </>
                 ) : "Seleccioná una sucursal · Tocá aquí para buscar"}
               </h2>
+              </div>
             </div>
             <div className="flex items-center gap-3">
               {selectedStore && <Button type="button" className="h-10 px-4 text-sm bg-gold text-primary-foreground hover:bg-gold-soft" onClick={() => setStorePickerOpen(true)}>Cambiar sucursal</Button>}
@@ -683,7 +688,10 @@ Observaciones: ${customer.notes || "Ninguna"}`;
                   <div id="store-search-results" role="listbox" aria-label="Sucursales encontradas" className="mt-1 rounded-xl border border-gold/40 bg-background p-1 shadow-xl">
                     {matchingStores.map((store) => (
                       <button key={store.code} type="button" role="option" aria-selected={store.code === selectedStoreCode} disabled={storeLoading} onClick={() => void chooseStore(store)} className="flex w-full items-center justify-between gap-4 rounded-lg px-3 py-2.5 text-left transition hover:bg-gold/10 focus-visible:bg-gold/10 focus-visible:outline-none disabled:opacity-60">
-                        <span className="min-w-0 truncate font-medium">{store.name}</span>
+                        <span className="flex min-w-0 items-center gap-3">
+                          {store.logo && <img src={store.logo} alt={`Logo de ${store.name}`} className="h-10 w-10 shrink-0 object-contain" />}
+                          <span className="truncate font-medium">{store.name}</span>
+                        </span>
                         <span className="shrink-0 text-sm text-muted-foreground">{store.code}</span>
                       </button>
                     ))}

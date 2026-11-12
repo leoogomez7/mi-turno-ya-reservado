@@ -99,7 +99,7 @@ export function ProfessionalsManager() {
   const [form, setForm] = useState<Partial<Professional>>(defaultFormState);
   const [storeName, setStoreName] = useState(() => getAvailableStores().find((store) => store.code === getCurrentStoreCode())?.name ?? "");
   const [storeCode, setStoreCode] = useState(getCurrentStoreCode());
-  const [storeDraftLoaded, setStoreDraftLoaded] = useState(isCloudInitialized());
+  const [storeDraftLoaded, setStoreDraftLoaded] = useState(false);
   const [savingStore, setSavingStore] = useState(false);
   const [storeLogoDraft, setStoreLogoDraft] = useState("");
   const [savedStoreLogo, setSavedStoreLogo] = useState("");
@@ -712,7 +712,7 @@ export function ProfessionalsManager() {
               <div>
                   <p className="text-xs uppercase tracking-widest text-gold">Sucursal</p>
                   <h2 className="mt-1 font-display text-2xl font-semibold">Tu sucursal y código de reserva</h2>
-                  <p className="mt-2 text-sm text-muted-foreground">Sucursal actual: <strong className="text-gold">{currentStoreName || (storeDraftLoaded ? "—" : "Cargando...")}</strong> · Código: <strong className="text-gold">{currentStoreCode || "—"}</strong>. </p>
+                  <p className="mt-2 text-sm text-muted-foreground">Sucursal actual: <strong className="text-gold">{currentStoreName || (storeDraftLoaded ? "—" : "Cargando...")}</strong> · Código: <strong className="text-gold">{currentStoreCode || (storeDraftLoaded ? "—" : "Cargando...")}</strong>. </p>
               </div>
             </div>
             <div className="mt-5 grid gap-3 sm:grid-cols-[1fr_220px_auto]">
@@ -724,7 +724,9 @@ export function ProfessionalsManager() {
             </div>
             <div className="mt-4 flex flex-col gap-4 rounded-2xl border border-border bg-background/60 p-4 sm:flex-row sm:items-center">
               <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden">
-                {storeLogoDraft
+                {!storeDraftLoaded
+                  ? <span className="text-xs text-muted-foreground">Cargando...</span>
+                  : storeLogoDraft
                   ? <img src={storeLogoDraft} alt={`Logo de ${currentStoreName || "la sucursal"}`} className="h-full w-full object-contain" />
                   : <ImagePlus aria-hidden="true" className="h-8 w-8 text-muted-foreground" />}
               </div>
