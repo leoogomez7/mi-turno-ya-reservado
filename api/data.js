@@ -88,6 +88,16 @@ function isBookingVisibleInMainList(booking, role) {
   return !Number.isFinite(appointmentAt) || Date.now() < appointmentAt + 24 * 60 * 60 * 1000;
 }
 
+function isBookingVisibleInArchiveList(booking, role) {
+  const audience = role === "admin" ? "admin" : "client";
+  if (booking[`${audience}PermanentlyDeletedAt`] || booking[`${audience}RestoredAt`]) return false;
+  if (booking[`${audience}ArchivedAt`]) return true;
+  if (booking.paymentCancellationStatus === "requested") return false;
+  if (booking.status === "completed" || booking.status === "no-show") return true;
+  const appointmentAt = Date.parse(`${booking.date}T${booking.time}:00-03:00`);
+  return Number.isFinite(appointmentAt) && Date.now() >= appointmentAt + 24 * 60 * 60 * 1000;
+}
+
 function storedRecordId(storeCode, id) {
   return `${storeCode}:${id}`;
 }
@@ -1031,8 +1041,10 @@ export default async function handler(request, response) {
           const notifications = result.rows.map((row) => ({
             id: String(row.id), bookingId: String(row.bookingId), type: String(row.type), title: String(row.title),
             message: String(row.message), createdAt: String(row.createdAt), readAt: row.readAt ? String(row.readAt) : null,
-            bookingExists: Boolean(row.bookingValue)
-              && isBookingVisibleInMainList(JSON.parse(String(row.bookingValue)), role),
+            bookingExists: Boolean(row.bookingValue) && (() => {
+              const booking = JSON.parse(String(row.bookingValue));
+              return isBookingVisibleInMainList(booking, role) || isBookingVisibleInArchiveList(booking, role);
+            })(),
           }));
           const newForPrompt = notifications.filter((notification) => {
             const row = result.rows.find((item) => String(item.id) === notification.id);
@@ -1070,7 +1082,7 @@ export default async function handler(request, response) {
           const bookingValue = booking.rows[0] ? JSON.parse(String(booking.rows[0].value)) : null;
           const exists = Boolean(bookingValue)
             && normalizeStoreCode(bookingValue.storeCode) === normalizeStoreCode(notice.rows[0].store_code)
-            && isBookingVisibleInMainList(bookingValue, role);
+            && (isBookingVisibleInMainList(bookingValue, role) || isBookingVisibleInArchiveList(bookingValue, role));
           return response.status(200).json({ exists });
         }
         if (body.action === "delete-notification") {

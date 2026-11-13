@@ -139,17 +139,23 @@ function MyBookingsPage() {
   useEffect(() => {
     const activateHighlight = () => {
       const bookingId = sessionStorage.getItem(BOOKING_HIGHLIGHT_KEY);
-      if (!bookingId || !bookings.some((booking) => booking.id === bookingId)) return;
+      const booking = bookings.find((item) => item.id === bookingId);
+      if (!bookingId || !booking) return;
       sessionStorage.removeItem(BOOKING_HIGHLIGHT_KEY);
       setHighlightedBookingId(bookingId);
-      window.setTimeout(() => document.getElementById(`booking-${bookingId}`)?.scrollIntoView({ behavior: "smooth", block: "center" }), 0);
+      const isArchived = Boolean(getBookingArchiveLabel(booking, currentTime, "client"));
+      if (isArchived) {
+        setArchiveSearch("");
+        setArchiveDialogOpen(true);
+      }
+      window.setTimeout(() => document.getElementById(`${isArchived ? "archived-" : ""}booking-${bookingId}`)?.scrollIntoView({ behavior: "smooth", block: "center" }), isArchived ? 100 : 0);
       if (highlightTimeout.current !== null) window.clearTimeout(highlightTimeout.current);
       highlightTimeout.current = window.setTimeout(() => setHighlightedBookingId(""), 4000);
     };
     activateHighlight();
     window.addEventListener("mi-turno-ya:highlight-booking", activateHighlight);
     return () => window.removeEventListener("mi-turno-ya:highlight-booking", activateHighlight);
-  }, [bookings]);
+  }, [bookings, currentTime]);
 
   async function reportPayment(booking: Booking) {
     if (busyBookingId) return;
@@ -592,7 +598,7 @@ function MyBookingsPage() {
                 const serviceNames = booking.serviceIds.map((id) => professional?.services.find((service) => service.id === id)?.name).filter(Boolean).join(", ");
                 const appointmentDate = parseISO(`${booking.date}T${booking.time}`);
                 const paymentMethod = booking.customer.paymentMethod === "transferencia" ? "Transferencia bancaria" : booking.customer.paymentMethod === "tarjeta o mercado pago" ? "Tarjeta o Mercado Pago" : booking.customer.paymentMethod === "efectivo" ? "Efectivo" : "No especificado";
-                return <article key={booking.id} className="rounded-xl border border-border bg-card p-3 text-sm">
+                return <article key={booking.id} id={`archived-booking-${booking.id}`} className={`rounded-xl border p-3 text-sm transition-colors duration-300 ${highlightedBookingId === booking.id ? "border-gold bg-gold/20 ring-2 ring-gold/70" : "border-border bg-card"}`}>
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <p className="font-semibold">{professional?.name ?? "Profesional"} · {serviceNames || "Servicio"}</p>
                     <Badge variant="outline" className="border-gold/40 text-gold">{getBookingArchiveLabel(booking, currentTime, "client")}</Badge>
