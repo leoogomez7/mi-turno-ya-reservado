@@ -450,20 +450,20 @@ export function AgendaManager() {
         <Dialog open={refundDialogBooking !== null} onOpenChange={(open) => { if (!open && confirmingRefundId === null) setRefundDialogBooking(null); }}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>{refundDialogBooking?.paymentCancellationStatus === "requested" ? "¿Ya realizaste la devolución?" : "Datos de la devolución"}</DialogTitle>
-              <DialogDescription>{refundDialogBooking?.paymentCancellationStatus === "requested" ? "Revisá el importe y el CBU o alias antes de confirmar. Avisaremos al cliente cuando confirmes que el dinero fue devuelto." : "El turno ya está cancelado y su horario disponible."}</DialogDescription>
+              <DialogTitle>{refundDialogBooking?.paymentCancellationStatus === "requested" ? "Confirmar devolución" : "Datos de la devolución"}</DialogTitle>
+              {refundDialogBooking?.customer.paymentMethod !== "tarjeta o mercado pago" && <DialogDescription>{refundDialogBooking?.paymentCancellationStatus === "requested" ? "Revisá el importe y los datos de devolución. Al confirmar, avisaremos al cliente que el dinero ya fue devuelto." : "El turno ya está cancelado y su horario disponible."}</DialogDescription>}
             </DialogHeader>
             {refundDialogBooking && <div className="space-y-2 rounded-xl border border-gold/30 bg-gold/5 p-4 text-sm">
               <p>Cliente: <span className="font-medium text-foreground">{refundDialogBooking.customer.fullName}</span></p>
               <p>Importe a devolver: <span className="font-semibold text-gold">${(refundDialogBooking.refundAmount ?? refundDialogBooking.totalPrice).toLocaleString("es-AR")}</span></p>
               {(refundDialogBooking.refundDestination || refundDialogBooking.refundCbu) && <div className="flex items-center justify-between gap-3">
                 <p className="min-w-0 break-all">{refundDialogBooking.refundDestinationType === "alias" ? "Alias" : "CBU"}: <span className="font-mono font-semibold text-foreground">{refundDialogBooking.refundDestination ?? refundDialogBooking.refundCbu}</span></p>
-                <Button type="button" size="icon" variant="outline" className="h-9 w-9 shrink-0 border-gold/40 text-gold hover:bg-gold/10 hover:text-gold" aria-label={`Copiar ${refundDialogBooking.refundDestinationType === "alias" ? "alias" : "CBU"}`} title={`Copiar ${refundDialogBooking.refundDestinationType === "alias" ? "alias" : "CBU"}`} onClick={() => void copyRefundDestination(refundDialogBooking)}><Copy className="h-4 w-4" /></Button>
+                <Button type="button" size="icon" variant="ghost" className="h-9 w-9 shrink-0" aria-label={`Copiar ${refundDialogBooking.refundDestinationType === "alias" ? "alias" : "CBU"}`} title={`Copiar ${refundDialogBooking.refundDestinationType === "alias" ? "alias" : "CBU"}`} onClick={() => void copyRefundDestination(refundDialogBooking)}><Copy className="h-4 w-4" /></Button>
               </div>}
             </div>}
             <DialogFooter className="flex-col gap-2 sm:flex-row">
-              <Button type="button" variant="outline" disabled={confirmingRefundId !== null} onClick={() => setRefundDialogBooking(null)}>{refundDialogBooking?.paymentCancellationStatus === "requested" ? "Todavía no" : "Cerrar"}</Button>
-              {refundDialogBooking?.paymentCancellationStatus === "requested" && <Button type="button" className="bg-gold text-primary-foreground hover:bg-gold-soft" disabled={confirmingRefundId !== null} onClick={() => void confirmRefund(refundDialogBooking)}>{confirmingRefundId === refundDialogBooking.id ? "Confirmando…" : "Sí, ya hice la devolución"}</Button>}
+              <Button type="button" variant="outline" disabled={confirmingRefundId !== null} onClick={() => setRefundDialogBooking(null)}>{refundDialogBooking?.paymentCancellationStatus === "requested" ? "Volver" : "Cerrar"}</Button>
+              {refundDialogBooking?.paymentCancellationStatus === "requested" && <Button type="button" className="bg-gold text-primary-foreground hover:bg-gold-soft" disabled={confirmingRefundId !== null} onClick={() => void confirmRefund(refundDialogBooking)}>{confirmingRefundId === refundDialogBooking.id ? "Confirmando…" : "Confirmar devolución"}</Button>}
             </DialogFooter>
           </DialogContent>
         </Dialog>
