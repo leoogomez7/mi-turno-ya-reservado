@@ -71,8 +71,8 @@ function canDeleteBooking(booking) {
     || booking.paymentCancellationStatus === "refunded";
 }
 
-function canArchiveBooking(booking, role) {
-  if (role === "client" && booking.status === "cancelled" && booking.cancelledBy === "client") return true;
+function canArchiveBooking(booking) {
+  if (booking.status === "cancelled" && booking.cancelledBy === "client") return true;
   return canDeleteBooking(booking);
 }
 
@@ -906,7 +906,7 @@ export default async function handler(request, response) {
         } else if (storeCode !== normalizeStoreCode(account.rows[0]?.store_code)) {
           return response.status(403).json({ error: "El turno no corresponde a tu sucursal." });
         }
-        if (!canArchiveBooking(booking, role)) {
+        if (!canArchiveBooking(booking)) {
           const pendingRefund = booking.paymentCancellationStatus === "requested";
           const pendingPayment = booking.paymentStatus === "pending" || booking.status === "pending-payment"
             || (Boolean(booking.paymentReportedAt) && booking.paymentStatus !== "approved");

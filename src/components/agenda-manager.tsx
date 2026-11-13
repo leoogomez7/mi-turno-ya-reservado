@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { bookingStore, canDeleteBooking, getBarber, getBookingArchiveLabel, type Booking } from "@/lib/booking-store";
+import { bookingStore, canArchiveBooking, canDeleteBooking, getBarber, getBookingArchiveLabel, type Booking } from "@/lib/booking-store";
 import { useAppAuth } from "@/lib/auth";
 import { archiveBooking, BOOKING_HIGHLIGHT_KEY, confirmBookingRefund, permanentlyDeleteArchivedBooking, refreshCloudData, restoreArchivedBooking } from "@/lib/cloud-sync";
 import { getAvailableSlotsForDate, getProfessionalService, getScheduleForDate, professionalStore } from "@/lib/professional-store";
@@ -191,7 +191,7 @@ export function AgendaManager() {
 
   async function archiveTurn(booking: Booking) {
     if (deletingBookingId) return;
-    if (!canDeleteBooking(booking)) {
+    if (!canArchiveBooking(booking)) {
       toast.error("Solo se puede borrar un turno pagado, asistido, cancelado o con la devolución realizada.");
       return;
     }
@@ -425,10 +425,10 @@ export function AgendaManager() {
                       {booking.paymentCancellationStatus === "requested" && <Badge variant="outline" className="border-amber-300 text-amber-300">Devolución solicitada</Badge>}
                       {booking.paymentCancellationStatus === "refunded" && <Badge variant="outline" className="border-emerald-300 text-emerald-400">Devolución confirmada</Badge>}
                       {booking.paymentCancellationStatus === "cancelled" && <Badge variant="outline" className="border-red-300 text-red-300">Pago cancelado</Badge>}
-                      {booking.cancelledBy === "client" && <Badge variant="outline" className="border-red-300 text-red-300">Cancelado por el cliente</Badge>}
-                      {booking.cancelledBy === "professional" && <Badge variant="outline" className="border-red-300 text-red-300">Cancelado por el profesional</Badge>}
                       {booking.status === "completed" && <Badge variant="outline" className="border-emerald-300 text-emerald-400">Asistió</Badge>}
                       {booking.status === "no-show" && <Badge variant="outline" className="border-red-500/30 bg-red-500/10 text-red-300">No asistió</Badge>}
+                      {booking.cancelledBy === "client" && <Badge variant="outline" className="border-red-500/30 bg-red-500/10 text-red-300">Cancelado por el cliente</Badge>}
+                      {booking.cancelledBy === "professional" && <Badge variant="outline" className="border-red-500/30 bg-red-500/10 text-red-300">Cancelado por el profesional</Badge>}
                   </div>
                   <div className="grid w-full grid-cols-2 gap-2 xl:col-start-5 xl:grid-cols-3">
                     {booking.status !== "cancelled" && <>
@@ -438,7 +438,7 @@ export function AgendaManager() {
                       {isActiveBooking && !booking.paymentCancellationStatus && booking.paymentStatus !== "approved" && !booking.paymentReportedAt && <Button size="sm" variant="destructive" className={`min-w-0 whitespace-normal px-2 text-center leading-tight ${cancellingBookingId === booking.id ? "opacity-60" : ""}`} disabled={cancellingBookingId !== null} onClick={() => void cancelBooking(booking)}>{cancellingBookingId === booking.id ? "Cancelando turno..." : "Cancelar turno"}</Button>}
                       {booking.paymentCancellationStatus === "requested" && <Button size="sm" className="min-w-0 whitespace-normal px-2 text-center leading-tight bg-gold text-primary-foreground hover:bg-gold-soft" disabled={confirmingRefundId !== null} onClick={() => setRefundDialogBooking(booking)}>Indicar devolución</Button>}
                     </>}
-                    <Button size="sm" variant="destructive" className="min-w-0 whitespace-normal px-2 text-center leading-tight" disabled={deletingBookingId === booking.id || !canDeleteBooking(booking)} onClick={() => void archiveTurn(booking)}>{deletingBookingId === booking.id ? "Borrando turno..." : "Borrar turno"}</Button>
+                    {canArchiveBooking(booking) && <Button size="sm" variant="destructive" className="min-w-0 whitespace-normal px-2 text-center leading-tight" disabled={deletingBookingId === booking.id} onClick={() => void archiveTurn(booking)}>{deletingBookingId === booking.id ? "Borrando turno..." : "Borrar turno"}</Button>}
                   </div>
                 </div>
               );
