@@ -506,7 +506,7 @@ function MyBookingsPage() {
                   <div className="flex w-full flex-col items-center gap-1 text-xs text-muted-foreground xl:col-start-4 xl:items-start xl:justify-self-start">
                       {booking.status !== "cancelled" && booking.status !== "completed" && booking.status !== "no-show" && <Badge variant="outline" className={statusClass}>{statusLabel}</Badge>}
                       <Badge variant="outline" className="border-gold/30 text-gold">Pago · {paymentMethodLabel}</Badge>
-                      {(booking.status === "pending-payment" || booking.paymentStatus === "pending") && <Badge variant="outline" className="border-amber-300 text-amber-300">Pago pendiente</Badge>}
+                      {(booking.status === "pending-payment" || booking.paymentStatus === "pending" || (isActiveBooking && booking.customer.paymentMethod === "efectivo" && booking.paymentStatus !== "approved")) && <Badge variant="outline" className="border-amber-300 text-amber-300">Pago pendiente</Badge>}
                       {booking.paymentReportedAt && booking.paymentStatus !== "approved" && <Badge variant="outline" className="border-amber-300 text-amber-300">Informaste el pago · El profesional lo revisará</Badge>}
                       {booking.paymentStatus === "approved" && <Badge variant="outline" className="border-emerald-300 text-emerald-400">Pago confirmado</Badge>}
                       {booking.paymentCancellationStatus === "requested" && <Badge variant="outline" className="border-amber-300 text-amber-300">Devolución solicitada</Badge>}
