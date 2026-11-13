@@ -9,6 +9,13 @@ export interface Customer {
   notes?: string;
 }
 
+export interface BookingCancellationPolicy {
+  noRefunds: boolean;
+  allowRefunds: boolean;
+  refundPercent: number;
+  cancellationWindowMinutes: number;
+}
+
 export interface Booking {
   id: string;
   storeCode?: string;
@@ -37,6 +44,7 @@ export interface Booking {
   refundAmount?: number;
   refundRequestedAt?: string;
   refundConfirmedAt?: string;
+  cancellationPolicyAtBooking?: BookingCancellationPolicy;
   appointmentConfirmation?: "confirmed" | "pending";
   cancellationToken?: string;
   createdAt: string;

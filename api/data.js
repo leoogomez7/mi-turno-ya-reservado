@@ -271,6 +271,15 @@ async function getStoreCancellationPolicy(db, storeCode) {
   return parseStoreSettings(result.rows[0].settings);
 }
 
+function snapshotCancellationPolicy(policy) {
+  return {
+    noRefunds: policy.noRefunds,
+    allowRefunds: policy.allowRefunds,
+    refundPercent: policy.refundPercent,
+    cancellationWindowMinutes: policy.cancellationWindowMinutes,
+  };
+}
+
 function normalizeIssuer() {
   const issuer = requiredEnv("KINDE_ISSUER_URL").replace(/\/+$/, "");
   return /^https?:\/\//i.test(issuer) ? issuer : `https://${issuer}`;
@@ -1182,7 +1191,8 @@ export default async function handler(request, response) {
           if (booking.paymentCancellationStatus) {
             return response.status(409).json({ error: "Ya existe una solicitud de devolución para este pago." });
           }
-          const policy = await getStoreCancellationPolicy(db, booking.storeCode);
+          const policy = validateCancellationPolicy(booking.cancellationPolicyAtBooking)
+            ?? await getStoreCancellationPolicy(db, booking.storeCode);
           if (policy.noRefunds || !policy.allowRefunds) {
             return response.status(403).json({ error: "La política de esta sucursal no permite cancelar ni devolver pagos." });
           }
@@ -2043,6 +2053,7 @@ export default async function handler(request, response) {
       if (!storeResult.rows[0]) return response.status(404).json({ error: "No encontramos la sucursal seleccionada." });
       if (!isSubscriptionActive(storeResult.rows[0].subscription_expires_at)) return response.status(403).json({ error: "Esta sucursal no tiene un plan activo para aceptar reservas." });
       booking.storeCode = storeCode;
+      booking.cancellationPolicyAtBooking = snapshotCancellationPolicy(await getStoreCancellationPolicy(db, storeCode));
       const professionalResult = await db.execute({ sql: "SELECT value FROM professionals WHERE id = ?", args: [storedRecordId(storeCode, booking.barberId)] });
       if (!professionalResult.rows[0]) return response.status(400).json({ error: "El profesional elegido ya no está disponible." });
       const professional = JSON.parse(String(professionalResult.rows[0].value));
@@ -2145,12 +2156,16 @@ export default async function handler(request, response) {
         if (normalizeStoreCode(priorRecord.storeCode) !== storeCode) {
           return response.status(403).json({ error: "El registro no pertenece a la sucursal seleccionada." });
         }
+        if (body.collection === "bookings") record.cancellationPolicyAtBooking = priorRecord.cancellationPolicyAtBooking;
         if (body.collection === "bookings" && role === "admin"
           && priorRecord.status !== record.status
           && ["completed", "no-show"].includes(record.status)
           && record.paymentStatus !== "approved") {
           return response.status(409).json({ error: "Solo puedes indicar asistencia en turnos con el pago confirmado por el administrador." });
         }
+      }
+      if (body.collection === "bookings" && !storedRecord.rows[0]) {
+        record.cancellationPolicyAtBooking = snapshotCancellationPolicy(await getStoreCancellationPolicy(db, storeCode));
       }
       if (body.collection === "bookings" && role !== "admin") {
         if (normalizeStoreCode(record.storeCode) !== storeCode) return response.status(403).json({ error: "La reserva no corresponde a la sucursal seleccionada." });
@@ -2238,7 +2253,7 @@ export default async function handler(request, response) {
       }
       if (body.collection === "bookings" && role === "admin") {
         const removedBooking = JSON.parse(String(existing.rows[0].value));
-        if (removedBooking.paymentCancellationStatus === "requested") {
+        if (hasPendingRefund(removedBooking)) {
           return response.status(409).json({ error: "No se puede borrar el turno mientras la devolución esté pendiente." });
         }
         removedBooking.adminPermanentlyDeletedAt = new Date().toISOString();

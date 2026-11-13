@@ -396,7 +396,7 @@ function MyBookingsPage() {
   }
 
   function cancellationPolicyFor(booking: Booking) {
-    return stores.find((store) => store.code === booking.storeCode)?.settings;
+    return booking.cancellationPolicyAtBooking ?? stores.find((store) => store.code === booking.storeCode)?.settings;
   }
 
   const archivedBookings = bookings
