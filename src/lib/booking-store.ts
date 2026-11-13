@@ -43,8 +43,13 @@ export interface Booking {
   isTest?: boolean;
 }
 
+export function hasPendingRefund(booking: Booking) {
+  return booking.paymentCancellationStatus === "requested"
+    && Number(booking.refundAmount ?? booking.totalPrice) > 0;
+}
+
 export function canDeleteBooking(booking: Booking) {
-  if (booking.paymentCancellationStatus === "requested"
+  if (hasPendingRefund(booking)
     || booking.paymentStatus === "pending"
     || booking.status === "pending-payment"
     || (Boolean(booking.paymentReportedAt) && booking.paymentStatus !== "approved")) return false;
@@ -55,6 +60,7 @@ export function canDeleteBooking(booking: Booking) {
 }
 
 export function canArchiveBooking(booking: Booking) {
+  if (hasPendingRefund(booking)) return false;
   if (booking.status === "cancelled" && booking.cancelledBy === "client") return true;
   return canDeleteBooking(booking);
 }

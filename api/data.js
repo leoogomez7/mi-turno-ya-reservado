@@ -60,8 +60,13 @@ function normalizeStoreCode(value) {
   return typeof value === "string" ? value.trim().toUpperCase() : "";
 }
 
+function hasPendingRefund(booking) {
+  return booking.paymentCancellationStatus === "requested"
+    && Number(booking.refundAmount ?? booking.totalPrice) > 0;
+}
+
 function canDeleteBooking(booking) {
-  if (booking.paymentCancellationStatus === "requested"
+  if (hasPendingRefund(booking)
     || booking.paymentStatus === "pending"
     || booking.status === "pending-payment"
     || (Boolean(booking.paymentReportedAt) && booking.paymentStatus !== "approved")) return false;
@@ -72,6 +77,7 @@ function canDeleteBooking(booking) {
 }
 
 function canArchiveBooking(booking) {
+  if (hasPendingRefund(booking)) return false;
   if (booking.status === "cancelled" && booking.cancelledBy === "client") return true;
   return canDeleteBooking(booking);
 }
@@ -917,7 +923,7 @@ export default async function handler(request, response) {
           return response.status(403).json({ error: "El turno no corresponde a tu sucursal." });
         }
         if (!canArchiveBooking(booking)) {
-          const pendingRefund = booking.paymentCancellationStatus === "requested";
+          const pendingRefund = hasPendingRefund(booking);
           const pendingPayment = booking.paymentStatus === "pending" || booking.status === "pending-payment"
             || (Boolean(booking.paymentReportedAt) && booking.paymentStatus !== "approved");
           return response.status(409).json({ error: pendingRefund
@@ -1000,7 +1006,7 @@ export default async function handler(request, response) {
           return response.status(409).json({ error: "Primero archivá el turno desde la lista principal." });
         }
         if (!canDeleteBooking(booking)) {
-          const pendingRefund = booking.paymentCancellationStatus === "requested";
+          const pendingRefund = hasPendingRefund(booking);
           const pendingPayment = booking.paymentStatus === "pending" || booking.status === "pending-payment"
             || (Boolean(booking.paymentReportedAt) && booking.paymentStatus !== "approved");
           return response.status(409).json({ error: pendingRefund

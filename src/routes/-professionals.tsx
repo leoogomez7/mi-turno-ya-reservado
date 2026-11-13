@@ -903,7 +903,7 @@ export function ProfessionalsManager() {
             <div className="grid gap-4" role="radiogroup" aria-label="Política de devolución">
               <label className="flex items-start gap-3 rounded-xl border border-border bg-background p-4 text-sm">
                 <input type="radio" name="refund-policy" checked={storeSettings.noRefunds} disabled={loadingStoreSettings || savingCancellationPolicy} onChange={() => setStoreSettings((current) => ({ ...current, noRefunds: true, allowRefunds: false }))} className="mt-1 accent-gold" />
-                <span><span className="font-medium text-foreground">No se aceptan devoluciones de pagos</span><span className="mt-1 block text-muted-foreground">Si está seleccionada, el cliente no podrá solicitar la cancelación o devolución del pago ni borrar la reserva desde su cuenta.</span></span>
+                <span><span className="font-medium text-foreground">No se aceptan devoluciones de pagos</span><span className="mt-1 block text-muted-foreground">Si está seleccionada, el cliente no verá la opción para solicitar una devolución. Los turnos cancelados se podrán borrar según las reglas generales, salvo que haya un importe de devolución pendiente.</span></span>
               </label>
               <label className="flex items-start gap-3 rounded-xl border border-border bg-background p-4 text-sm">
                 <input type="radio" name="refund-policy" checked={!storeSettings.noRefunds && storeSettings.allowRefunds} disabled={loadingStoreSettings || savingCancellationPolicy} onChange={() => setStoreSettings((current) => ({ ...current, noRefunds: false, allowRefunds: true }))} className="mt-1 accent-gold" />
