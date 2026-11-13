@@ -438,7 +438,7 @@ export function AgendaManager() {
                       {isActiveBooking && !booking.paymentCancellationStatus && booking.paymentStatus !== "approved" && !booking.paymentReportedAt && <Button size="sm" variant="destructive" className={`min-w-0 whitespace-normal px-2 text-center leading-tight ${cancellingBookingId === booking.id ? "opacity-60" : ""}`} disabled={cancellingBookingId !== null} onClick={() => void cancelBooking(booking)}>{cancellingBookingId === booking.id ? "Cancelando turno..." : "Cancelar turno"}</Button>}
                     </>}
                     {booking.paymentCancellationStatus === "requested" && <Button size="sm" className="min-w-0 whitespace-normal px-2 text-center leading-tight bg-gold text-primary-foreground hover:bg-gold-soft" disabled={confirmingRefundId !== null} onClick={() => setRefundDialogBooking(booking)}>Indicar devolución</Button>}
-                    {canArchiveBooking(booking) && <Button size="sm" variant="destructive" className="min-w-0 whitespace-normal px-2 text-center leading-tight" disabled={deletingBookingId === booking.id} onClick={() => void archiveTurn(booking)}>{deletingBookingId === booking.id ? "Borrando turno..." : "Borrar turno"}</Button>}
+                    {canArchiveBooking(booking) && (booking.status === "cancelled" || booking.status === "completed" || booking.status === "no-show") && <Button size="sm" variant="destructive" className="min-w-0 whitespace-normal px-2 text-center leading-tight" disabled={deletingBookingId === booking.id} onClick={() => void archiveTurn(booking)}>{deletingBookingId === booking.id ? "Borrando turno..." : "Borrar turno"}</Button>}
                   </div>
                 </div>
               );

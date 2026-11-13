@@ -479,7 +479,7 @@ function MyBookingsPage() {
                 "transferencia",
                 "tarjeta o mercado pago",
               ].includes(booking.customer.paymentMethod ?? "");
-              const canRequestPaymentCancellation = booking.paymentStatus === "approved" && !policy?.noRefunds && policy?.allowRefunds !== false
+              const canRequestPaymentCancellation = isActiveBooking && booking.paymentStatus === "approved" && !policy?.noRefunds && policy?.allowRefunds !== false
                 && (policy?.refundPercent ?? 100) > 0 && !cancellationTooLate
                 && ["efectivo", "transferencia", "tarjeta o mercado pago"].includes(booking.customer.paymentMethod ?? "");
               const canArchive = !getBookingArchiveLabel(booking, currentTime, "client");

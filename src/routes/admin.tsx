@@ -96,7 +96,7 @@ export function AdminPage() {
           ) : (
             <p role="alert" className="rounded-xl border border-amber-400/30 bg-amber-400/10 p-4 text-sm text-amber-200">El mes inicial no puede ser posterior al mes final.</p>
           )}
-          <p className="text-xs text-muted-foreground">No se cuentan turnos cancelados o liberados ni ausencias sin pago aprobado. Los ingresos corresponden a turnos asistidos o con pago aprobado.</p>
+          <p className="text-xs text-muted-foreground">Los turnos y servicios cuentan solo cuando se marca la asistencia. Los ingresos cuentan pagos confirmados menos las devoluciones solicitadas o realizadas.</p>
         </section>
 
         <div className="grid items-stretch gap-4 md:grid-cols-2">
@@ -126,8 +126,9 @@ function computeStats(bookings: Booking[]) {
   const active = bookings.filter(isCountableBooking);
   const today = active.filter((b) => isToday(parseISO(b.date))).length;
   const week = active.filter((b) => isThisWeek(parseISO(b.date), { weekStartsOn: 1 })).length;
-  const monthBookings = active.filter((b) => isThisMonth(parseISO(b.date)));
-  const monthRevenue = monthBookings.filter(hasReceivedPayment).reduce((a, b) => a + b.totalPrice, 0);
+  const monthRevenue = bookings
+    .filter((booking) => isThisMonth(parseISO(booking.date)))
+    .reduce((total, booking) => total + getNetReceivedRevenue(booking), 0);
   const uniqueClients = new Set(active.map((b) => b.customer.email.toLowerCase())).size;
 
   const allProfessionals = professionalStore.all();
@@ -187,8 +188,12 @@ function isCountableBooking(booking: Booking) {
   return booking.status !== "no-show" || booking.paymentStatus === "approved";
 }
 
-function hasReceivedPayment(booking: Booking) {
-  return booking.status === "completed" || booking.paymentStatus === "approved";
+function getNetReceivedRevenue(booking: Booking) {
+  if (booking.paymentStatus !== "approved") return 0;
+  const refund = booking.paymentCancellationStatus === "requested" || booking.paymentCancellationStatus === "refunded"
+    ? booking.refundAmount ?? booking.totalPrice
+    : 0;
+  return Math.max(0, booking.totalPrice - refund);
 }
 
 function formatCurrency(value: number) {
@@ -227,12 +232,14 @@ function computePeriodStats(bookings: Booking[], startMonth: string, endMonth: s
   }
 
   const statsByMonth = new Map(monthly.map((entry) => [entry.month, entry]));
-  bookings.filter(isCountableBooking).forEach((booking) => {
+  bookings.forEach((booking) => {
     const month = statsByMonth.get(booking.date.slice(0, 7));
     if (!month) return;
-    month.turns += 1;
-    month.services += booking.serviceIds.length;
-    if (hasReceivedPayment(booking)) month.revenue += booking.totalPrice;
+    if (booking.status === "completed") {
+      month.turns += 1;
+      month.services += booking.serviceIds.length;
+    }
+    month.revenue += getNetReceivedRevenue(booking);
   });
 
   const mostBookingsMonth = formatMonthMetric(monthly, "turns", "max");
