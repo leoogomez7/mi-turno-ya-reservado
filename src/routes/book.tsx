@@ -336,12 +336,29 @@ export function BookPage() {
 
   const selectedProfessional = reservationProfessionals.find((professional) => professional.id === barberId);
   const selectedServices = selectedProfessional?.services ?? [];
-  const duration = selectedServices.reduce((total, service) => total + (serviceIds.includes(service.id) ? service.duration : 0), 0);
-  const price = selectedServices.reduce((total, service) => total + (serviceIds.includes(service.id) ? service.price : 0), 0);
+  const selectedServiceIds = serviceIds.filter((id) => selectedServices.some((service) => service.id === id));
+  const duration = selectedServices.reduce((total, service) => total + (selectedServiceIds.includes(service.id) ? service.duration : 0), 0);
+  const price = selectedServices.reduce((total, service) => total + (selectedServiceIds.includes(service.id) ? service.price : 0), 0);
+
+  function selectProfessional(nextBarberId: string) {
+    if (nextBarberId === barberId) return;
+    setBarberId(nextBarberId);
+    setServiceIds([]);
+    setDate(null);
+    setTime("");
+    setStepError(null);
+  }
+
+  function selectServices(nextServiceIds: string[]) {
+    setServiceIds(nextServiceIds);
+    setDate(null);
+    setTime("");
+    setStepError(null);
+  }
 
   function createBookingWhatsAppMessage(includePaymentProofNote: boolean) {
     const serviceNames = selectedServices
-      .filter((service) => serviceIds.includes(service.id))
+      .filter((service) => selectedServiceIds.includes(service.id))
       .map((service) => service.name)
       .join(", ");
     const message = `Hola! Quiero confirmar un turno.
@@ -384,10 +401,10 @@ Observaciones: ${customer.notes || "Ninguna"}`;
         && !!customer.paymentMethod;
     }
     if (step === 1) return !!barberId;
-    if (step === 2) return serviceIds.length > 0;
+    if (step === 2) return selectedServiceIds.length > 0 && selectedServiceIds.length === serviceIds.length;
     if (step === 3) return !!date && !!time;
     return true;
-  }, [step, customer, barberId, serviceIds, date, time]);
+  }, [step, customer, barberId, serviceIds, selectedServiceIds, date, time]);
 
   async function confirm() {
     if (confirmingBooking) return;
@@ -399,6 +416,10 @@ Observaciones: ${customer.notes || "Ninguna"}`;
       toast.error("Seleccioná fecha y horario antes de confirmar.");
       return;
     }
+    if (!selectedProfessional || selectedServiceIds.length === 0 || selectedServiceIds.length !== serviceIds.length) {
+      toast.error("Volvé a elegir los servicios del profesional seleccionado.");
+      return;
+    }
 
     setConfirmingBooking(true);
     try {
@@ -406,7 +427,7 @@ Observaciones: ${customer.notes || "Ninguna"}`;
       try {
         await saveBooking({
         storeCode: selectedStoreCode,
-        customer, barberId, serviceIds,
+        customer, barberId, serviceIds: selectedServiceIds,
         date: format(date, "yyyy-MM-dd"),
         time, duration, totalPrice: price, status: "confirmed", paymentStatus: "pending",
         });
@@ -429,7 +450,7 @@ Observaciones: ${customer.notes || "Ninguna"}`;
       try {
         pendingBooking = await saveBooking({
           storeCode: selectedStoreCode,
-          customer, barberId, serviceIds,
+          customer, barberId, serviceIds: selectedServiceIds,
           date: format(date, "yyyy-MM-dd"),
           time, duration, totalPrice: price, status: "confirmed", paymentStatus: "pending",
         });
@@ -467,7 +488,7 @@ Observaciones: ${customer.notes || "Ninguna"}`;
     try {
       await saveBooking({
         storeCode: selectedStoreCode,
-        customer, barberId, serviceIds,
+        customer, barberId, serviceIds: selectedServiceIds,
         date: format(date, "yyyy-MM-dd"),
         time, duration, totalPrice: price,
         status: "confirmed",
@@ -711,10 +732,10 @@ Observaciones: ${customer.notes || "Ninguna"}`;
 
         <div className="mt-4 w-full rounded-2xl border border-gold/30 bg-card p-5 sm:p-6">
           {step === 0 && <StepCustomer customer={customer} setCustomer={setCustomer} mercadoPagoAvailable={Boolean(selectedStore?.mercadoPagoConfigured)} phoneLoading={role === "client" && !clientProfileLoaded} />}
-          {step === 1 && <StepBarber professionals={reservationProfessionals} value={barberId} onChange={setBarberId} />}
-          {step === 2 && <StepServices professional={selectedProfessional} value={serviceIds} onChange={setServiceIds} />}
+          {step === 1 && <StepBarber professionals={reservationProfessionals} value={barberId} onChange={selectProfessional} />}
+          {step === 2 && <StepServices key={barberId} professional={selectedProfessional} value={selectedServiceIds} onChange={selectServices} />}
           {step === 3 && <StepDateTime professional={selectedProfessional} bookings={reservationBookings} date={date} setDate={setDate} time={time} setTime={setTime} barberId={barberId} duration={duration} />}
-          {step === 4 && (date ? <StepConfirm professional={selectedProfessional} storeName={selectedStore?.name ?? selectedStoreCode} storeCode={selectedStoreCode} storeLogo={selectedStore?.logo} storeAddress={storeSettings?.address ?? ""} cancellationPolicy={storeSettings} customer={customer} serviceIds={serviceIds} date={date} time={time} duration={duration} price={price} /> : <p className="py-8 text-center text-sm text-muted-foreground">Seleccioná fecha y horario para ver el resumen.</p>)}
+          {step === 4 && (date ? <StepConfirm professional={selectedProfessional} storeName={selectedStore?.name ?? selectedStoreCode} storeCode={selectedStoreCode} storeLogo={selectedStore?.logo} storeAddress={storeSettings?.address ?? ""} cancellationPolicy={storeSettings} customer={customer} serviceIds={selectedServiceIds} date={date} time={time} duration={duration} price={price} /> : <p className="py-8 text-center text-sm text-muted-foreground">Seleccioná fecha y horario para ver el resumen.</p>)}
         </div>
 
         {stepError && (
