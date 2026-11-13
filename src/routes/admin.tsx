@@ -96,7 +96,7 @@ export function AdminPage() {
           ) : (
             <p role="alert" className="rounded-xl border border-amber-400/30 bg-amber-400/10 p-4 text-sm text-amber-200">El mes inicial no puede ser posterior al mes final.</p>
           )}
-          <p className="text-xs text-muted-foreground">Los turnos y servicios cuentan solo cuando se marca la asistencia. Los ingresos cuentan pagos confirmados menos las devoluciones solicitadas o realizadas.</p>
+          <p className="text-xs text-muted-foreground">Todos los indicadores se actualizan únicamente cuando el profesional confirma la asistencia. Los ingresos reflejan los pagos confirmados, descontando devoluciones solicitadas o realizadas.</p>
         </section>
 
         <div className="grid items-stretch gap-4 md:grid-cols-2">
@@ -123,13 +123,13 @@ function Stat({ icon: Icon, label, value }: { icon: LucideIcon; label: string; v
 }
 
 function computeStats(bookings: Booking[]) {
-  const active = bookings.filter(isCountableBooking);
-  const today = active.filter((b) => isToday(parseISO(b.date))).length;
-  const week = active.filter((b) => isThisWeek(parseISO(b.date), { weekStartsOn: 1 })).length;
-  const monthRevenue = bookings
+  const attended = bookings.filter(isAttendedBooking);
+  const today = attended.filter((b) => isToday(parseISO(b.date))).length;
+  const week = attended.filter((b) => isThisWeek(parseISO(b.date), { weekStartsOn: 1 })).length;
+  const monthRevenue = attended
     .filter((booking) => isThisMonth(parseISO(booking.date)))
     .reduce((total, booking) => total + getNetReceivedRevenue(booking), 0);
-  const uniqueClients = new Set(active.map((b) => b.customer.email.toLowerCase())).size;
+  const uniqueClients = new Set(attended.map((b) => b.customer.email.toLowerCase())).size;
 
   const allProfessionals = professionalStore.all();
   const serviceLookup = new Map<string, string>();
@@ -141,7 +141,7 @@ function computeStats(bookings: Booking[]) {
   }));
 
   const svcCount: Record<string, number> = {};
-  active.forEach((booking) => booking.serviceIds.forEach((id) => {
+  attended.forEach((booking) => booking.serviceIds.forEach((id) => {
     svcCount[id] = (svcCount[id] ?? 0) + 1;
     const professionalName = getProfessional(booking.barberId)?.name;
     if (!professionalName) return;
@@ -162,7 +162,7 @@ function computeStats(bookings: Booking[]) {
 
   const barbCount: Record<string, number> = {};
   allProfessionals.forEach((b) => { barbCount[b.id] = 0; });
-  active.forEach((b) => { barbCount[b.barberId] = (barbCount[b.barberId] ?? 0) + 1; });
+  attended.forEach((b) => { barbCount[b.barberId] = (barbCount[b.barberId] ?? 0) + 1; });
   const barbersChart = allProfessionals.map((b) => ({
     name: b.name,
     value: barbCount[b.id] ?? 0,
@@ -174,7 +174,7 @@ function computeStats(bookings: Booking[]) {
   const topBarber = sortedBarbers[0] ?? { name: "-", count: 0 };
   const lowBarber = sortedBarbers[sortedBarbers.length - 1] ?? { name: "-", count: 0 };
 
-  const lastBooking = [...active].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+  const lastBooking = [...attended].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
   const lastClient = lastBooking?.customer.fullName || "-";
   const lastBarber = lastBooking ? getProfessional(lastBooking.barberId)?.name ?? "-" : "-";
 
@@ -183,9 +183,8 @@ function computeStats(bookings: Booking[]) {
 
 type MonthlyStats = { month: string; label: string; turns: number; services: number; revenue: number };
 
-function isCountableBooking(booking: Booking) {
-  if (booking.status === "cancelled" || booking.paymentCancellationStatus === "cancelled" || booking.paymentCancellationStatus === "refunded") return false;
-  return booking.status !== "no-show" || booking.paymentStatus === "approved";
+function isAttendedBooking(booking: Booking) {
+  return booking.status === "completed";
 }
 
 function getNetReceivedRevenue(booking: Booking) {
@@ -233,12 +232,11 @@ function computePeriodStats(bookings: Booking[], startMonth: string, endMonth: s
 
   const statsByMonth = new Map(monthly.map((entry) => [entry.month, entry]));
   bookings.forEach((booking) => {
+    if (!isAttendedBooking(booking)) return;
     const month = statsByMonth.get(booking.date.slice(0, 7));
     if (!month) return;
-    if (booking.status === "completed") {
-      month.turns += 1;
-      month.services += booking.serviceIds.length;
-    }
+    month.turns += 1;
+    month.services += booking.serviceIds.length;
     month.revenue += getNetReceivedRevenue(booking);
   });
 
