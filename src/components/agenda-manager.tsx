@@ -478,7 +478,7 @@ export function AgendaManager() {
           <DialogContent className="gold-scrollbar max-h-[85vh] overflow-y-auto sm:max-w-2xl">
             <DialogHeader>
               <DialogTitle>Turnos borrados/antiguos</DialogTitle>
-              <DialogDescription>Turnos archivados, con asistencia registrada o antiguos. Podés restaurarlos o borrarlos definitivamente del listado.</DialogDescription>
+              <DialogDescription>Turnos archivados manualmente o antiguos. Podés restaurarlos o borrarlos definitivamente del listado.</DialogDescription>
             </DialogHeader>
             {archivedBookings.length > 0 && <div className="flex flex-wrap items-center justify-between gap-3">
               <p className="text-xs text-muted-foreground">Borrar todos los turnos de este listado, aunque haya una búsqueda activa.</p>
