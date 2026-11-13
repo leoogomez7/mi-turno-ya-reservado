@@ -38,6 +38,7 @@ export function NotificationsCenter({ isAuthenticated, role }: { isAuthenticated
   const [markingAll, setMarkingAll] = useState(false);
   const [deletingAll, setDeletingAll] = useState(false);
   const [checkingBookingIds, setCheckingBookingIds] = useState<Set<string>>(() => new Set());
+  const [missingBookingIds, setMissingBookingIds] = useState<Set<string>>(() => new Set());
   const [deletingIds, setDeletingIds] = useState<Set<string>>(() => new Set());
   const checkingBookingIdsRef = useRef(new Set<string>());
   const deletingIdsRef = useRef(new Set<string>());
@@ -52,6 +53,7 @@ export function NotificationsCenter({ isAuthenticated, role }: { isAuthenticated
   useEffect(() => {
     if (!isAuthenticated || (role !== "admin" && role !== "client")) {
       setNotifications([]);
+      setMissingBookingIds(new Set());
       setPromptOpen(false);
       setPanelOpen(false);
       return;
@@ -65,16 +67,14 @@ export function NotificationsCenter({ isAuthenticated, role }: { isAuthenticated
         const { notifications: loaded, newForPrompt } = await getNotifications();
         if (!active || requestSequence !== refreshSequenceRef.current) return;
         setNotifications((current) => {
-          const unavailableIds = new Set(current.filter((item) => item.bookingExists === false).map((item) => item.id));
           return loaded.filter((notification) => !deletedNotificationIdsRef.current.has(notification.id)).map((notification) => {
             const pendingReadAt = pendingReadRef.current.get(notification.id);
-            const updated = unavailableIds.has(notification.id) ? { ...notification, bookingExists: false } : notification;
-            if (!pendingReadAt) return updated;
+            if (!pendingReadAt) return notification;
             if (notification.readAt) {
               pendingReadRef.current.delete(notification.id);
-              return updated;
+              return notification;
             }
-            return { ...updated, readAt: pendingReadAt };
+            return { ...notification, readAt: pendingReadAt };
           });
         });
         if (showWelcome) {
@@ -173,16 +173,23 @@ export function NotificationsCenter({ isAuthenticated, role }: { isAuthenticated
 
   async function removeNotification(notification: BookingNotification) {
     if (deletingAll || deletingIdsRef.current.has(notification.id)) return;
+    const wasMissing = missingBookingIds.has(notification.id);
     deletingIdsRef.current.add(notification.id);
     deletedNotificationIdsRef.current.add(notification.id);
     setDeletingIds((current) => new Set(current).add(notification.id));
     pendingReadRef.current.delete(notification.id);
     setNotifications((current) => current.filter((item) => item.id !== notification.id));
+    setMissingBookingIds((current) => {
+      const next = new Set(current);
+      next.delete(notification.id);
+      return next;
+    });
     try {
       await deleteNotification(notification.id);
     } catch (reason) {
       deletedNotificationIdsRef.current.delete(notification.id);
       setNotifications((current) => [...current, notification].sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
+      if (wasMissing) setMissingBookingIds((current) => new Set(current).add(notification.id));
       setError(reason instanceof Error ? reason.message : "No se pudo eliminar la notificación.");
     } finally {
       deletingIdsRef.current.delete(notification.id);
@@ -198,8 +205,10 @@ export function NotificationsCenter({ isAuthenticated, role }: { isAuthenticated
     if (deletingAll || markingAll || markingIds.size > 0 || deletingIds.size > 0 || notifications.length === 0) return;
     setDeletingAll(true);
     const previousNotifications = notifications;
+    const previousMissingBookingIds = new Set(missingBookingIds);
     const previousDeletedIds = new Set(deletedNotificationIdsRef.current);
     setNotifications([]);
+    setMissingBookingIds(new Set());
     pendingReadRef.current.clear();
     previousNotifications.forEach((notification) => deletedNotificationIdsRef.current.add(notification.id));
     try {
@@ -209,6 +218,7 @@ export function NotificationsCenter({ isAuthenticated, role }: { isAuthenticated
     } catch (reason) {
       deletedNotificationIdsRef.current = previousDeletedIds;
       setNotifications(previousNotifications);
+      setMissingBookingIds(previousMissingBookingIds);
       setError(reason instanceof Error ? reason.message : "No se pudieron eliminar todas las notificaciones.");
     } finally {
       setDeletingAll(false);
@@ -222,13 +232,15 @@ export function NotificationsCenter({ isAuthenticated, role }: { isAuthenticated
     try {
       const { exists } = await notificationBookingExists(notification.id);
       if (!exists) {
-        setNotifications((current) => current.map((item) => item.id === notification.id ? { ...item, bookingExists: false } : item));
+        setMissingBookingIds((current) => new Set(current).add(notification.id));
         void markRead(notification);
-        toast("No se encuentra el turno.", {
-          className: "!border-white/20 !bg-black !text-white",
-        });
         return;
       }
+      setMissingBookingIds((current) => {
+        const next = new Set(current);
+        next.delete(notification.id);
+        return next;
+      });
       sessionStorage.setItem(BOOKING_HIGHLIGHT_KEY, notification.bookingId);
       void markRead(notification);
       setPanelOpen(false);
@@ -275,7 +287,7 @@ export function NotificationsCenter({ isAuthenticated, role }: { isAuthenticated
                   </div>
                   <span className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${notification.readAt ? "bg-border" : "bg-gold"}`} aria-label={notification.readAt ? "Leída" : "Sin leer"} />
                 </div>
-                {notification.bookingExists === false ? (
+                {missingBookingIds.has(notification.id) ? (
                   <div className="mt-2 flex w-full min-w-0 items-center gap-2">
                     <span className="min-w-0 flex-1 rounded-md border border-white/15 bg-black px-2 py-1.5 text-xs text-white">No se encuentra el turno.</span>
                     <div className="flex shrink-0 items-center gap-2">
