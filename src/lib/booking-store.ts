@@ -54,6 +54,11 @@ export function canDeleteBooking(booking: Booking) {
     || booking.paymentCancellationStatus === "refunded";
 }
 
+export function canArchiveBooking(booking: Booking, audience: "client" | "admin" = "client") {
+  if (audience === "client" && booking.status === "cancelled" && booking.cancelledBy === "client") return true;
+  return canDeleteBooking(booking);
+}
+
 export function getBookingArchiveLabel(booking: Booking, now = Date.now(), audience: "client" | "admin" = "client") {
   const archivedAt = audience === "client" ? booking.clientArchivedAt : booking.adminArchivedAt;
   const restoredAt = audience === "client" ? booking.clientRestoredAt : booking.adminRestoredAt;
