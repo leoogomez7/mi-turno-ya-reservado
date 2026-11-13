@@ -791,20 +791,22 @@ Observaciones: ${customer.notes || "Ninguna"}`;
             </DialogDescription>
           </DialogHeader>
           {(reservationResult?.kind === "confirmed" || reservationResult?.kind === "payment-success" || reservationResult?.kind === "payment-pending") && (
-            <div className="flex items-center gap-3 rounded-xl border border-gold/30 bg-card p-3">
-              {selectedStore?.logo && <img src={selectedStore.logo} alt={`Logo de ${selectedStore.name}`} className="h-14 w-14 shrink-0 rounded-lg bg-white p-1.5 object-contain" />}
-              <div className="min-w-0">
-                <p className="text-xs uppercase tracking-wider text-muted-foreground">Sucursal</p>
-                <p className="truncate font-semibold">{selectedStore?.name ?? selectedStoreCode}</p>
-                <p className="text-xs text-muted-foreground">Código: {selectedStoreCode}</p>
+            <div className="rounded-xl border border-gold/30 bg-card p-3">
+              <div className="flex items-center gap-3">
+                {selectedStore?.logo && <img src={selectedStore.logo} alt={`Logo de ${selectedStore.name}`} className="h-14 w-14 shrink-0 object-contain" />}
+                <div className="min-w-0">
+                  <p className="text-xs uppercase tracking-wider text-muted-foreground">Sucursal</p>
+                  <p className="truncate font-semibold">{selectedStore?.name ?? selectedStoreCode}</p>
+                  <p className="text-xs text-muted-foreground">Código: {selectedStoreCode}</p>
+                </div>
               </div>
-            </div>
-          )}
-          {reservationResult?.date && reservationResult.time && (
-            <div className="rounded-xl border border-border bg-card p-4 text-sm">
-              {storeSettings?.address && <p className="mb-1"><span className="text-muted-foreground">Dirección: </span>{storeSettings.address}</p>}
-              <p><span className="text-muted-foreground">Fecha: </span>{format(parseISO(reservationResult.date), "EEEE d 'de' MMMM yyyy", { locale: es })}</p>
-              <p className="mt-1"><span className="text-muted-foreground">Horario: </span>{reservationResult.time}</p>
+              {reservationResult.date && reservationResult.time && (
+                <div className="mt-3 border-t border-border/70 pt-3 text-sm">
+                  {storeSettings?.address && <p className="mb-1"><span className="text-muted-foreground">Dirección: </span>{storeSettings.address}</p>}
+                  <p><span className="text-muted-foreground">Fecha: </span>{format(parseISO(reservationResult.date), "EEEE d 'de' MMMM yyyy", { locale: es })}</p>
+                  <p className="mt-1"><span className="text-muted-foreground">Horario: </span>{reservationResult.time}</p>
+                </div>
+              )}
             </div>
           )}
           <DialogFooter className={reservationResult?.kind === "payment-pending" ? "flex-wrap gap-2 sm:flex-nowrap sm:flex-row sm:justify-end" : reservationResult?.kind === "confirmed" && customer.paymentMethod === "efectivo" ? "sm:justify-end" : undefined}>
@@ -1242,7 +1244,7 @@ function StepConfirm({
         <div className="flex items-center justify-between gap-4 border-b border-border/60 py-3">
           <span className="text-xs uppercase tracking-wider text-muted-foreground">Sucursal</span>
           <span className="flex min-w-0 items-center gap-2 text-right font-medium">
-            {storeLogo && <img src={storeLogo} alt={`Logo de ${storeName}`} className="h-10 w-10 shrink-0 rounded-md bg-white p-1 object-contain" />}
+            {storeLogo && <img src={storeLogo} alt={`Logo de ${storeName}`} className="h-10 w-10 shrink-0 object-contain" />}
             <span className="min-w-0">{storeName} · {storeCode}</span>
           </span>
         </div>
