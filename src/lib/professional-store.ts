@@ -88,6 +88,54 @@ export function getAvailableSlotsForDate(professional: Professional, date: Date)
   return professional.availableSlots;
 }
 
+export function getAvailableSlotCapacities(
+  professional: Professional,
+  date: Date,
+  duration: number,
+  bookings: Array<Pick<BookingAvailabilityRecord, "id" | "storeCode" | "barberId" | "date" | "time" | "duration" | "status">>,
+  excludedBookingId: string,
+  storeCode?: string,
+) {
+  if (duration <= 0) return [];
+  const dateSlots = getAvailableSlotsForDate(professional, date);
+  const capacity = getScheduleForDate(professional, date)?.capacity ?? 1;
+  const targetDate = format(date, "yyyy-MM-dd");
+  const relevantBookings = bookings.filter((booking) => booking.id !== excludedBookingId
+    && booking.date === targetDate
+    && booking.barberId === professional.id
+    && (!storeCode || booking.storeCode === storeCode)
+    && booking.status !== "cancelled");
+
+  return dateSlots.flatMap((time) => {
+    const [hours, minutes] = time.split(":").map(Number);
+    const start = hours * 60 + minutes;
+    const end = start + duration;
+    let available = capacity;
+    for (let minute = start; minute < end; minute += 15) {
+      const segment = `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`;
+      if (!dateSlots.includes(segment)) return [];
+      const overlapping = relevantBookings.filter((booking) => {
+        const [bookingHours, bookingMinutes] = booking.time.split(":").map(Number);
+        const bookingStart = bookingHours * 60 + bookingMinutes;
+        return minute < bookingStart + booking.duration && bookingStart < minute + 15;
+      }).length;
+      available = Math.min(available, capacity - overlapping);
+      if (available <= 0) return [];
+    }
+    return [{ time, available }];
+  });
+}
+
+type BookingAvailabilityRecord = {
+  id: string;
+  storeCode?: string;
+  barberId: string;
+  date: string;
+  time: string;
+  duration: number;
+  status: string;
+};
+
 export interface Professional {
   id: string;
   storeCode?: string;
