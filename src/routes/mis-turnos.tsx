@@ -498,7 +498,7 @@ function MyBookingsPage() {
                     <div className="shrink-0 font-display text-base font-semibold text-gold xl:col-start-3 xl:rounded-lg xl:border xl:border-gold/20 xl:bg-gold/5 xl:px-3 xl:py-2 xl:text-center xl:text-lg">${booking.totalPrice.toLocaleString("es-AR")}</div>
                   </div>
                   <div className="flex w-full flex-col items-center gap-1 text-xs text-muted-foreground xl:col-start-4 xl:items-start xl:justify-self-start">
-                      <Badge variant="outline" className={statusClass}>{statusLabel}</Badge>
+                      {booking.status !== "cancelled" && <Badge variant="outline" className={statusClass}>{statusLabel}</Badge>}
                       <Badge variant="outline" className="border-gold/30 text-gold">Pago · {paymentMethodLabel}</Badge>
                       {(booking.status === "pending-payment" || booking.paymentStatus === "pending") && <Badge variant="outline" className="border-amber-300 text-amber-300">Pago pendiente</Badge>}
                       {booking.paymentReportedAt && booking.paymentStatus !== "approved" && <Badge variant="outline" className="border-amber-300 text-amber-300">Informaste el pago · El profesional lo revisará</Badge>}
@@ -506,6 +506,7 @@ function MyBookingsPage() {
                       {booking.paymentCancellationStatus === "requested" && <Badge variant="outline" className="border-amber-300 text-amber-300">Devolución solicitada</Badge>}
                       {booking.paymentCancellationStatus === "refunded" && <Badge variant="outline" className="border-emerald-300 text-emerald-400">Pago devuelto</Badge>}
                       {booking.paymentCancellationStatus === "cancelled" && <Badge variant="outline" className="border-red-300 text-red-300">Pago cancelado</Badge>}
+                      {booking.status === "cancelled" && <Badge variant="outline" className={statusClass}>{statusLabel}</Badge>}
                   </div>
                   {(isActiveBooking || (canArchive && canArchiveBooking(booking))) && <div className="grid w-full grid-cols-2 gap-2 xl:col-start-5 xl:grid-cols-3">
                     {isActiveBooking && !hasPaymentReport && booking.paymentStatus !== "approved" && <Button size="sm" disabled={busyBookingId !== null} className="min-w-0 whitespace-normal px-2 text-center leading-tight bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-60" onClick={() => { setPaymentBooking(booking); setShowTransferDetails(false); }}>Indicar pago</Button>}
