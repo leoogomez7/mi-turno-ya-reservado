@@ -3,10 +3,40 @@ import dataHandler from "./data.js";
 const server = serverModule.default ?? serverModule;
 
 const RequestImpl = globalThis.Request ?? (await import("node:undici")).Request;
+const SECURITY_HEADERS = {
+  "Content-Security-Policy": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests;",
+  "Strict-Transport-Security": "max-age=31536000; includeSubDomains; preload",
+  "X-Content-Type-Options": "nosniff",
+  "Referrer-Policy": "strict-origin-when-cross-origin",
+  "Permissions-Policy": "geolocation=(), microphone=(), camera=()",
+  "X-Frame-Options": "DENY",
+};
+
+function getAllowedOrigin(request) {
+  const allowedOrigins = new Set(
+    (process.env.ALLOWED_ORIGINS ?? "http://localhost:3000,http://localhost:5173,https://localhost:3000,https://localhost:5173").split(",").map((origin) => origin.trim()).filter(Boolean),
+  );
+  const requestedOrigin = request.headers.origin;
+  if (!requestedOrigin) return null;
+  return allowedOrigins.has(requestedOrigin) ? requestedOrigin : null;
+}
 
 export default async function handler(req, res) {
   const host = req.headers.host || "localhost";
   const url = new URL(req.url, `https://${host}`);
+  const allowedOrigin = getAllowedOrigin(req);
+  Object.entries(SECURITY_HEADERS).forEach(([key, value]) => res.setHeader(key, value));
+  if (allowedOrigin) {
+    res.setHeader("Access-Control-Allow-Origin", allowedOrigin);
+    res.setHeader("Access-Control-Allow-Methods", "GET, PUT, POST, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Store-Code");
+    res.setHeader("Vary", "Origin");
+  }
+
+  if (req.method === "OPTIONS") {
+    res.statusCode = 204;
+    return res.end();
+  }
 
   if (url.pathname === "/api/data") {
     return dataHandler(req, res);
@@ -66,6 +96,14 @@ export default async function handler(req, res) {
   });
 
   const response = await server.fetch(request);
+
+  Object.entries(SECURITY_HEADERS).forEach(([key, value]) => res.setHeader(key, value));
+  if (allowedOrigin) {
+    res.setHeader("Access-Control-Allow-Origin", allowedOrigin);
+    res.setHeader("Access-Control-Allow-Methods", "GET, PUT, POST, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Store-Code");
+    res.setHeader("Vary", "Origin");
+  }
 
   res.statusCode = response.status;
   response.headers.forEach((value, name) => {

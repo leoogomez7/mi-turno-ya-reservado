@@ -1,0 +1,195 @@
+{
+  "planHash": "c62d5e29a2531b14ac9ecf3aa9d940fb26761ef248eac8795b2b6b0e773c8481",
+  "phase": "baseline",
+  "recordedAtUtc": "2026-11-14T01:12:40.1068022Z",
+  "retryCount": 0,
+  "resetBaseline": true,
+  "complete": true,
+  "result": {
+    "setupSucceeded": true,
+    "setupDurationMs": 131414,
+    "setupFailureOutput": null,
+    "assertions": [
+      {
+        "name": "production-build",
+        "kind": "process",
+        "verificationMethod": "exit-code",
+        "passed": true,
+        "timedOut": false,
+        "skipped": false,
+        "skippedReason": null,
+        "exitCode": 0,
+        "outputSample": "npm warn Unknown env config \u0022scripts-prepend-node-path\u0022. This will stop working in the next major version of npm. See \u0060npm help npmrc\u0060 for supported config options.\r\n\r\n\u003E build\r\n\u003E node --max-old-space-size=4096 ./node_modules/vite/bin/vite.js build\r\n\r\n\u001B[36mvite v7.3.7 \u001B[32mbuilding client environment for production...\u001B[36m\u001B[39m\r\ntransforming...\r\n\u001B[32m\u2713\u001B[39m 3603 modules transformed.\r\nrendering chunks...\r\ncomputing gzip size...\r\n\u001B[2mdist/client/\u001B[22m\u001B[32massets/logo-TaDE6I55.png           \u001B[39m\u001B[1m\u001B[2m475.53 kB\u001B[22m\u001B[1m\u001B[22m\r\n\u001B[2mdist/client/\u001B[22m\u001B[35massets/styles-YqNoJtxD.css         \u001B[39m\u001B[1m\u001B[2m102.86 kB\u001B[22m\u001B[1m\u001B[22m\u001B[2m \u2502 gzip:  17.43 kB\u001B[22m\r\n\u001B[2mdist/client/\u001B[22m\u001B[36massets/admin-charts-CeSC7uLj.js    \u001B[39m\u001B[1m\u001B[2m  4.23 kB\u001B[22m\u001B[1m\u001B[22m\u001B[2m \u2502 gzip:   1.68 kB\u001B[22m\r\n\u001B[2mdist/client/\u001B[22m\u001B[36massets/icons-qrb222AE.js           \u001B[39m\u001B[1m\u001B[2m  7.26 kB\u001B[22m\u001B[1m\u001B[22m\u001B[2m \u2502 gzip:   2.93 kB\u001B[22m\r\n\u001B[2mdist/client/\u001B[22m\u001B[36massets/authentication-CCSJkiRC.js  \u001B[39m\u001B[1m\u001B[2m 31.07 kB\u001B[22m\u001B[1m\u001B[22m\u001B[2m \u2502 gzip:  10.20 kB\u001B[22m\r\n\u001B[2mdist/client/\u001B[22m\u001B[36massets/date-utils-DSddTJ2w.js      \u001B[39m\u001B[1m\u001B[2m 31.68 kB\u001B[22m\u001B[1m\u001B[22m\u001B[2m \u2502 gzip:   8.92 kB\u001B[22m\r\n\u001B[2mdist/client/\u001B[22m\u001B[36massets/radix-vendor-HWVvEskH.js    \u001B[39m\u001B[1m\u001B[2m112.55 kB\u001B[22m\u001B[1m\u001B[22m\u001B[2m \u2502 gzip:  34.74 kB\u001B[22m\r\n\u001B[2mdist/client/\u001B[22m\u001B[36massets/react-vendor-OzaaG8PS.js    \u001B[39m\u001B[1m\u001B[2m193.06 kB\u001B[22m\u001B[1m\u001B[22m\u001B[2m \u2502 gzip:  60.58 kB\u001B[22m\r\n\u001B[2mdist/client/\u001B[22m\u001B[36massets/charts-vendor-Bin8m7IW.js   \u001B[39m\u001B[1m\u001B[2m408.97 kB\u001B[22m\u001B[1m\u001B[22m\u001B[2m \u2502 gzip: 110.73 kB\u001B[22m\r\n\u001B[2mdist/client/\u001B[22m\u001B[36massets/index-Bo7shrY1.js           \u001B[39m\u001B[1m\u001B[2m484.39 kB\u001B[22m\u001B[1m\u001B[22m\u001B[2m \u2502 gzip: 139.11 kB\u001B[22m\r\n\u001B[32m\u2713 built in 1m 30s\u001B[39m\r\n\u001B[36mvite v7.3.7 \u001B[32mbuilding ssr environment for production...\u001B[36m\u001B[39m\r\ntransforming...\r\n\u001B[32m\u2713\u001B[39m 101 modules transformed.\r\nrendering chunks...\r\n\u001B[2mdist/server/\u001B[22m\u001B[36massets/_tanstack-start-manifest_v-MAWuamfV.js  \u001B[39m\u001B[1m\u001B[2m  0.67 kB\u001B[22m\u001B[1m\u001B[22m\r\n\u001B[2mdist/server/\u001B[22m\u001B[36massets/start-CZT6PzcF.js                       \u001B[39m\u001B[1m\u001B[2m  0.98 kB\u001B[22m\u001B[1m\u001B[22m\r\n\u001B[2mdist/server/\u001B[22m\u001B[36massets/admin-charts-CDjFm2i6.js                \u001B[39m\u001B[1m\u001B[2m  6.20 kB\u001B[22m\u001B[1m\u001B[22m\r\n\u001B[2mdist/server/\u001B[22m\u001B[36mserver.js                                      \u001B[39m\u001B[1m\u001B[2m  6.98 kB\u001B[22m\u001B[1m\u001B[22m\r\n\u001B[2mdist/server/\u001B[22m\u001B[36massets/tanstack-vendor-DFAmS_O0.js             \u001B[39m\u001B[1m\u001B[2m 69.81 kB\u001B[22m\u001B[1m\u001B[22m\r\n\u001B[2mdist/server/\u001B[22m\u001B[36massets/router-4GQkdO08.js                      \u001B[39m\u001B[1m\u001B[2m399.16 kB\u001B[22m\u001B[1m\u001B[22m\r\n\u001B[32m\u2713 built in 22.98s\u001B[39m\r\n",
+        "durationMs": 158657
+      },
+      {
+        "name": "tests-pass",
+        "kind": "process",
+        "verificationMethod": "test-results",
+        "passed": false,
+        "timedOut": false,
+        "skipped": false,
+        "skippedReason": null,
+        "exitCode": 1,
+        "outputSample": "npm warn Unknown env config \u0022scripts-prepend-node-path\u0022. This will stop working in the next major version of npm. See \u0060npm help npmrc\u0060 for supported config options.\r\n\r\n\u003E test\r\n\u003E vitest run\r\n\r\n\r\n\u001B[1m\u001B[30m\u001B[46m RUN \u001B[49m\u001B[39m\u001B[22m \u001B[36mv5.1.0 \u001B[39m\u001B[90mC:/Users/campe/OneDrive/Escritorio/LRG/LRG.WEB.DEVELOPER/mi-turno-ya-reservado-main\u001B[39m\r\n\r\n \u001B[31m\u276F\u001B[39m src/lib/api/example.functions.test.ts \u001B[2m(\u001B[22m\u001B[2m0 test\u001B[22m\u001B[2m)\u001B[22m\r\n\r\n\u001B[31m\u23AF\u23AF\u23AF\u23AF\u23AF\u23AF\u001B[39m\u001B[1m\u001B[41m Failed Suites 1 \u001B[49m\u001B[22m\u001B[31m\u23AF\u23AF\u23AF\u23AF\u23AF\u23AF\u23AF\u001B[39m\r\n\r\n\u001B[41m\u001B[1m FAIL \u001B[22m\u001B[49m src/lib/api/example.functions.test.ts\u001B[2m [ src/lib/api/example.functions.test.ts ]\u001B[22m\r\n\u001B[31m\u001B[1mTypeError\u001B[22m: Cannot read properties of undefined (reading \u0027config\u0027)\u001B[39m\r\n\u001B[36m \u001B[2m\u276F\u001B[22m src/lib/api/example.functions.test.ts:\u001B[2m4:1\u001B[22m\u001B[39m\r\n    \u001B[90m  2|\u001B[39m \u001B[35mimport\u001B[39m { greetingInputSchema } \u001B[35mfrom\u001B[39m \u001B[32m\u0022./example.schema\u0022\u001B[39m\u001B[33m;\u001B[39m\r\n    \u001B[90m  3|\u001B[39m\r\n    \u001B[90m  4|\u001B[39m \u001B[34mdescribe\u001B[39m(\u001B[32m\u0022greetingInputSchema\u0022\u001B[39m\u001B[33m,\u001B[39m () \u001B[33m=\u003E\u001B[39m {\r\n    \u001B[90m   |\u001B[39m \u001B[31m^\u001B[39m\r\n    \u001B[90m  5|\u001B[39m   \u001B[34mit\u001B[39m(\u001B[32m\u0022accepts a non-empty name\u0022\u001B[39m\u001B[33m,\u001B[39m () \u001B[33m=\u003E\u001B[39m {\r\n    \u001B[90m  6|\u001B[39m     expect(greetingInputSchema.parse({ name: \u0022Ada\u0022 })).toEqual({ name:\u2026\r\n\r\n\u001B[31m\u001B[2m\u23AF\u23AF\u23AF\u23AF\u23AF\u23AF\u23AF\u23AF\u23AF\u23AF\u23AF\u23AF\u23AF\u23AF\u23AF\u23AF\u23AF\u23AF\u23AF\u23AF\u23AF\u23AF\u23AF\u23AF[1/1]\u23AF\u001B[22m\u001B[39m\r\n\r\n\r\n\u001B[2m Test Files \u001B[22m \u001B[1m\u001B[31m1 failed\u001B[39m\u001B[22m\u001B[90m (1)\u001B[39m\r\n\u001B[2m      Tests \u001B[22m \u001B[2mno tests\u001B[22m\r\n\u001B[2m   Start at \u001B[22m 22:10:32\r\n\u001B[2m   Duration \u001B[22m 4.01s\u001B[2m (worker 97%, environment 3%)\u001B[22m\r\n\r\n",
+        "durationMs": 38281,
+        "testResults": {
+          "testFramework": "vitest",
+          "runnerDetectedFrom": "package_json",
+          "testsTotal": 0,
+          "testsPassed": 0,
+          "testsFailed": 0,
+          "testsSkipped": 0,
+          "parseFailed": true
+        }
+      },
+      {
+        "name": "api-syntax-check",
+        "kind": "process",
+        "verificationMethod": "exit-code",
+        "passed": true,
+        "timedOut": false,
+        "skipped": false,
+        "skippedReason": null,
+        "exitCode": 0,
+        "outputSample": "",
+        "durationMs": 1597
+      },
+      {
+        "name": "home-route-serves",
+        "kind": "http-probe",
+        "verificationMethod": "http-status",
+        "passed": false,
+        "timedOut": false,
+        "skipped": false,
+        "skippedReason": null,
+        "exitCode": null,
+        "outputSample": "\u003Cprobe error: The operation was canceled.\u003E",
+        "durationMs": 121718
+      }
+    ],
+    "executions": [
+      {
+        "source": "setup[0]",
+        "resolvedExecutable": "C:\\Program Files\\nodejs\\npm.cmd",
+        "args": [
+          "ci"
+        ],
+        "cwd": "c:\\Users\\campe\\OneDrive\\Escritorio\\LRG\\LRG.WEB.DEVELOPER\\mi-turno-ya-reservado-main",
+        "env": {},
+        "prependPath": [],
+        "platform": "win32",
+        "nodeExecutable": "C:\\Program Files\\nodejs\\node.EXE",
+        "nodeVersion": "v24.22.2",
+        "packageManager": "npm",
+        "packageManagerExecutable": "C:\\Program Files\\nodejs\\npm.cmd",
+        "packageManagerVersion": "11.19.1",
+        "cleanup": {
+          "RootProcessId": 6104,
+          "Completed": true,
+          "ProcessesObserved": 9,
+          "ProcessesTerminated": 1,
+          "Failure": null
+        }
+      },
+      {
+        "source": "production-build",
+        "resolvedExecutable": "C:\\Program Files\\nodejs\\npm.cmd",
+        "args": [
+          "run",
+          "build"
+        ],
+        "cwd": "c:\\Users\\campe\\OneDrive\\Escritorio\\LRG\\LRG.WEB.DEVELOPER\\mi-turno-ya-reservado-main",
+        "env": {},
+        "prependPath": [],
+        "platform": "win32",
+        "nodeExecutable": "C:\\Program Files\\nodejs\\node.EXE",
+        "nodeVersion": "v24.22.2",
+        "packageManager": "npm",
+        "packageManagerExecutable": "C:\\Program Files\\nodejs\\npm.cmd",
+        "packageManagerVersion": "11.19.1",
+        "cleanup": {
+          "RootProcessId": 17140,
+          "Completed": true,
+          "ProcessesObserved": 14,
+          "ProcessesTerminated": 1,
+          "Failure": null
+        }
+      },
+      {
+        "source": "tests-pass",
+        "resolvedExecutable": "C:\\Program Files\\nodejs\\npm.cmd",
+        "args": [
+          "test"
+        ],
+        "cwd": "c:\\Users\\campe\\OneDrive\\Escritorio\\LRG\\LRG.WEB.DEVELOPER\\mi-turno-ya-reservado-main",
+        "env": {},
+        "prependPath": [],
+        "platform": "win32",
+        "nodeExecutable": "C:\\Program Files\\nodejs\\node.EXE",
+        "nodeVersion": "v24.22.2",
+        "packageManager": "npm",
+        "packageManagerExecutable": "C:\\Program Files\\nodejs\\npm.cmd",
+        "packageManagerVersion": "11.19.1",
+        "cleanup": {
+          "RootProcessId": 24008,
+          "Completed": true,
+          "ProcessesObserved": 15,
+          "ProcessesTerminated": 1,
+          "Failure": null
+        }
+      },
+      {
+        "source": "api-syntax-check",
+        "resolvedExecutable": "C:\\Program Files\\nodejs\\node.EXE",
+        "args": [
+          "--check",
+          "api/data.js"
+        ],
+        "cwd": "c:\\Users\\campe\\OneDrive\\Escritorio\\LRG\\LRG.WEB.DEVELOPER\\mi-turno-ya-reservado-main",
+        "env": {},
+        "prependPath": [],
+        "platform": "win32",
+        "nodeExecutable": null,
+        "nodeVersion": null,
+        "packageManager": null,
+        "packageManagerExecutable": null,
+        "packageManagerVersion": null,
+        "cleanup": {
+          "RootProcessId": 12580,
+          "Completed": true,
+          "ProcessesObserved": 2,
+          "ProcessesTerminated": 1,
+          "Failure": null
+        }
+      },
+      {
+        "source": "home-route-serves",
+        "resolvedExecutable": "C:\\Program Files\\nodejs\\npm.cmd",
+        "args": [
+          "run",
+          "dev",
+          "--",
+          "--host",
+          "127.0.0.1"
+        ],
+        "cwd": "c:\\Users\\campe\\OneDrive\\Escritorio\\LRG\\LRG.WEB.DEVELOPER\\mi-turno-ya-reservado-main",
+        "env": {},
+        "prependPath": [],
+        "platform": "win32",
+        "nodeExecutable": "C:\\Program Files\\nodejs\\node.EXE",
+        "nodeVersion": "v24.22.2",
+        "packageManager": "npm",
+        "packageManagerExecutable": "C:\\Program Files\\nodejs\\npm.cmd",
+        "packageManagerVersion": "11.19.1",
+        "cleanup": {
+          "RootProcessId": 9040,
+          "Completed": true,
+          "ProcessesObserved": 12,
+          "ProcessesTerminated": 6,
+          "Failure": null
+        }
+      }
+    ]
+  }
+}
