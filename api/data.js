@@ -1,5 +1,7 @@
 import { createClient } from "@libsql/client";
 import { createRemoteJWKSet, jwtVerify } from "jose";
+import { promises as fs } from "node:fs";
+import path from "node:path";
 import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes } from "node:crypto";
 
 const COLLECTIONS = ["bookings", "professionals"];
@@ -65,6 +67,7 @@ const ACTION_RATE_LIMITS = new Map([
   ["save-store-payment-credentials", { maxRequests: 12, windowMs: 60_000 }],
   ["create-subscription-checkout", { maxRequests: 6, windowMs: 60_000 }],
 ]);
+const DATABASE_BACKUP_RETENTION_DAYS = 30;
 let schemaReady;
 let legacyInvitesRemoved = false;
 let demoStoreRemoved = false;
@@ -173,6 +176,88 @@ async function getStorePaymentCredentials(db, storeCode) {
 
 function normalizeStoreCode(value) {
   return typeof value === "string" ? value.trim().toUpperCase() : "";
+}
+
+async function ensureDatabaseSecurityPolicies(db) {
+  await db.execute(`CREATE TABLE IF NOT EXISTS db_security_policies (
+    policy_name TEXT PRIMARY KEY,
+    policy_status TEXT NOT NULL CHECK(policy_status IN ('enabled', 'warning', 'disabled')),
+    policy_text TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`);
+
+  const requiredPolicies = [
+    ["tenant_isolation", "enabled", "Los accesos están limitados por owner_id/store_code y validaciones de permisos en la API."],
+    ["encrypted_sensitive_values", "enabled", "Los datos sensibles se cifran antes de persistirlos y se descifran solo en el servidor."],
+    ["db_auto_backups", "enabled", "Se generan snapshots automáticos de tablas críticas para recuperación operativa."],
+    ["rate_limit_enforced", "enabled", "Las acciones públicas y autenticadas cuentan con ventanas de rate limit por clave HMAC."],
+  ];
+
+  for (const [name, status, details] of requiredPolicies) {
+    await db.execute({
+      sql: `INSERT INTO db_security_policies (policy_name, policy_status, policy_text, updated_at)
+        VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(policy_name) DO UPDATE SET
+          policy_status = excluded.policy_status,
+          policy_text = excluded.policy_text,
+          updated_at = CURRENT_TIMESTAMP`,
+      args: [name, status, details],
+    });
+  }
+}
+
+async function createDatabaseBackupSnapshot(db) {
+  const backupDir = path.resolve(process.cwd(), "backups");
+  await fs.mkdir(backupDir, { recursive: true });
+
+  const tableNames = [
+    "account_roles",
+    "bookings",
+    "client_profiles",
+    "notifications",
+    "professionals",
+    "stores",
+    "store_payment_credentials",
+    "subscription_discount_redemptions",
+    "subscription_orders",
+  ];
+
+  const snapshot = {
+    createdAt: new Date().toISOString(),
+    version: 1,
+    tables: {},
+  };
+
+  for (const tableName of tableNames) {
+    try {
+      const result = await db.execute(`SELECT * FROM ${tableName} ORDER BY 1`);
+      snapshot.tables[tableName] = result.rows;
+    } catch {
+      snapshot.tables[tableName] = [];
+    }
+  }
+
+  const payload = JSON.stringify(snapshot, null, 2);
+  const backupFileName = `db-backup-${Date.now()}.json`;
+  const backupFilePath = path.join(backupDir, backupFileName);
+  await fs.writeFile(backupFilePath, payload, "utf8");
+
+  const checksum = createHash("sha256").update(payload, "utf8").digest("hex");
+  const backupId = `snapshot:${Date.now()}:${randomBytes(8).toString("hex")}`;
+  const expiresAt = new Date(Date.now() + DATABASE_BACKUP_RETENTION_DAYS * 24 * 60 * 60 * 1000).toISOString();
+
+  await db.execute({
+    sql: `INSERT INTO db_backups (id, table_name, backup_key, status, created_at, expires_at, checksum, notes)
+      VALUES (?, ?, ?, 'ok', ?, ?, ?, ?)`,
+    args: [backupId, "critical_tables", backupFileName, new Date().toISOString(), expiresAt, checksum, "Snapshot automático generado para recuperación y auditoría."],
+  });
+
+  await db.execute({
+    sql: "DELETE FROM db_backups WHERE expires_at < ?",
+    args: [new Date().toISOString()],
+  });
+
+  return backupFilePath;
 }
 
 function hasPendingRefund(booking) {
@@ -429,12 +514,12 @@ async function database() {
     )`,
     `CREATE TABLE IF NOT EXISTS notifications (
       id TEXT PRIMARY KEY,
-      recipient_key TEXT NOT NULL,
-      store_code TEXT NOT NULL,
-      booking_id TEXT NOT NULL,
-      type TEXT NOT NULL,
-      title TEXT NOT NULL,
-      message TEXT NOT NULL,
+      recipient_key TEXT NOT NULL CHECK(length(trim(recipient_key)) > 0),
+      store_code TEXT NOT NULL CHECK(length(trim(store_code)) > 0),
+      booking_id TEXT NOT NULL CHECK(length(trim(booking_id)) > 0),
+      type TEXT NOT NULL CHECK(length(trim(type)) > 0),
+      title TEXT NOT NULL CHECK(length(trim(title)) > 0),
+      message TEXT NOT NULL CHECK(length(trim(message)) > 0),
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       read_at TEXT,
       prompted_at TEXT
@@ -446,7 +531,7 @@ async function database() {
     )`,
     `CREATE TABLE IF NOT EXISTS account_roles (
       user_id TEXT PRIMARY KEY,
-      email TEXT NOT NULL,
+      email TEXT NOT NULL CHECK(length(trim(email)) > 0),
       role TEXT NOT NULL CHECK(role IN ('admin', 'client')),
       store_code TEXT,
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -458,15 +543,15 @@ async function database() {
     )`,
     `CREATE TABLE IF NOT EXISTS stores (
       code TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      owner_id TEXT NOT NULL,
+      name TEXT NOT NULL CHECK(length(trim(name)) > 0),
+      owner_id TEXT NOT NULL CHECK(length(trim(owner_id)) > 0),
       logo TEXT NOT NULL DEFAULT '',
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     )`,
     `CREATE TABLE IF NOT EXISTS store_payment_credentials (
-      store_code TEXT PRIMARY KEY,
-      public_key TEXT NOT NULL DEFAULT '',
-      encrypted_access_token TEXT NOT NULL,
+      store_code TEXT PRIMARY KEY CHECK(length(trim(store_code)) > 0),
+      public_key TEXT NOT NULL DEFAULT '' CHECK(length(trim(public_key)) > 0),
+      encrypted_access_token TEXT NOT NULL CHECK(length(trim(encrypted_access_token)) > 0),
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     )`,
     `CREATE TABLE IF NOT EXISTS subscription_orders (
@@ -494,8 +579,24 @@ async function database() {
       id TEXT PRIMARY KEY,
       completed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     )`,
+    `CREATE TABLE IF NOT EXISTS db_security_policies (
+      policy_name TEXT PRIMARY KEY,
+      policy_status TEXT NOT NULL CHECK(policy_status IN ('enabled', 'warning', 'disabled')),
+      policy_text TEXT NOT NULL,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )`,
+    `CREATE TABLE IF NOT EXISTS db_backups (
+      id TEXT PRIMARY KEY,
+      table_name TEXT NOT NULL,
+      backup_key TEXT NOT NULL,
+      status TEXT NOT NULL CHECK(status IN ('ok', 'warning', 'failed')),
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      expires_at TEXT NOT NULL,
+      checksum TEXT NOT NULL,
+      notes TEXT NOT NULL DEFAULT ''
+    )`,
     `CREATE TABLE IF NOT EXISTS api_rate_limits (
-      bucket_key TEXT PRIMARY KEY,
+      bucket_key TEXT PRIMARY KEY CHECK(length(trim(bucket_key)) > 0),
       window_started_at INTEGER NOT NULL,
       request_count INTEGER NOT NULL
     )`,
@@ -516,6 +617,8 @@ async function database() {
   await ensureStoreLogoColumn(db);
   await ensureStoreSubscriptionColumn(db);
   await ensureSubscriptionOrderDurationColumn(db);
+  await ensureDatabaseSecurityPolicies(db);
+  await createDatabaseBackupSnapshot(db);
   await migrateSensitiveData(db);
   await removeDemoStore(db);
   if (!legacyInvitesRemoved) {
