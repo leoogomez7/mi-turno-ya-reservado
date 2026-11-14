@@ -1,6 +1,6 @@
 import { createClient } from "@libsql/client";
 import { createRemoteJWKSet, jwtVerify } from "jose";
-import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes } from "node:crypto";
 
 const COLLECTIONS = ["bookings", "professionals"];
 const FREE_TRIAL_DAYS = 4;
@@ -65,7 +65,6 @@ const ACTION_RATE_LIMITS = new Map([
   ["save-store-payment-credentials", { maxRequests: 12, windowMs: 60_000 }],
   ["create-subscription-checkout", { maxRequests: 6, windowMs: 60_000 }],
 ]);
-const RATE_LIMIT_BUCKETS = new Map();
 let schemaReady;
 let legacyInvitesRemoved = false;
 let demoStoreRemoved = false;
@@ -134,6 +133,12 @@ function serializeStoredValue(value) {
 
 function serializeStoreSettings(value) {
   return serializeStoredValue(value);
+}
+
+function clientNotificationRecipientKey(email) {
+  const normalizedEmail = String(email).trim().toLowerCase();
+  const digest = createHmac("sha256", sensitiveDataEncryptionKey()).update(normalizedEmail).digest("hex");
+  return `client:v1:${digest}`;
 }
 
 function encryptPaymentAccessToken(accessToken) {
@@ -489,6 +494,11 @@ async function database() {
       id TEXT PRIMARY KEY,
       completed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     )`,
+    `CREATE TABLE IF NOT EXISTS api_rate_limits (
+      bucket_key TEXT PRIMARY KEY,
+      window_started_at INTEGER NOT NULL,
+      request_count INTEGER NOT NULL
+    )`,
     "CREATE INDEX IF NOT EXISTS bookings_updated ON bookings(updated_at)",
     "CREATE INDEX IF NOT EXISTS bookings_store_code ON bookings(upper(json_extract(value, '$.storeCode')))",
     "CREATE INDEX IF NOT EXISTS notifications_recipient ON notifications(recipient_key, created_at)",
@@ -565,6 +575,24 @@ async function migrateSensitiveData(db) {
           }
         }
 
+        const notificationRows = await transaction.execute(
+          "SELECT id, recipient_key, title, message FROM notifications",
+        );
+        for (const row of notificationRows.rows) {
+          const recipientKey = String(row.recipient_key);
+          const nextRecipientKey = recipientKey.startsWith("client:")
+            ? clientNotificationRecipientKey(recipientKey.slice("client:".length))
+            : recipientKey;
+          const title = encryptSensitiveValue(String(row.title ?? ""));
+          const message = encryptSensitiveValue(String(row.message ?? ""));
+          if (nextRecipientKey !== recipientKey || title !== String(row.title) || message !== String(row.message)) {
+            await transaction.execute({
+              sql: "UPDATE notifications SET recipient_key = ?, title = ?, message = ? WHERE id = ?",
+              args: [nextRecipientKey, title, message, String(row.id)],
+            });
+          }
+        }
+
         const storeRows = await transaction.execute("SELECT code, settings FROM stores");
         for (const row of storeRows.rows) {
           const rawSettings = String(row.settings ?? "{}");
@@ -605,19 +633,28 @@ function getClientIp(request) {
   return "unknown";
 }
 
-function enforceActionRateLimit(request, action) {
+async function enforceActionRateLimit(db, request, action) {
   const limit = ACTION_RATE_LIMITS.get(action) ?? { maxRequests: 20, windowMs: 60_000 };
-  const bucketKey = `${action}:${getClientIp(request)}`;
+  const bucketKey = createHmac("sha256", sensitiveDataEncryptionKey())
+    .update(`${action}:${getClientIp(request)}`)
+    .digest("hex");
   const now = Date.now();
-  const existing = RATE_LIMIT_BUCKETS.get(bucketKey) ?? [];
-  const validWindow = existing.filter((timestamp) => now - timestamp < limit.windowMs);
-  validWindow.push(now);
-  if (validWindow.length > limit.maxRequests) {
-    RATE_LIMIT_BUCKETS.set(bucketKey, validWindow);
-    return false;
-  }
-  RATE_LIMIT_BUCKETS.set(bucketKey, validWindow);
-  return true;
+  const result = await db.execute({
+    sql: `INSERT INTO api_rate_limits (bucket_key, window_started_at, request_count)
+      VALUES (?, ?, 1)
+      ON CONFLICT(bucket_key) DO UPDATE SET
+        request_count = CASE
+          WHEN api_rate_limits.window_started_at + ? <= ? THEN 1
+          ELSE api_rate_limits.request_count + 1
+        END,
+        window_started_at = CASE
+          WHEN api_rate_limits.window_started_at + ? <= ? THEN excluded.window_started_at
+          ELSE api_rate_limits.window_started_at
+        END
+      RETURNING request_count`,
+    args: [bucketKey, now, limit.windowMs, now, limit.windowMs, now],
+  });
+  return Number(result.rows[0]?.request_count ?? limit.maxRequests + 1) <= limit.maxRequests;
 }
 
 function isPublicAction(action) {
@@ -863,7 +900,7 @@ function recordId(record) {
 function notificationStatement(recipientKey, booking, type, title, message) {
   return {
     sql: "INSERT INTO notifications (id, recipient_key, store_code, booking_id, type, title, message) VALUES (?, ?, ?, ?, ?, ?, ?)",
-    args: [randomBytes(16).toString("hex"), recipientKey, normalizeStoreCode(booking.storeCode), String(booking.id), type, title, message],
+    args: [randomBytes(16).toString("hex"), recipientKey, normalizeStoreCode(booking.storeCode), String(booking.id), type, encryptSensitiveValue(title), encryptSensitiveValue(message)],
   };
 }
 
@@ -874,7 +911,7 @@ function notificationForAdmin(booking, type, title, message) {
 
 function notificationForClient(booking, type, title, message) {
   const email = booking.customer?.email?.trim().toLowerCase();
-  return email ? notificationStatement(`client:${email}`, booking, type, title, message) : null;
+  return email ? notificationStatement(clientNotificationRecipientKey(email), booking, type, title, message) : null;
 }
 
 function describeAdminBookingChange(previous, next) {
@@ -1148,9 +1185,9 @@ export default async function handler(request, response) {
     if (isAuthenticatedAction(action) && !user) {
       return response.status(401).json({ error: "Iniciá sesión para continuar." });
     }
-    if (!enforceActionRateLimit(request, action)) {
-      return response.status(429).json({ error: "Demasiadas solicitudes. Intentá nuevamente en unos minutos." });
-    }
+  if (action && !(await enforceActionRateLimit(db, request, action))) {
+    return response.status(429).json({ error: "Demasiadas solicitudes. Intentá nuevamente en unos minutos." });
+  }
   }
 
   if (request.method === "POST") {
@@ -1280,7 +1317,7 @@ export default async function handler(request, response) {
         if (role !== "admin" && role !== "client") return response.status(403).json({ error: "Configurá tu cuenta para consultar notificaciones." });
         const recipientKey = role === "admin"
           ? `admin:${normalizeStoreCode(account.rows[0]?.store_code)}`
-          : `client:${user.email}`;
+          : clientNotificationRecipientKey(user.email);
         if (role === "admin" && recipientKey === "admin:") return response.status(403).json({ error: "La cuenta administradora no tiene una sucursal asignada." });
 
         if (body.action === "get-notifications") {
@@ -1294,8 +1331,8 @@ export default async function handler(request, response) {
             args: [recipientKey],
           });
           const notifications = result.rows.map((row) => ({
-            id: String(row.id), bookingId: String(row.bookingId), type: String(row.type), title: String(row.title),
-            message: String(row.message), createdAt: String(row.createdAt), readAt: row.readAt ? String(row.readAt) : null,
+            id: String(row.id), bookingId: String(row.bookingId), type: String(row.type), title: decryptSensitiveValue(String(row.title)),
+            message: decryptSensitiveValue(String(row.message)), createdAt: String(row.createdAt), readAt: row.readAt ? String(row.readAt) : null,
             bookingExists: Boolean(row.bookingValue) && (() => {
               const booking = parseStoredValue(row.bookingValue);
               return isBookingVisibleInMainList(booking, role) || isBookingVisibleInArchiveList(booking, role);
