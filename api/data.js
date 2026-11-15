@@ -86,6 +86,10 @@ function requiredEnv(name) {
   return value;
 }
 
+function tursoConfigAvailable() {
+  return Boolean(process.env.TURSO_DATABASE_URL?.trim() && process.env.TURSO_AUTH_TOKEN?.trim());
+}
+
 function paymentCredentialEncryptionKey() {
   return createHash("sha256").update(requiredEnv("MERCADOPAGO_CREDENTIALS_ENCRYPTION_KEY"), "utf8").digest();
 }
@@ -1159,6 +1163,18 @@ export default async function handler(request, response) {
   }
   if (request.method === "PUT" && !user) {
     return response.status(401).json({ error: "Inicia sesión para guardar tus turnos." });
+  }
+
+  if (!tursoConfigAvailable()) {
+    if (request.method === "GET") {
+      return response.status(200).json({
+        data: { bookings: [], professionals: [] },
+        role: "guest",
+        storeCode: null,
+        stores: [],
+      });
+    }
+    return response.status(503).json({ error: "El servicio de datos no está disponible temporalmente. Configurá TURSO_DATABASE_URL y TURSO_AUTH_TOKEN." });
   }
 
   let db;
