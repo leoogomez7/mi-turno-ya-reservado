@@ -1166,14 +1166,6 @@ export default async function handler(request, response) {
   }
 
   if (!tursoConfigAvailable()) {
-    if (request.method === "GET") {
-      return response.status(200).json({
-        data: { bookings: [], professionals: [] },
-        role: "guest",
-        storeCode: null,
-        stores: [],
-      });
-    }
     return response.status(503).json({ error: "El servicio de datos no está disponible temporalmente. Configurá TURSO_DATABASE_URL y TURSO_AUTH_TOKEN." });
   }
 
@@ -1182,14 +1174,6 @@ export default async function handler(request, response) {
     db = await database();
   } catch (error) {
     console.error("No se pudo conectar con Turso", error);
-    if (request.method === "GET") {
-      return response.status(200).json({
-        data: { bookings: [], professionals: [] },
-        role: "guest",
-        storeCode: null,
-        stores: [],
-      });
-    }
     return response.status(503).json({ error: "El servicio de datos no está disponible temporalmente." });
   }
 

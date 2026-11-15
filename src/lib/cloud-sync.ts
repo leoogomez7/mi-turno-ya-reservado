@@ -122,24 +122,14 @@ export async function bootstrapCloudData(account: string, getToken: () => Promis
   tokenGetter = activeAccount === "guest" ? undefined : getToken;
   storeCode = requestedStore?.trim().toUpperCase() || "";
 
-  try {
-    const result = await request<{ data: CloudSnapshot; role: "admin" | "client" | "guest" | "unassigned"; storeCode: string | null; stores: Store[] }>("GET");
-    if (!result.data || !Array.isArray(result.stores)) throw new Error("Se devolvió una respuesta incompleta.");
-    const loadedStoreCode = storeCode || result.storeCode || "";
-    storeCode = loadedStoreCode;
-    availableStores = result.stores;
-    setSnapshot(result.data);
-    activeRole = result.role;
-    return result.role;
-  } catch (error) {
-    console.error("Fallo al cargar datos del backend, usando estado vacío.", error);
-    const emptySnapshot: CloudSnapshot = { bookings: [], professionals: [] };
-    storeCode = "";
-    availableStores = [];
-    setSnapshot(emptySnapshot);
-    activeRole = "guest";
-    return "guest";
-  }
+  const result = await request<{ data: CloudSnapshot; role: "admin" | "client" | "guest" | "unassigned"; storeCode: string | null; stores: Store[] }>("GET");
+  if (!result.data || !Array.isArray(result.stores)) throw new Error("Se devolvió una respuesta incompleta.");
+  const loadedStoreCode = storeCode || result.storeCode || "";
+  storeCode = loadedStoreCode;
+  availableStores = result.stores;
+  setSnapshot(result.data);
+  activeRole = result.role;
+  return result.role;
 }
 
 export async function refreshCloudData() {

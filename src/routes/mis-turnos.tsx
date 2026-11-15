@@ -72,7 +72,7 @@ function MyBookingsPage() {
     const today = format(new Date(), "yyyy-MM-dd");
     if (editedDate < today) return [];
     return getAvailableSlotCapacities(editingProfessional, date, editingDuration, occupiedSlots, editingBooking?.id ?? "", editingBooking?.storeCode);
-  }, [editedDate, editingDuration, editedProfessional, editingServiceIds, editingServices, occupiedSlots, editingBooking]);
+  }, [editedDate, editingDuration, editingProfessional, editedServiceIds, editingServices, occupiedSlots, editingBooking]);
 
   useEffect(() => {
     if (!editingBooking || preparingEditBookingId === editingBooking.id || !editedDate || !editingServices.length || !editedTime) return;
