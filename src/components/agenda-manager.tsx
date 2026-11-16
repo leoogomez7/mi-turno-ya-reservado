@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
-import { CalendarDays, Clock3, Copy, Scissors, Search, UserRound } from "lucide-react";
+import { CalendarDays, Clock3, Copy, Plus, Scissors, Search, Trash2, UserRound } from "lucide-react";
 import { toast } from "sonner";
 
 import { AuthRequired } from "@/components/auth-required";
@@ -12,10 +12,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { bookingStore, canArchiveBooking, canDeleteBooking, getBarber, getBookingArchiveLabel, type Booking } from "@/lib/booking-store";
 import { useAppAuth } from "@/lib/auth";
 import { archiveBooking, BOOKING_HIGHLIGHT_KEY, confirmBookingRefund, permanentlyDeleteArchivedBooking, refreshCloudData, restoreArchivedBooking } from "@/lib/cloud-sync";
-import { getAvailableSlotsForDate, getProfessionalService, getScheduleForDate, professionalStore } from "@/lib/professional-store";
+import { getAvailableSlotCapacities, getProfessionalService, isProfessionalAvailableOnDate, professionalStore } from "@/lib/professional-store";
 
 export function AgendaManager() {
   const { isAuthenticated, isLoading, role } = useAppAuth();
@@ -26,7 +29,7 @@ export function AgendaManager() {
   const [editedDate, setEditedDate] = useState("");
   const [editedTime, setEditedTime] = useState("");
   const [editedProfessionalId, setEditedProfessionalId] = useState("");
-  const [editedServiceId, setEditedServiceId] = useState("");
+  const [editedServiceIds, setEditedServiceIds] = useState<string[]>([]);
   const [savingEdit, setSavingEdit] = useState(false);
   const [processingBookingId, setProcessingBookingId] = useState<string | null>(null);
   const [processingBookingStatus, setProcessingBookingStatus] = useState<Booking["status"] | null>(null);
@@ -92,46 +95,25 @@ export function AgendaManager() {
     setEditedDate(selectedBooking.date);
     setEditedTime(selectedBooking.time);
     setEditedProfessionalId(selectedBooking.barberId);
-    setEditedServiceId(selectedBooking.serviceIds[0] ?? "");
+    setEditedServiceIds(selectedBooking.serviceIds.length ? selectedBooking.serviceIds : [""]);
   }, [selectedBooking]);
 
   const professionals = professionalStore.all();
   const editedProfessional = professionals.find((professional) => professional.id === editedProfessionalId) ?? professionals[0];
-  const editedService = editedProfessional?.services.find((service) => service.id === editedServiceId);
+  const editedServices = editedServiceIds.map((id) => editedProfessional?.services.find((service) => service.id === id)).filter((service) => service !== undefined);
+  const editedDuration = editedServices.reduce((total, service) => total + service.duration, 0);
+  const editedTotalPrice = editedServices.reduce((total, service) => total + service.price, 0);
   const availableSlots = useMemo(() => {
-    if (!editedProfessional || !editedDate || !editedService) return [];
-    const date = parseISO(editedDate);
+    if (!editedProfessional || !editedDate || editedServices.length !== editedServiceIds.length || !editedDuration) return [];
+    const date = parseISO(`${editedDate}T12:00:00`);
     if (Number.isNaN(date.getTime())) return [];
-    const dateSlots = getAvailableSlotsForDate(editedProfessional, date);
-    const schedule = getScheduleForDate(editedProfessional, date);
-    const capacity = schedule?.capacity ?? 1;
-
-    return dateSlots.filter((slot) => {
-      const [hours, minutes] = slot.split(":").map(Number);
-      const start = hours * 60 + minutes;
-      const end = start + editedService.duration;
-
-      for (let minute = start; minute < end; minute += 15) {
-        const segment = `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`;
-        if (!dateSlots.includes(segment)) return false;
-
-        const overlapping = bookings.filter((booking) => {
-          if (booking.id === selectedBooking?.id || booking.date !== editedDate
-            || booking.barberId !== editedProfessional.id || booking.status === "cancelled") return false;
-          const [bookingHours, bookingMinutes] = booking.time.split(":").map(Number);
-          const bookingStart = bookingHours * 60 + bookingMinutes;
-          return minute < bookingStart + booking.duration && bookingStart < minute + 15;
-        }).length;
-        if (overlapping >= capacity) return false;
-      }
-      return true;
-    });
-  }, [bookings, editedDate, editedProfessional, editedService, selectedBooking]);
+    return getAvailableSlotCapacities(editedProfessional, date, editedDuration, bookings, selectedBooking?.id ?? "", editedProfessional.storeCode);
+  }, [bookings, editedDate, editedDuration, editedProfessional, editedServiceIds, editedServices, selectedBooking]);
 
   useEffect(() => {
-    if (!selectedBooking || editMode !== "turno" || !editedDate || !editedService || !editedTime) return;
-    if (!availableSlots.includes(editedTime)) setEditedTime("");
-  }, [availableSlots, editMode, editedDate, editedTime, editedService, selectedBooking]);
+    if (!selectedBooking || editMode !== "turno" || !editedDate || !editedServices.length || !editedTime) return;
+    if (!availableSlots.some((slot) => slot.time === editedTime)) setEditedTime("");
+  }, [availableSlots, editMode, editedDate, editedTime, editedServices.length, selectedBooking]);
 
   if (isLoading) return <LoadingScreen message="Preparando tu agenda" />;
   if (!isAuthenticated || role !== "admin") return <><SiteHeader /><AuthRequired role="admin" title="Agenda" /></>;
@@ -151,22 +133,23 @@ export function AgendaManager() {
   async function saveBookingEdit() {
     if (!selectedBooking || editMode !== "turno" || savingEdit) return;
     const professional = professionalStore.get(editedProfessionalId);
-    const service = professional?.services.find((item) => item.id === editedServiceId);
-    if (!professional || !service) {
+    const services = editedServiceIds.map((id) => professional?.services.find((item) => item.id === id));
+    if (!professional || !editedServiceIds.length || services.some((service) => !service) || new Set(editedServiceIds).size !== editedServiceIds.length) {
       toast.error("Elegí un profesional y servicio válidos.");
       return;
     }
-    if (!editedDate || !availableSlots.includes(editedTime)) {
-      toast.error("Elegí una fecha y un horario disponibles para la duración del servicio.");
+    if (!editedDate || !availableSlots.some((slot) => slot.time === editedTime)) {
+      toast.error("Elegí una fecha y un horario disponibles para los servicios seleccionados.");
       return;
     }
+    const validServices = services.filter((service) => service !== undefined);
     setSavingEdit(true);
     try {
       await bookingStore.update(selectedBooking.id, {
         barberId: professional.id,
-        serviceIds: [service.id],
-        duration: service.duration,
-        totalPrice: service.price,
+        serviceIds: validServices.map((service) => service.id),
+        duration: validServices.reduce((total, service) => total + service.duration, 0),
+        totalPrice: validServices.reduce((total, service) => total + service.price, 0),
         date: editedDate,
         time: editedTime,
       });
@@ -454,7 +437,7 @@ export function AgendaManager() {
         </section>
 
         <Dialog open={refundDialogBooking !== null} onOpenChange={(open) => { if (!open && confirmingRefundId === null) setRefundDialogBooking(null); }}>
-          <DialogContent>
+          <DialogContent className="gold-scrollbar max-h-[85vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>{refundDialogBooking?.paymentCancellationStatus === "requested" ? "Confirmar devolución" : "Datos de la devolución"}</DialogTitle>
               {refundDialogBooking?.customer.paymentMethod !== "tarjeta o mercado pago" && <DialogDescription>{refundDialogBooking?.paymentCancellationStatus === "requested" ? "Revisá el importe y los datos de devolución. Al confirmar, avisaremos al cliente que el dinero ya fue devuelto." : "El turno ya está cancelado y su horario disponible."}</DialogDescription>}
@@ -520,7 +503,7 @@ export function AgendaManager() {
 
 
         <Dialog open={dialogOpen} onOpenChange={(open) => open ? setDialogOpen(true) : closeDialog()}>
-          <DialogContent>
+          <DialogContent className="gold-scrollbar max-h-[85vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>{editMode === "attendance" ? "Asistencia" : editMode === "turno" ? "Modificar turno" : editMode === "payment" ? "Indicar pago" : ""}</DialogTitle>
               <DialogDescription>
@@ -549,16 +532,23 @@ export function AgendaManager() {
               )}
               {editMode === "turno" && (
                 <div className="grid gap-4">
-                  <label className="block text-sm text-muted-foreground"><span className="flex items-center gap-2"><UserRound className="h-4 w-4 text-gold" />Profesional</span><select className="mt-2 block w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground" value={editedProfessionalId} onChange={(event) => { setEditedProfessionalId(event.target.value); setEditedServiceId(professionals.find((item) => item.id === event.target.value)?.services[0]?.id ?? ""); setEditedDate(""); setEditedTime(""); }}>
-                    {professionals.map((item) => <option key={item.id} value={item.id}>{item.name} — {item.specialty}</option>)}
-                  </select></label>
-                  <label className="block text-sm text-muted-foreground"><span className="flex items-center gap-2"><Scissors className="h-4 w-4 text-gold" />Servicio</span><select className="mt-2 block w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground" value={editedServiceId} onChange={(event) => { setEditedServiceId(event.target.value); setEditedTime(""); }}>
-                    {(editedProfessional?.services ?? []).map((service) => <option key={service.id} value={service.id}>{service.name}</option>)}
-                  </select></label>
-                  <label className="block text-sm text-muted-foreground"><span className="flex items-center gap-2"><CalendarDays className="h-4 w-4 text-gold" />Fecha</span><input type="date" className="mt-2 block w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground" value={editedDate} onChange={(event) => { setEditedDate(event.target.value); setEditedTime(""); }} /></label>
-                  <label className="block text-sm text-muted-foreground"><span className="flex items-center gap-2"><Clock3 className="h-4 w-4 text-gold" />Horario</span><select className="mt-2 block w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground" value={editedTime} onChange={(event) => setEditedTime(event.target.value)}>
-                    <option value="">Seleccionar hora</option>{availableSlots.map((slot) => <option key={slot} value={slot}>{slot}</option>)}
-                  </select></label>
+                  <label className="block text-sm text-muted-foreground"><span className="flex items-center gap-2"><UserRound className="h-4 w-4 text-gold" />Profesional</span><Select value={editedProfessionalId} onValueChange={(value) => { const nextProfessional = professionals.find((item) => item.id === value); setEditedProfessionalId(value); setEditedServiceIds(nextProfessional?.services[0] ? [nextProfessional.services[0].id] : []); setEditedDate(""); setEditedTime(""); }}><SelectTrigger className="mt-2"><SelectValue placeholder="Seleccionar profesional" /></SelectTrigger><SelectContent className="gold-scrollbar max-h-60">{professionals.map((item) => <SelectItem key={item.id} value={item.id}>{item.name} — {item.specialty}</SelectItem>)}</SelectContent></Select></label>
+                  <div className="space-y-2">
+                    <span className="flex items-center gap-2 text-sm text-muted-foreground"><Scissors className="h-4 w-4 text-gold" />Servicios</span>
+                    {editedServiceIds.map((serviceId, index) => <div key={`${index}-${serviceId}`} className="flex items-center gap-2">
+                      <Select value={serviceId} onValueChange={(value) => { setEditedServiceIds((current) => current.map((id, itemIndex) => itemIndex === index ? value : id)); setEditedTime(""); }}><SelectTrigger aria-label={`Servicio ${index + 1}`} className="min-w-0 flex-1"><SelectValue placeholder="Seleccionar servicio" /></SelectTrigger><SelectContent className="gold-scrollbar max-h-60">{(editedProfessional?.services ?? []).filter((service) => service.id === serviceId || !editedServiceIds.includes(service.id)).map((service) => <SelectItem key={service.id} value={service.id}>{service.name} · {service.duration} min · ${service.price.toLocaleString("es-AR")}</SelectItem>)}</SelectContent></Select>
+                      {editedServiceIds.length > 1 && <Button type="button" size="icon" variant="outline" aria-label={`Quitar servicio ${index + 1}`} onClick={() => { setEditedServiceIds((current) => current.filter((_, itemIndex) => itemIndex !== index)); setEditedTime(""); }}><Trash2 className="h-4 w-4" /></Button>}
+                    </div>)}
+                    <Button type="button" size="sm" variant="outline" disabled={!editedProfessional || editedServiceIds.length >= (editedProfessional?.services.length ?? 0)} onClick={() => { const nextService = editedProfessional?.services.find((service) => !editedServiceIds.includes(service.id)); if (nextService) setEditedServiceIds((current) => [...current, nextService.id]); setEditedTime(""); }}><Plus className="mr-1 h-4 w-4" />Agregar servicio</Button>
+                    {editedServices.length > 0 && <p className="text-xs text-muted-foreground">Duración total: {editedDuration} min · Total: <span className="font-semibold text-gold">${editedTotalPrice.toLocaleString("es-AR")}</span></p>}
+                  </div>
+                  <div className="block space-y-2 text-sm text-muted-foreground"><span className="flex items-center gap-2"><CalendarDays className="h-4 w-4 text-gold" />Fecha</span>
+                    <Popover>
+                      <PopoverTrigger asChild><Button type="button" variant="outline" className="w-full justify-between font-normal" disabled={!editedProfessional || !editedServices.length}><span>{editedDate ? format(parseISO(`${editedDate}T12:00:00`), "dd/MM/yyyy", { locale: es }) : "Seleccionar fecha"}</span><CalendarDays className="h-4 w-4 text-gold" /></Button></PopoverTrigger>
+                      <PopoverContent className="gold-scrollbar w-auto p-0" align="start"><Calendar mode="single" locale={es} selected={editedDate ? parseISO(`${editedDate}T12:00:00`) : undefined} onSelect={(date) => { setEditedDate(date ? format(date, "yyyy-MM-dd") : ""); setEditedTime(""); }} disabled={(date) => format(date, "yyyy-MM-dd") < format(new Date(), "yyyy-MM-dd") || !editedProfessional || !isProfessionalAvailableOnDate(editedProfessional, date)} initialFocus /></PopoverContent>
+                    </Popover>
+                  </div>
+                  <label className="block text-sm text-muted-foreground"><span className="flex items-center gap-2"><Clock3 className="h-4 w-4 text-gold" />Horario</span><Select value={editedTime} onValueChange={setEditedTime} disabled={!editedDate || !editedServices.length}><SelectTrigger className="mt-2"><SelectValue placeholder="Seleccionar hora" /></SelectTrigger><SelectContent className="gold-scrollbar max-h-60">{availableSlots.map((slot) => <SelectItem key={slot.time} value={slot.time}>{slot.time} · {slot.available} {slot.available === 1 ? "turno disponible" : "turnos disponibles"}</SelectItem>)}</SelectContent></Select>{editedDate && editedServices.length > 0 && availableSlots.length === 0 && <span className="mt-1 block text-xs">No hay horarios disponibles para los servicios seleccionados.</span>}</label>
                 </div>
               )}
             </div>

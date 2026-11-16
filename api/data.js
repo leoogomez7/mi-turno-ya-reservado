@@ -1300,10 +1300,14 @@ export default async function handler(request, response) {
             return response.status(409).json({ error: "Este turno ya no se puede modificar desde tu cuenta." });
           }
           const barberId = typeof body.barberId === "string" ? body.barberId.trim() : "";
-          const serviceId = typeof body.serviceId === "string" ? body.serviceId.trim() : "";
+          const serviceIds = Array.isArray(body.serviceIds)
+            ? body.serviceIds.map((serviceId) => typeof serviceId === "string" ? serviceId.trim() : "")
+            : [];
           const date = typeof body.date === "string" ? body.date : "";
           const time = typeof body.time === "string" ? body.time : "";
-          if (!barberId || barberId.length > 200 || !serviceId || serviceId.length > 200) {
+          if (!barberId || barberId.length > 200 || serviceIds.length === 0 || serviceIds.length > 20
+            || serviceIds.some((serviceId) => !serviceId || serviceId.length > 200)
+            || new Set(serviceIds).size !== serviceIds.length) {
             return response.status(400).json({ error: "Elegí un profesional y un servicio válidos." });
           }
           const transaction = await db.transaction("write");
@@ -1317,17 +1321,19 @@ export default async function handler(request, response) {
               return response.status(409).json({ error: "El profesional elegido ya no está disponible." });
             }
             const professional = JSON.parse(String(professionalResult.rows[0].value));
-            const service = professional.services?.find((item) => item.id === serviceId);
-            if (!service) {
+            const services = serviceIds.map((serviceId) => professional.services?.find((item) => item.id === serviceId));
+            if (services.some((service) => !service)) {
               await transaction.rollback();
-              return response.status(409).json({ error: "El servicio elegido ya no está disponible." });
+              return response.status(409).json({ error: "Uno de los servicios elegidos ya no está disponible." });
             }
+            const duration = services.reduce((total, service) => total + Number(service.duration), 0);
+            const totalPrice = services.reduce((total, service) => total + Number(service.price), 0);
             const candidate = {
               ...booking,
               barberId,
-              serviceIds: [serviceId],
-              duration: Number(service.duration),
-              totalPrice: Number(service.price),
+              serviceIds,
+              duration,
+              totalPrice,
               date,
               time,
             };
@@ -1337,13 +1343,14 @@ export default async function handler(request, response) {
               return response.status(409).json({ error: availabilityError });
             }
             booking.barberId = barberId;
-            booking.serviceIds = [serviceId];
+            booking.serviceIds = serviceIds;
             booking.duration = candidate.duration;
             booking.totalPrice = candidate.totalPrice;
             booking.date = date;
             booking.time = time;
             await transaction.execute({ sql: "UPDATE bookings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", args: [JSON.stringify(booking), bookingId] });
-            const notice = notificationForAdmin(booking, "booking_changed_by_client", "Cliente modificó el turno", `${booking.customer.fullName} modificó el turno: ${professional.name}, ${service.name}, ${date} a las ${time}.`);
+            const serviceNames = services.map((service) => service.name).join(", ");
+            const notice = notificationForAdmin(booking, "booking_changed_by_client", "Cliente modificó el turno", `${booking.customer.fullName} modificó el turno: ${professional.name}, ${serviceNames}, ${date} a las ${time}.`);
             if (notice) await transaction.execute(notice);
             await transaction.commit();
             return response.status(200).json({ booking });
