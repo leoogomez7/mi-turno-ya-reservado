@@ -1332,7 +1332,7 @@ export function ProfessionalsManager() {
               <DialogContent className="sm:max-w-md">
               <DialogHeader>
                 <DialogTitle>{activeScheduleDate ? format(activeScheduleDate, "EEEE d 'de' MMMM", { locale: es }) : "Horario de la fecha"}</DialogTitle>
-                <DialogDescription>Configurá una excepción para este día. Si no se cambia nada, se usa el horario semanal.</DialogDescription>
+                <DialogDescription>Configurá una excepción para este día. Si no cambiás nada, se usa el horario semanal.</DialogDescription>
               </DialogHeader>
               <label className="flex items-center gap-3 rounded-xl border border-border p-3">
                 <input type="checkbox" checked={scheduleDateClosed} onChange={(event) => setScheduleDateClosed(event.target.checked)} />

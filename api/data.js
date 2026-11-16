@@ -1,8 +1,6 @@
 import { createClient } from "@libsql/client";
 import { createRemoteJWKSet, jwtVerify } from "jose";
-import { promises as fs } from "node:fs";
-import path from "node:path";
-import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
 
 const COLLECTIONS = ["bookings", "professionals"];
 const FREE_TRIAL_DAYS = 4;
@@ -14,71 +12,9 @@ const SUBSCRIPTION_PLANS = new Map([
   ["4m", { days: 0, months: 4, amount: 25999, label: "4 meses" }],
   ["6m", { days: 0, months: 6, amount: 36999, label: "6 meses" }],
 ]);
-const PUBLIC_ACTIONS = new Set([
-  "guest-booking",
-  "create-booking-payment-preference",
-  "verify-booking-payment",
-  "cancel-pending-booking",
-  "mercadopago-payment-webhook",
-  "mercadopago-subscription-webhook",
-]);
-const AUTH_REQUIRED_ACTIONS = new Set([
-  "archive-booking",
-  "restore-archived-booking",
-  "permanently-delete-archived-booking",
-  "get-notifications",
-  "check-notification-booking",
-  "set-notification-read",
-  "delete-notification",
-  "delete-all-notifications",
-  "get-client-bookings",
-  "confirm-client-booking",
-  "report-client-payment",
-  "cancel-client-payment",
-  "update-client-payment-method",
-  "cancel-client-booking",
-  "delete-client-booking",
-  "create-client-booking-payment-preference",
-  "update-client-booking",
-  "admin-confirm-booking-refund",
-  "get-client-profile",
-  "save-client-profile",
-  "get-store-payment-credentials",
-  "save-store-payment-credentials",
-  "fail-subscription-payment",
-  "create-subscription-checkout",
-  "redeem-subscription-promo",
-  "verify-subscription-payment",
-  "set-account-role",
-  "create-store",
-  "update-store-cancellation-policy",
-  "update-store-settings",
-  "update-store-logo",
-  "update-store-contact",
-]);
-const ACTION_RATE_LIMITS = new Map([
-  ["guest-booking", { maxRequests: 10, windowMs: 60_000 }],
-  ["create-booking-payment-preference", { maxRequests: 12, windowMs: 60_000 }],
-  ["verify-booking-payment", { maxRequests: 12, windowMs: 60_000 }],
-  ["mercadopago-payment-webhook", { maxRequests: 20, windowMs: 60_000 }],
-  ["mercadopago-subscription-webhook", { maxRequests: 20, windowMs: 60_000 }],
-  ["set-account-role", { maxRequests: 12, windowMs: 60_000 }],
-  ["create-store", { maxRequests: 8, windowMs: 60_000 }],
-  ["save-store-payment-credentials", { maxRequests: 12, windowMs: 60_000 }],
-  ["create-subscription-checkout", { maxRequests: 6, windowMs: 60_000 }],
-]);
-const DATABASE_BACKUP_RETENTION_DAYS = 30;
 let schemaReady;
 let legacyInvitesRemoved = false;
 let demoStoreRemoved = false;
-let sensitiveDataMigrationReady;
-
-const SENSITIVE_FIELD_NAMES = new Set([
-  "address", "city", "email", "fullName", "height", "notes", "phone", "postalCode",
-  "province", "refundCbu", "refundDestination", "street", "transferAlias", "transferBank",
-  "transferCbu", "transferHolder", "whatsapp",
-]);
-const ENCRYPTED_VALUE_PREFIX = "mty-encrypted:v1:";
 
 function requiredEnv(name) {
   const value = process.env[name]?.trim();
@@ -86,66 +22,8 @@ function requiredEnv(name) {
   return value;
 }
 
-function tursoConfigAvailable() {
-  return Boolean(process.env.TURSO_DATABASE_URL?.trim() && process.env.TURSO_AUTH_TOKEN?.trim());
-}
-
 function paymentCredentialEncryptionKey() {
   return createHash("sha256").update(requiredEnv("MERCADOPAGO_CREDENTIALS_ENCRYPTION_KEY"), "utf8").digest();
-}
-
-function sensitiveDataEncryptionKey() {
-  const secret = requiredEnv("APP_DATA_ENCRYPTION_KEY");
-  if (Buffer.byteLength(secret, "utf8") < 32) {
-    throw new Error("APP_DATA_ENCRYPTION_KEY debe contener al menos 32 bytes aleatorios.");
-  }
-  return createHash("sha256").update(secret, "utf8").digest();
-}
-
-function encryptSensitiveValue(value) {
-  if (typeof value !== "string" || value.length === 0 || value.startsWith(ENCRYPTED_VALUE_PREFIX)) return value;
-  const iv = randomBytes(12);
-  const cipher = createCipheriv("aes-256-gcm", sensitiveDataEncryptionKey(), iv);
-  const encrypted = Buffer.concat([cipher.update(value, "utf8"), cipher.final()]);
-  return `${ENCRYPTED_VALUE_PREFIX}${iv.toString("base64")}.${cipher.getAuthTag().toString("base64")}.${encrypted.toString("base64")}`;
-}
-
-function decryptSensitiveValue(value) {
-  if (typeof value !== "string" || !value.startsWith(ENCRYPTED_VALUE_PREFIX)) return value;
-  const [iv, authTag, encrypted] = value.slice(ENCRYPTED_VALUE_PREFIX.length).split(".");
-  if (!iv || !authTag || !encrypted) throw new Error("Un dato personal cifrado no se puede leer.");
-  const decipher = createDecipheriv("aes-256-gcm", sensitiveDataEncryptionKey(), Buffer.from(iv, "base64"));
-  decipher.setAuthTag(Buffer.from(authTag, "base64"));
-  return Buffer.concat([decipher.update(Buffer.from(encrypted, "base64")), decipher.final()]).toString("utf8");
-}
-
-function transformSensitiveData(value, transform) {
-  if (Array.isArray(value)) return value.map((item) => transformSensitiveData(item, transform));
-  if (!value || typeof value !== "object") return value;
-  return Object.fromEntries(Object.entries(value).map(([key, item]) => [
-    key,
-    SENSITIVE_FIELD_NAMES.has(key) && typeof item === "string"
-      ? transform(item)
-      : transformSensitiveData(item, transform),
-  ]));
-}
-
-function parseStoredValue(value) {
-  return transformSensitiveData(JSON.parse(String(value)), decryptSensitiveValue);
-}
-
-function serializeStoredValue(value) {
-  return JSON.stringify(transformSensitiveData(value, encryptSensitiveValue));
-}
-
-function serializeStoreSettings(value) {
-  return serializeStoredValue(value);
-}
-
-function clientNotificationRecipientKey(email) {
-  const normalizedEmail = String(email).trim().toLowerCase();
-  const digest = createHmac("sha256", sensitiveDataEncryptionKey()).update(normalizedEmail).digest("hex");
-  return `client:v1:${digest}`;
 }
 
 function encryptPaymentAccessToken(accessToken) {
@@ -180,88 +58,6 @@ async function getStorePaymentCredentials(db, storeCode) {
 
 function normalizeStoreCode(value) {
   return typeof value === "string" ? value.trim().toUpperCase() : "";
-}
-
-async function ensureDatabaseSecurityPolicies(db) {
-  await db.execute(`CREATE TABLE IF NOT EXISTS db_security_policies (
-    policy_name TEXT PRIMARY KEY,
-    policy_status TEXT NOT NULL CHECK(policy_status IN ('enabled', 'warning', 'disabled')),
-    policy_text TEXT NOT NULL,
-    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-  )`);
-
-  const requiredPolicies = [
-    ["tenant_isolation", "enabled", "Los accesos están limitados por owner_id/store_code y validaciones de permisos en la API."],
-    ["encrypted_sensitive_values", "enabled", "Los datos sensibles se cifran antes de persistirlos y se descifran solo en el servidor."],
-    ["db_auto_backups", "enabled", "Se generan snapshots automáticos de tablas críticas para recuperación operativa."],
-    ["rate_limit_enforced", "enabled", "Las acciones públicas y autenticadas cuentan con ventanas de rate limit por clave HMAC."],
-  ];
-
-  for (const [name, status, details] of requiredPolicies) {
-    await db.execute({
-      sql: `INSERT INTO db_security_policies (policy_name, policy_status, policy_text, updated_at)
-        VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-        ON CONFLICT(policy_name) DO UPDATE SET
-          policy_status = excluded.policy_status,
-          policy_text = excluded.policy_text,
-          updated_at = CURRENT_TIMESTAMP`,
-      args: [name, status, details],
-    });
-  }
-}
-
-async function createDatabaseBackupSnapshot(db) {
-  const backupDir = path.resolve(process.cwd(), "backups");
-  await fs.mkdir(backupDir, { recursive: true });
-
-  const tableNames = [
-    "account_roles",
-    "bookings",
-    "client_profiles",
-    "notifications",
-    "professionals",
-    "stores",
-    "store_payment_credentials",
-    "subscription_discount_redemptions",
-    "subscription_orders",
-  ];
-
-  const snapshot = {
-    createdAt: new Date().toISOString(),
-    version: 1,
-    tables: {},
-  };
-
-  for (const tableName of tableNames) {
-    try {
-      const result = await db.execute(`SELECT * FROM ${tableName} ORDER BY 1`);
-      snapshot.tables[tableName] = result.rows;
-    } catch {
-      snapshot.tables[tableName] = [];
-    }
-  }
-
-  const payload = JSON.stringify(snapshot, null, 2);
-  const backupFileName = `db-backup-${Date.now()}.json`;
-  const backupFilePath = path.join(backupDir, backupFileName);
-  await fs.writeFile(backupFilePath, payload, "utf8");
-
-  const checksum = createHash("sha256").update(payload, "utf8").digest("hex");
-  const backupId = `snapshot:${Date.now()}:${randomBytes(8).toString("hex")}`;
-  const expiresAt = new Date(Date.now() + DATABASE_BACKUP_RETENTION_DAYS * 24 * 60 * 60 * 1000).toISOString();
-
-  await db.execute({
-    sql: `INSERT INTO db_backups (id, table_name, backup_key, status, created_at, expires_at, checksum, notes)
-      VALUES (?, ?, ?, 'ok', ?, ?, ?, ?)`,
-    args: [backupId, "critical_tables", backupFileName, new Date().toISOString(), expiresAt, checksum, "Snapshot automático generado para recuperación y auditoría."],
-  });
-
-  await db.execute({
-    sql: "DELETE FROM db_backups WHERE expires_at < ?",
-    args: [new Date().toISOString()],
-  });
-
-  return backupFilePath;
 }
 
 function hasPendingRefund(booking) {
@@ -374,7 +170,7 @@ async function removeDemoStore(db) {
       });
       const professionalRows = await transaction.execute("SELECT id, value FROM professionals");
       for (const row of professionalRows.rows) {
-        const professional = parseStoredValue(row.value);
+        const professional = JSON.parse(String(row.value));
         const code = normalizeStoreCode(professional.storeCode);
         if (codes.includes(code) || codes.some((demoCode) => String(row.id).startsWith(`${demoCode}:`))) {
           await transaction.execute({ sql: "DELETE FROM professionals WHERE id = ?", args: [String(row.id)] });
@@ -399,7 +195,7 @@ async function removeDemoStore(db) {
 
 function parseStoreSettings(value) {
   try {
-    const settings = parseStoredValue(value || "{}");
+    const settings = JSON.parse(String(value || "{}"));
     const source = settings && typeof settings === "object" && !Array.isArray(settings) ? settings : {};
     const street = typeof source.street === "string" ? source.street : typeof source.address === "string" ? source.address : "";
     const height = typeof source.height === "string" ? source.height : "";
@@ -518,12 +314,12 @@ async function database() {
     )`,
     `CREATE TABLE IF NOT EXISTS notifications (
       id TEXT PRIMARY KEY,
-      recipient_key TEXT NOT NULL CHECK(length(trim(recipient_key)) > 0),
-      store_code TEXT NOT NULL CHECK(length(trim(store_code)) > 0),
-      booking_id TEXT NOT NULL CHECK(length(trim(booking_id)) > 0),
-      type TEXT NOT NULL CHECK(length(trim(type)) > 0),
-      title TEXT NOT NULL CHECK(length(trim(title)) > 0),
-      message TEXT NOT NULL CHECK(length(trim(message)) > 0),
+      recipient_key TEXT NOT NULL,
+      store_code TEXT NOT NULL,
+      booking_id TEXT NOT NULL,
+      type TEXT NOT NULL,
+      title TEXT NOT NULL,
+      message TEXT NOT NULL,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       read_at TEXT,
       prompted_at TEXT
@@ -535,7 +331,7 @@ async function database() {
     )`,
     `CREATE TABLE IF NOT EXISTS account_roles (
       user_id TEXT PRIMARY KEY,
-      email TEXT NOT NULL CHECK(length(trim(email)) > 0),
+      email TEXT NOT NULL,
       role TEXT NOT NULL CHECK(role IN ('admin', 'client')),
       store_code TEXT,
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -547,15 +343,15 @@ async function database() {
     )`,
     `CREATE TABLE IF NOT EXISTS stores (
       code TEXT PRIMARY KEY,
-      name TEXT NOT NULL CHECK(length(trim(name)) > 0),
-      owner_id TEXT NOT NULL CHECK(length(trim(owner_id)) > 0),
+      name TEXT NOT NULL,
+      owner_id TEXT NOT NULL,
       logo TEXT NOT NULL DEFAULT '',
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     )`,
     `CREATE TABLE IF NOT EXISTS store_payment_credentials (
-      store_code TEXT PRIMARY KEY CHECK(length(trim(store_code)) > 0),
-      public_key TEXT NOT NULL DEFAULT '' CHECK(length(trim(public_key)) > 0),
-      encrypted_access_token TEXT NOT NULL CHECK(length(trim(encrypted_access_token)) > 0),
+      store_code TEXT PRIMARY KEY,
+      public_key TEXT NOT NULL DEFAULT '',
+      encrypted_access_token TEXT NOT NULL,
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     )`,
     `CREATE TABLE IF NOT EXISTS subscription_orders (
@@ -579,31 +375,6 @@ async function database() {
       subscription_order_id TEXT,
       redeemed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     )`,
-    `CREATE TABLE IF NOT EXISTS security_migrations (
-      id TEXT PRIMARY KEY,
-      completed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-    )`,
-    `CREATE TABLE IF NOT EXISTS db_security_policies (
-      policy_name TEXT PRIMARY KEY,
-      policy_status TEXT NOT NULL CHECK(policy_status IN ('enabled', 'warning', 'disabled')),
-      policy_text TEXT NOT NULL,
-      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-    )`,
-    `CREATE TABLE IF NOT EXISTS db_backups (
-      id TEXT PRIMARY KEY,
-      table_name TEXT NOT NULL,
-      backup_key TEXT NOT NULL,
-      status TEXT NOT NULL CHECK(status IN ('ok', 'warning', 'failed')),
-      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      expires_at TEXT NOT NULL,
-      checksum TEXT NOT NULL,
-      notes TEXT NOT NULL DEFAULT ''
-    )`,
-    `CREATE TABLE IF NOT EXISTS api_rate_limits (
-      bucket_key TEXT PRIMARY KEY CHECK(length(trim(bucket_key)) > 0),
-      window_started_at INTEGER NOT NULL,
-      request_count INTEGER NOT NULL
-    )`,
     "CREATE INDEX IF NOT EXISTS bookings_updated ON bookings(updated_at)",
     "CREATE INDEX IF NOT EXISTS bookings_store_code ON bookings(upper(json_extract(value, '$.storeCode')))",
     "CREATE INDEX IF NOT EXISTS notifications_recipient ON notifications(recipient_key, created_at)",
@@ -621,9 +392,6 @@ async function database() {
   await ensureStoreLogoColumn(db);
   await ensureStoreSubscriptionColumn(db);
   await ensureSubscriptionOrderDurationColumn(db);
-  await ensureDatabaseSecurityPolicies(db);
-  await createDatabaseBackupSnapshot(db);
-  await migrateSensitiveData(db);
   await removeDemoStore(db);
   if (!legacyInvitesRemoved) {
     await db.execute("DROP TABLE IF EXISTS admin_invites");
@@ -632,144 +400,9 @@ async function database() {
   return db;
 }
 
-async function migrateSensitiveData(db) {
-  if (!sensitiveDataMigrationReady) {
-    sensitiveDataMigrationReady = (async () => {
-      sensitiveDataEncryptionKey();
-      const completed = await db.execute({
-        sql: "SELECT id FROM security_migrations WHERE id = ?",
-        args: ["sensitive-data-encryption-v1"],
-      });
-      if (completed.rows.length) return;
-
-      const transaction = await db.transaction("write");
-      try {
-        for (const table of ["bookings", "professionals"]) {
-          const rows = await transaction.execute(`SELECT id, value FROM ${table}`);
-          for (const row of rows.rows) {
-            const rawValue = String(row.value);
-            const encryptedValue = serializeStoredValue(JSON.parse(rawValue));
-            if (encryptedValue !== rawValue) {
-              await transaction.execute({
-                sql: `UPDATE ${table} SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
-                args: [encryptedValue, String(row.id)],
-              });
-            }
-          }
-        }
-
-        const profileRows = await transaction.execute("SELECT user_id, phone FROM client_profiles");
-        for (const row of profileRows.rows) {
-          const phone = String(row.phone ?? "");
-          const encryptedPhone = encryptSensitiveValue(phone);
-          if (encryptedPhone !== phone) {
-            await transaction.execute({
-              sql: "UPDATE client_profiles SET phone = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?",
-              args: [encryptedPhone, String(row.user_id)],
-            });
-          }
-        }
-
-        const accountRows = await transaction.execute("SELECT user_id, email FROM account_roles");
-        for (const row of accountRows.rows) {
-          const email = String(row.email ?? "");
-          const encryptedEmail = encryptSensitiveValue(email);
-          if (encryptedEmail !== email) {
-            await transaction.execute({
-              sql: "UPDATE account_roles SET email = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?",
-              args: [encryptedEmail, String(row.user_id)],
-            });
-          }
-        }
-
-        const notificationRows = await transaction.execute(
-          "SELECT id, recipient_key, title, message FROM notifications",
-        );
-        for (const row of notificationRows.rows) {
-          const recipientKey = String(row.recipient_key);
-          const nextRecipientKey = recipientKey.startsWith("client:")
-            ? clientNotificationRecipientKey(recipientKey.slice("client:".length))
-            : recipientKey;
-          const title = encryptSensitiveValue(String(row.title ?? ""));
-          const message = encryptSensitiveValue(String(row.message ?? ""));
-          if (nextRecipientKey !== recipientKey || title !== String(row.title) || message !== String(row.message)) {
-            await transaction.execute({
-              sql: "UPDATE notifications SET recipient_key = ?, title = ?, message = ? WHERE id = ?",
-              args: [nextRecipientKey, title, message, String(row.id)],
-            });
-          }
-        }
-
-        const storeRows = await transaction.execute("SELECT code, settings FROM stores");
-        for (const row of storeRows.rows) {
-          const rawSettings = String(row.settings ?? "{}");
-          const encryptedSettings = serializeStoredValue(JSON.parse(rawSettings));
-          if (encryptedSettings !== rawSettings) {
-            await transaction.execute({
-              sql: "UPDATE stores SET settings = ? WHERE code = ?",
-              args: [encryptedSettings, String(row.code)],
-            });
-          }
-        }
-
-        await transaction.execute({
-          sql: "INSERT OR IGNORE INTO security_migrations (id) VALUES (?)",
-          args: ["sensitive-data-encryption-v1"],
-        });
-        await transaction.commit();
-      } catch (error) {
-        await transaction.rollback().catch(() => undefined);
-        throw error;
-      }
-    })().catch((error) => {
-      sensitiveDataMigrationReady = undefined;
-      throw error;
-    });
-  }
-  await sensitiveDataMigrationReady;
-}
-
 function parseBody(body) {
   if (typeof body === "string") return JSON.parse(body);
   return body;
-}
-
-function getClientIp(request) {
-  const headerValue = request.headers["x-forwarded-for"] || request.headers["x-real-ip"] || request.headers["cf-connecting-ip"];
-  if (typeof headerValue === "string") return headerValue.split(",")[0].trim() || "unknown";
-  return "unknown";
-}
-
-async function enforceActionRateLimit(db, request, action) {
-  const limit = ACTION_RATE_LIMITS.get(action) ?? { maxRequests: 20, windowMs: 60_000 };
-  const bucketKey = createHmac("sha256", sensitiveDataEncryptionKey())
-    .update(`${action}:${getClientIp(request)}`)
-    .digest("hex");
-  const now = Date.now();
-  const result = await db.execute({
-    sql: `INSERT INTO api_rate_limits (bucket_key, window_started_at, request_count)
-      VALUES (?, ?, 1)
-      ON CONFLICT(bucket_key) DO UPDATE SET
-        request_count = CASE
-          WHEN api_rate_limits.window_started_at + ? <= ? THEN 1
-          ELSE api_rate_limits.request_count + 1
-        END,
-        window_started_at = CASE
-          WHEN api_rate_limits.window_started_at + ? <= ? THEN excluded.window_started_at
-          ELSE api_rate_limits.window_started_at
-        END
-      RETURNING request_count`,
-    args: [bucketKey, now, limit.windowMs, now, limit.windowMs, now],
-  });
-  return Number(result.rows[0]?.request_count ?? limit.maxRequests + 1) <= limit.maxRequests;
-}
-
-function isPublicAction(action) {
-  return typeof action === "string" && PUBLIC_ACTIONS.has(action);
-}
-
-function isAuthenticatedAction(action) {
-  return typeof action === "string" && AUTH_REQUIRED_ACTIONS.has(action);
 }
 
 function addSubscriptionMonths(dateValue, months) {
@@ -931,8 +564,8 @@ async function verifyBookingPayment(db, bookingId, paymentId) {
     throw new Error("Identificador de reserva inválido.");
   }
   const bookingResult = await db.execute({ sql: "SELECT value FROM bookings WHERE id = ?", args: [bookingId] });
-    if (!bookingResult.rows[0]) throw new Error("No se encontró el turno asociado al pago.");
-  const existingBooking = parseStoredValue(bookingResult.rows[0].value);
+  if (!bookingResult.rows[0]) throw new Error("No encontramos el turno asociado al pago.");
+  const existingBooking = JSON.parse(String(bookingResult.rows[0].value));
   if (["requested", "cancelled", "refunded"].includes(existingBooking.paymentCancellationStatus)) {
     throw new Error("El cliente ya solicitó la devolución de este pago.");
   }
@@ -947,7 +580,7 @@ async function verifyBookingPayment(db, bookingId, paymentId) {
   try {
     const result = await transaction.execute({ sql: "SELECT value FROM bookings WHERE id = ?", args: [bookingId] });
     if (!result.rows[0]) throw new Error("No encontramos el turno asociado al pago.");
-    const booking = parseStoredValue(result.rows[0].value);
+    const booking = JSON.parse(String(result.rows[0].value));
     if (booking.customer?.paymentMethod !== "tarjeta o mercado pago") {
       throw new Error("La reserva no corresponde a un pago con Mercado Pago.");
     }
@@ -968,7 +601,7 @@ async function verifyBookingPayment(db, bookingId, paymentId) {
     delete booking.cancellationToken;
     await transaction.execute({
       sql: "UPDATE bookings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-      args: [serializeStoredValue(booking), bookingId],
+      args: [JSON.stringify(booking), bookingId],
     });
     const paymentNotice = notificationForClient(booking, "payment_confirmed", "Pago confirmado", "Mercado Pago confirmó el pago de tu turno.");
     const adminPaymentNotice = notificationForAdmin(booking, "payment_confirmed", "Pago recibido", `Mercado Pago aprobó el pago de ${booking.customer?.fullName || "un cliente"}.`);
@@ -988,7 +621,7 @@ async function processMercadoPagoNotification(db, paymentId) {
   const response = await fetch(`https://api.mercadopago.com/v1/payments/${encodeURIComponent(paymentId)}`, {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
-    if (!response.ok) throw new Error("No se pudo verificar el pago en Mercado Pago.");
+  if (!response.ok) throw new Error("No se pudo verificar el pago en Mercado Pago.");
   const payment = await response.json();
   const reference = typeof payment.external_reference === "string" ? payment.external_reference : "";
   if (!reference || payment.status !== "approved") return { approved: false };
@@ -1007,7 +640,7 @@ function recordId(record) {
 function notificationStatement(recipientKey, booking, type, title, message) {
   return {
     sql: "INSERT INTO notifications (id, recipient_key, store_code, booking_id, type, title, message) VALUES (?, ?, ?, ?, ?, ?, ?)",
-    args: [randomBytes(16).toString("hex"), recipientKey, normalizeStoreCode(booking.storeCode), String(booking.id), type, encryptSensitiveValue(title), encryptSensitiveValue(message)],
+    args: [randomBytes(16).toString("hex"), recipientKey, normalizeStoreCode(booking.storeCode), String(booking.id), type, title, message],
   };
 }
 
@@ -1018,7 +651,7 @@ function notificationForAdmin(booking, type, title, message) {
 
 function notificationForClient(booking, type, title, message) {
   const email = booking.customer?.email?.trim().toLowerCase();
-  return email ? notificationStatement(clientNotificationRecipientKey(email), booking, type, title, message) : null;
+  return email ? notificationStatement(`client:${email}`, booking, type, title, message) : null;
 }
 
 function describeAdminBookingChange(previous, next) {
@@ -1078,7 +711,7 @@ async function hasBookingConflict(db, booking, storeCode, capacity = 1, bookingI
   const [hours, minutes] = String(booking.time).split(":").map(Number);
   const startMinute = hours * 60 + minutes;
   const existingBookings = existingResult.rows.map((row) => {
-    const existing = parseStoredValue(row.value);
+    const existing = JSON.parse(String(row.value));
     if (normalizeStoreCode(existing.storeCode) !== storeCode || existing.id === bookingId) return null;
     if (existing.barberId !== booking.barberId || existing.date !== booking.date || existing.status === "cancelled") return null;
     const [existingHours, existingMinutes] = String(existing.time).split(":").map(Number);
@@ -1112,7 +745,7 @@ async function validateBookingAvailability(db, booking, storeCode, bookingId = "
 
   const professionalResult = await db.execute({ sql: "SELECT value FROM professionals WHERE id = ?", args: [storedRecordId(storeCode, booking.barberId)] });
   if (!professionalResult.rows[0]) return "El profesional elegido ya no está disponible.";
-  const professional = parseStoredValue(professionalResult.rows[0].value);
+  const professional = JSON.parse(String(professionalResult.rows[0].value));
   if (professional.isTest) return "No se pueden reservar turnos de prueba.";
   const serviceIds = [...new Set(booking.serviceIds)];
   if (serviceIds.length !== booking.serviceIds.length) return "La selección de servicios no es válida.";
@@ -1155,7 +788,7 @@ export default async function handler(request, response) {
       user = await verifyUser(request);
     } catch (error) {
       console.error("No se pudo verificar la configuración de Kinde", error);
-      return response.status(503).json({ error: "El servicio de autenticación no está disponible temporalmente." });
+      return response.status(503).json({ error: error instanceof Error ? error.message : "Kinde no está configurado." });
     }
   }
   if (request.headers.authorization && !user) {
@@ -1165,16 +798,12 @@ export default async function handler(request, response) {
     return response.status(401).json({ error: "Inicia sesión para guardar tus turnos." });
   }
 
-  if (!tursoConfigAvailable()) {
-    return response.status(503).json({ error: "El servicio de datos no está disponible temporalmente. Configurá TURSO_DATABASE_URL y TURSO_AUTH_TOKEN." });
-  }
-
   let db;
   try {
     db = await database();
   } catch (error) {
     console.error("No se pudo conectar con Turso", error);
-    return response.status(503).json({ error: "El servicio de datos no está disponible temporalmente." });
+    return response.status(503).json({ error: error instanceof Error ? error.message : "Turso no está configurado." });
   }
 
   if (request.method === "GET") {
@@ -1235,7 +864,7 @@ export default async function handler(request, response) {
         professionalQuery,
         storesQuery,
       ]);
-      const allBookings = bookingRows.rows.map((row) => parseStoredValue(row.value));
+      const allBookings = bookingRows.rows.map((row) => JSON.parse(String(row.value)));
       const storeBookings = userStoreCode
         ? allBookings.filter((booking) => normalizeStoreCode(booking.storeCode) === userStoreCode)
         : [];
@@ -1257,7 +886,7 @@ export default async function handler(request, response) {
           });
       const professionals = userStoreCode ? professionalRows.rows
         .filter((row) => String(row.id).startsWith(`${userStoreCode}:`))
-        .map((row) => ({ ...parseStoredValue(row.value), id: String(row.id).slice(userStoreCode.length + 1) })) : [];
+        .map((row) => ({ ...JSON.parse(String(row.value)), id: String(row.id).slice(userStoreCode.length + 1) })) : [];
       const stores = storesResult.rows
         .filter((row) => String(row.owner_id) !== "legacy")
         .filter((row) => isSubscriptionActive(row.subscription_expires_at) || (role === "admin" && String(row.code) === userStoreCode))
@@ -1284,23 +913,6 @@ export default async function handler(request, response) {
   } catch {
     return response.status(400).json({ error: "El cuerpo JSON no es válido." });
   }
-
-  const action = typeof body?.action === "string" ? body.action.trim() : "";
-  if (body && typeof body === "object" && JSON.stringify(body).length > 4_000_000) {
-    return response.status(413).json({ error: "La solicitud supera el tamaño permitido." });
-  }
-  if (action) {
-    if (!isPublicAction(action) && !isAuthenticatedAction(action)) {
-      return response.status(400).json({ error: "La acción solicitada no está permitida." });
-    }
-    if (isAuthenticatedAction(action) && !user) {
-      return response.status(401).json({ error: "Iniciá sesión para continuar." });
-    }
-  if (action && !(await enforceActionRateLimit(db, request, action))) {
-    return response.status(429).json({ error: "Demasiadas solicitudes. Intentá nuevamente en unos minutos." });
-  }
-  }
-
   if (request.method === "POST") {
     if (user && body?.action === "archive-booking") {
       try {
@@ -1312,7 +924,7 @@ export default async function handler(request, response) {
         if (!bookingId || bookingId.length > 200) return response.status(400).json({ error: "Identificador de turno inválido." });
         const existing = await db.execute({ sql: "SELECT value FROM bookings WHERE id = ?", args: [bookingId] });
         if (!existing.rows[0]) return response.status(404).json({ error: "No encontramos ese turno." });
-        const booking = parseStoredValue(existing.rows[0].value);
+        const booking = JSON.parse(String(existing.rows[0].value));
         const storeCode = normalizeStoreCode(booking.storeCode);
         if (role === "client") {
           if (booking.customer?.email?.trim().toLowerCase() !== user.email) return response.status(403).json({ error: "Solo puedes archivar tus propios turnos." });
@@ -1333,7 +945,7 @@ export default async function handler(request, response) {
         if (!booking[archiveField]) {
           booking[archiveField] = new Date().toISOString();
           delete booking[role === "client" ? "clientRestoredAt" : "adminRestoredAt"];
-          await db.execute({ sql: "UPDATE bookings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", args: [serializeStoredValue(booking), bookingId] });
+          await db.execute({ sql: "UPDATE bookings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", args: [JSON.stringify(booking), bookingId] });
         }
         return response.status(200).json({ booking });
       } catch (error) {
@@ -1351,7 +963,7 @@ export default async function handler(request, response) {
         if (!bookingId || bookingId.length > 200) return response.status(400).json({ error: "Identificador de turno inválido." });
         const existing = await db.execute({ sql: "SELECT value FROM bookings WHERE id = ?", args: [bookingId] });
         if (!existing.rows[0]) return response.status(404).json({ error: "No encontramos ese turno." });
-        const booking = parseStoredValue(existing.rows[0].value);
+        const booking = JSON.parse(String(existing.rows[0].value));
         if (role === "client") {
           if (booking.customer?.email?.trim().toLowerCase() !== user.email) return response.status(403).json({ error: "Solo puedes restaurar tus propios turnos." });
         } else if (normalizeStoreCode(booking.storeCode) !== normalizeStoreCode(account.rows[0]?.store_code)) {
@@ -1368,7 +980,7 @@ export default async function handler(request, response) {
         if (!booking[archiveField] && !isAutomaticallyArchived) return response.status(409).json({ error: "Este turno no está eliminado de tu lista." });
         delete booking[archiveField];
         booking[restoredField] = new Date().toISOString();
-        await db.execute({ sql: "UPDATE bookings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", args: [serializeStoredValue(booking), bookingId] });
+        await db.execute({ sql: "UPDATE bookings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", args: [JSON.stringify(booking), bookingId] });
         return response.status(200).json({ booking });
       } catch (error) {
         console.error("No se pudo restaurar el turno", error);
@@ -1385,7 +997,7 @@ export default async function handler(request, response) {
         if (!bookingId || bookingId.length > 200) return response.status(400).json({ error: "Identificador de turno inválido." });
         const existing = await db.execute({ sql: "SELECT value FROM bookings WHERE id = ?", args: [bookingId] });
         if (!existing.rows[0]) return response.status(404).json({ error: "No encontramos ese turno." });
-        const booking = parseStoredValue(existing.rows[0].value);
+        const booking = JSON.parse(String(existing.rows[0].value));
         if (role === "client") {
           if (booking.customer?.email?.trim().toLowerCase() !== user.email) return response.status(403).json({ error: "Solo puedes borrar definitivamente tus propios turnos." });
         } else if (normalizeStoreCode(booking.storeCode) !== normalizeStoreCode(account.rows[0]?.store_code)) {
@@ -1413,7 +1025,7 @@ export default async function handler(request, response) {
               : "Solo se puede borrar un turno pagado, asistido, cancelado o con la devolución realizada." });
         }
         booking[role === "client" ? "clientPermanentlyDeletedAt" : "adminPermanentlyDeletedAt"] = new Date().toISOString();
-        await db.execute({ sql: "UPDATE bookings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", args: [serializeStoredValue(booking), bookingId] });
+        await db.execute({ sql: "UPDATE bookings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", args: [JSON.stringify(booking), bookingId] });
         return response.status(200).json({ ok: true, booking });
       } catch (error) {
         console.error("No se pudo borrar definitivamente el turno", error);
@@ -1428,7 +1040,7 @@ export default async function handler(request, response) {
         if (role !== "admin" && role !== "client") return response.status(403).json({ error: "Configurá tu cuenta para consultar notificaciones." });
         const recipientKey = role === "admin"
           ? `admin:${normalizeStoreCode(account.rows[0]?.store_code)}`
-          : clientNotificationRecipientKey(user.email);
+          : `client:${user.email}`;
         if (role === "admin" && recipientKey === "admin:") return response.status(403).json({ error: "La cuenta administradora no tiene una sucursal asignada." });
 
         if (body.action === "get-notifications") {
@@ -1442,10 +1054,10 @@ export default async function handler(request, response) {
             args: [recipientKey],
           });
           const notifications = result.rows.map((row) => ({
-            id: String(row.id), bookingId: String(row.bookingId), type: String(row.type), title: decryptSensitiveValue(String(row.title)),
-            message: decryptSensitiveValue(String(row.message)), createdAt: String(row.createdAt), readAt: row.readAt ? String(row.readAt) : null,
+            id: String(row.id), bookingId: String(row.bookingId), type: String(row.type), title: String(row.title),
+            message: String(row.message), createdAt: String(row.createdAt), readAt: row.readAt ? String(row.readAt) : null,
             bookingExists: Boolean(row.bookingValue) && (() => {
-              const booking = parseStoredValue(row.bookingValue);
+              const booking = JSON.parse(String(row.bookingValue));
               return isBookingVisibleInMainList(booking, role) || isBookingVisibleInArchiveList(booking, role);
             })(),
           }));
@@ -1482,7 +1094,7 @@ export default async function handler(request, response) {
             sql: "SELECT value FROM bookings WHERE id = ?",
             args: [String(notice.rows[0].booking_id)],
           });
-          const bookingValue = booking.rows[0] ? parseStoredValue(booking.rows[0].value) : null;
+          const bookingValue = booking.rows[0] ? JSON.parse(String(booking.rows[0].value)) : null;
           const exists = Boolean(bookingValue)
             && normalizeStoreCode(bookingValue.storeCode) === normalizeStoreCode(notice.rows[0].store_code)
             && (isBookingVisibleInMainList(bookingValue, role) || isBookingVisibleInArchiveList(bookingValue, role));
@@ -1514,7 +1126,7 @@ export default async function handler(request, response) {
 
         if (body.action === "get-client-bookings") {
           const bookingRows = await db.execute("SELECT id, value FROM bookings ORDER BY updated_at DESC");
-          const allBookings = bookingRows.rows.map((row) => parseStoredValue(row.value));
+          const allBookings = bookingRows.rows.map((row) => JSON.parse(String(row.value)));
           const bookings = allBookings
             .filter((booking) => booking.customer?.email?.trim().toLowerCase() === user.email);
           const storeCodes = new Set(bookings.map((booking) => normalizeStoreCode(booking.storeCode)).filter(Boolean));
@@ -1532,7 +1144,7 @@ export default async function handler(request, response) {
             .map((row) => {
               const databaseId = String(row.id);
               const storeCode = [...storeCodes].find((code) => databaseId.startsWith(`${code}:`)) ?? "";
-              return { ...parseStoredValue(row.value), id: databaseId.slice(storeCode.length + 1), storeCode };
+              return { ...JSON.parse(String(row.value)), id: databaseId.slice(storeCode.length + 1), storeCode };
             });
           const stores = storeRows.rows
             .filter((row) => storeCodes.has(normalizeStoreCode(String(row.code))))
@@ -1544,7 +1156,7 @@ export default async function handler(request, response) {
         if (!bookingId || bookingId.length > 200) return response.status(400).json({ error: "Identificador de turno inválido." });
         const storedBooking = await db.execute({ sql: "SELECT value FROM bookings WHERE id = ?", args: [bookingId] });
         if (!storedBooking.rows[0]) return response.status(404).json({ error: "No encontramos ese turno." });
-        const booking = parseStoredValue(storedBooking.rows[0].value);
+        const booking = JSON.parse(String(storedBooking.rows[0].value));
         if (booking.customer?.email?.trim().toLowerCase() !== user.email) {
           return response.status(403).json({ error: "Solo puedes gestionar tus propios turnos." });
         }
@@ -1552,7 +1164,7 @@ export default async function handler(request, response) {
         if (body.action === "confirm-client-booking") {
           if (booking.status !== "confirmed") return response.status(400).json({ error: "Este turno todavía no se puede confirmar." });
           booking.appointmentConfirmation = "confirmed";
-          await db.execute({ sql: "UPDATE bookings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", args: [serializeStoredValue(booking), bookingId] });
+          await db.execute({ sql: "UPDATE bookings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", args: [JSON.stringify(booking), bookingId] });
           const notice = notificationForAdmin(booking, "booking_confirmed_by_client", "Cliente confirmó el turno", `${booking.customer.fullName} confirmó su asistencia al turno.`);
           if (notice) await db.execute(notice);
           return response.status(200).json({ booking });
@@ -1563,7 +1175,7 @@ export default async function handler(request, response) {
             return response.status(409).json({ error: "Este turno no está pendiente de informar un pago." });
           }
           booking.paymentReportedAt = new Date().toISOString();
-          await db.execute({ sql: "UPDATE bookings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", args: [serializeStoredValue(booking), bookingId] });
+          await db.execute({ sql: "UPDATE bookings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", args: [JSON.stringify(booking), bookingId] });
           const notice = notificationForAdmin(booking, "payment_reported", "Pago informado por el cliente", `${booking.customer.fullName} avisó que realizó el pago.`);
           if (notice) await db.execute(notice);
           return response.status(200).json({ booking });
@@ -1622,7 +1234,7 @@ export default async function handler(request, response) {
           booking.paymentCancellationRequestedAt = booking.refundRequestedAt;
           booking.status = "cancelled";
           booking.cancelledBy = "client";
-          await db.execute({ sql: "UPDATE bookings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", args: [serializeStoredValue(booking), bookingId] });
+          await db.execute({ sql: "UPDATE bookings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", args: [JSON.stringify(booking), bookingId] });
           const destinationMessage = refundDestination ? ` ${refundDestinationType.toUpperCase()}: ${refundDestination}.` : "";
           const notice = notificationForAdmin(booking, "payment_refund_requested", "Devolución solicitada", `${booking.customer.fullName} solicita devolver $${refundAmount.toLocaleString("es-AR")} (${policy.refundPercent}% del pago). Método: ${paymentMethod}.${destinationMessage}`);
           if (notice) await db.execute(notice);
@@ -1642,7 +1254,7 @@ export default async function handler(request, response) {
           booking.status = "confirmed";
           booking.paymentStatus = "pending";
           delete booking.paymentReportedAt;
-          await db.execute({ sql: "UPDATE bookings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", args: [serializeStoredValue(booking), bookingId] });
+          await db.execute({ sql: "UPDATE bookings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", args: [JSON.stringify(booking), bookingId] });
           if (previousMethod !== paymentMethod) {
             const notice = notificationForAdmin(booking, "payment_method_changed", "Método de pago cambiado", `${booking.customer.fullName} cambió el método de pago a ${paymentMethod}.`);
             if (notice) await db.execute(notice);
@@ -1688,14 +1300,10 @@ export default async function handler(request, response) {
             return response.status(409).json({ error: "Este turno ya no se puede modificar desde tu cuenta." });
           }
           const barberId = typeof body.barberId === "string" ? body.barberId.trim() : "";
-          const serviceIds = Array.isArray(body.serviceIds)
-            ? body.serviceIds.map((serviceId) => typeof serviceId === "string" ? serviceId.trim() : "")
-            : [];
+          const serviceId = typeof body.serviceId === "string" ? body.serviceId.trim() : "";
           const date = typeof body.date === "string" ? body.date : "";
           const time = typeof body.time === "string" ? body.time : "";
-          if (!barberId || barberId.length > 200 || serviceIds.length === 0 || serviceIds.length > 20
-            || serviceIds.some((serviceId) => !serviceId || serviceId.length > 200)
-            || new Set(serviceIds).size !== serviceIds.length) {
+          if (!barberId || barberId.length > 200 || !serviceId || serviceId.length > 200) {
             return response.status(400).json({ error: "Elegí un profesional y un servicio válidos." });
           }
           const transaction = await db.transaction("write");
@@ -1708,20 +1316,18 @@ export default async function handler(request, response) {
               await transaction.rollback();
               return response.status(409).json({ error: "El profesional elegido ya no está disponible." });
             }
-            const professional = parseStoredValue(professionalResult.rows[0].value);
-            const services = serviceIds.map((serviceId) => professional.services?.find((item) => item.id === serviceId));
-            if (services.some((service) => !service)) {
+            const professional = JSON.parse(String(professionalResult.rows[0].value));
+            const service = professional.services?.find((item) => item.id === serviceId);
+            if (!service) {
               await transaction.rollback();
-              return response.status(409).json({ error: "Uno de los servicios elegidos ya no está disponible." });
+              return response.status(409).json({ error: "El servicio elegido ya no está disponible." });
             }
-            const duration = services.reduce((total, service) => total + Number(service.duration), 0);
-            const totalPrice = services.reduce((total, service) => total + Number(service.price), 0);
             const candidate = {
               ...booking,
               barberId,
-              serviceIds,
-              duration,
-              totalPrice,
+              serviceIds: [serviceId],
+              duration: Number(service.duration),
+              totalPrice: Number(service.price),
               date,
               time,
             };
@@ -1731,14 +1337,13 @@ export default async function handler(request, response) {
               return response.status(409).json({ error: availabilityError });
             }
             booking.barberId = barberId;
-            booking.serviceIds = serviceIds;
+            booking.serviceIds = [serviceId];
             booking.duration = candidate.duration;
             booking.totalPrice = candidate.totalPrice;
             booking.date = date;
             booking.time = time;
-            await transaction.execute({ sql: "UPDATE bookings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", args: [serializeStoredValue(booking), bookingId] });
-            const serviceNames = services.map((service) => service.name).join(", ");
-            const notice = notificationForAdmin(booking, "booking_changed_by_client", "Cliente modificó el turno", `${booking.customer.fullName} modificó el turno: ${professional.name}, ${serviceNames}, ${date} a las ${time}.`);
+            await transaction.execute({ sql: "UPDATE bookings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", args: [JSON.stringify(booking), bookingId] });
+            const notice = notificationForAdmin(booking, "booking_changed_by_client", "Cliente modificó el turno", `${booking.customer.fullName} modificó el turno: ${professional.name}, ${service.name}, ${date} a las ${time}.`);
             if (notice) await transaction.execute(notice);
             await transaction.commit();
             return response.status(200).json({ booking });
@@ -1762,7 +1367,7 @@ export default async function handler(request, response) {
         booking.status = "cancelled";
         booking.cancelledBy = "client";
         delete booking.cancellationToken;
-        await db.execute({ sql: "UPDATE bookings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", args: [serializeStoredValue(booking), bookingId] });
+        await db.execute({ sql: "UPDATE bookings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", args: [JSON.stringify(booking), bookingId] });
         const notice = notificationForAdmin(booking, "booking_cancelled_by_client", "Turno cancelado por el cliente", `${booking.customer.fullName} canceló su turno. El profesional puede eliminarlo desde la agenda si lo desea.`);
         if (notice) await db.execute(notice);
         return response.status(200).json({ booking });
@@ -1780,7 +1385,7 @@ export default async function handler(request, response) {
         if (!bookingId || bookingId.length > 200) return response.status(400).json({ error: "Identificador de turno inválido." });
         const stored = await db.execute({ sql: "SELECT value FROM bookings WHERE id = ?", args: [bookingId] });
         if (!stored.rows[0]) return response.status(404).json({ error: "No encontramos ese turno." });
-        const booking = parseStoredValue(stored.rows[0].value);
+        const booking = JSON.parse(String(stored.rows[0].value));
         if (normalizeStoreCode(booking.storeCode) !== normalizeStoreCode(account.rows[0]?.store_code)) {
           return response.status(403).json({ error: "El turno no corresponde a tu sucursal." });
         }
@@ -1789,7 +1394,7 @@ export default async function handler(request, response) {
         }
         booking.paymentCancellationStatus = "refunded";
         booking.refundConfirmedAt = new Date().toISOString();
-        await db.execute({ sql: "UPDATE bookings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", args: [serializeStoredValue(booking), bookingId] });
+        await db.execute({ sql: "UPDATE bookings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", args: [JSON.stringify(booking), bookingId] });
         const notice = notificationForClient(booking, "payment_refunded", "Devolución realizada", `El profesional confirmó la devolución de $${Number(booking.refundAmount ?? booking.totalPrice).toLocaleString("es-AR")}.`);
         if (notice) await db.execute(notice);
         return response.status(200).json({ booking });
@@ -1806,7 +1411,7 @@ export default async function handler(request, response) {
 
         if (body.action === "get-client-profile") {
           const profile = await db.execute({ sql: "SELECT phone FROM client_profiles WHERE user_id = ?", args: [user.id] });
-          return response.status(200).json({ phone: decryptSensitiveValue(String(profile.rows[0]?.phone ?? "")) });
+          return response.status(200).json({ phone: String(profile.rows[0]?.phone ?? "") });
         }
 
         const phone = typeof body.phone === "string" ? body.phone.trim() : "";
@@ -1816,7 +1421,7 @@ export default async function handler(request, response) {
         await db.execute({
           sql: `INSERT INTO client_profiles (user_id, phone, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)
             ON CONFLICT(user_id) DO UPDATE SET phone = excluded.phone, updated_at = CURRENT_TIMESTAMP`,
-          args: [user.id, encryptSensitiveValue(phone)],
+          args: [user.id, phone],
         });
         return response.status(200).json({ phone });
       } catch (error) {
@@ -1877,13 +1482,14 @@ export default async function handler(request, response) {
         if (!/^[\da-f-]{36}$/i.test(bookingId)) return response.status(400).json({ error: "Identificador de reserva inválido." });
         const bookingResult = await db.execute({ sql: "SELECT value FROM bookings WHERE id = ?", args: [bookingId] });
         if (!bookingResult.rows[0]) return response.status(404).json({ error: "No encontramos el turno para preparar el pago." });
-        const booking = parseStoredValue(bookingResult.rows[0].value);
+        const booking = JSON.parse(String(bookingResult.rows[0].value));
         if (!cancellationToken || booking.cancellationToken !== cancellationToken) {
           return response.status(403).json({ error: "No se pudo validar la reserva para preparar el pago." });
         }
         if (!["confirmed", "pending-payment"].includes(booking.status) || booking.paymentStatus === "approved" || booking.customer?.paymentMethod !== "tarjeta o mercado pago") {
           return response.status(409).json({ error: "El turno no está pendiente de pago con Mercado Pago." });
         }
+
         const credentials = await getStorePaymentCredentials(db, booking.storeCode);
         const host = request.headers.host || "localhost";
         const protocol = request.headers["x-forwarded-proto"] || "https";
@@ -1906,7 +1512,10 @@ export default async function handler(request, response) {
           }),
         });
         const preference = await preferenceResponse.json();
-        if (!preferenceResponse.ok || !preference.init_point) return response.status(502).json({ error: "Mercado Pago no pudo preparar el pago." });
+        if (!preferenceResponse.ok || !preference.init_point) {
+          console.error("Mercado Pago booking preference failed", preferenceResponse.status);
+          return response.status(502).json({ error: "Mercado Pago no pudo preparar el pago." });
+        }
         return response.status(200).json({ initPoint: preference.init_point });
       } catch (error) {
         console.error("No se pudo iniciar el pago del turno", error);
@@ -1937,7 +1546,7 @@ export default async function handler(request, response) {
           await transaction.rollback();
           return response.status(404).json({ error: "No encontramos la reserva pendiente." });
         }
-        const booking = parseStoredValue(result.rows[0].value);
+        const booking = JSON.parse(String(result.rows[0].value));
         const requestedStoreCode = normalizeStoreCode(request.headers["x-store-code"]);
         if (normalizeStoreCode(booking.storeCode) !== requestedStoreCode) {
           await transaction.rollback();
@@ -1951,7 +1560,7 @@ export default async function handler(request, response) {
         delete booking.cancellationToken;
         await transaction.execute({
           sql: "UPDATE bookings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-          args: [serializeStoredValue(booking), bookingId],
+          args: [JSON.stringify(booking), bookingId],
         });
         await transaction.commit();
         return response.status(200).json({ ok: true });
@@ -2224,7 +1833,7 @@ export default async function handler(request, response) {
             await transaction.execute({
               sql: `INSERT INTO account_roles (user_id, email, role, store_code, updated_at) VALUES (?, ?, 'client', NULL, CURRENT_TIMESTAMP)
                 ON CONFLICT(user_id) DO UPDATE SET email = excluded.email, role = 'client', store_code = NULL, updated_at = CURRENT_TIMESTAMP`,
-              args: [user.id, encryptSensitiveValue(user.email)],
+              args: [user.id, user.email],
             });
             await transaction.commit();
             return response.status(200).json({ role: requestedRole, storeCode: null });
@@ -2233,7 +1842,7 @@ export default async function handler(request, response) {
           await transaction.execute({
             sql: `INSERT INTO account_roles (user_id, email, role, store_code, updated_at) VALUES (?, ?, 'admin', ?, CURRENT_TIMESTAMP)
               ON CONFLICT(user_id) DO UPDATE SET email = excluded.email, role = 'admin', store_code = excluded.store_code, updated_at = CURRENT_TIMESTAMP`,
-            args: [user.id, encryptSensitiveValue(user.email), null],
+            args: [user.id, user.email, null],
           });
           await transaction.commit();
           return response.status(200).json({ role: requestedRole, storeCode: null });
@@ -2290,20 +1899,20 @@ export default async function handler(request, response) {
             });
             for (const row of professionalRows.rows) {
               const oldId = String(row.id);
-              const professional = parseStoredValue(row.value);
+              const professional = JSON.parse(String(row.value));
               professional.storeCode = code;
               await transaction.execute({
                 sql: "UPDATE professionals SET id = ?, value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-                args: [`${code}:${oldId.slice(professionalPrefix.length)}`, serializeStoredValue(professional), oldId],
+                args: [`${code}:${oldId.slice(professionalPrefix.length)}`, JSON.stringify(professional), oldId],
               });
             }
 
             const bookingRows = await transaction.execute({ sql: "SELECT id, value FROM bookings" });
             for (const row of bookingRows.rows) {
-              const booking = parseStoredValue(row.value);
+              const booking = JSON.parse(String(row.value));
               if (normalizeStoreCode(booking.storeCode) !== previousCode) continue;
               booking.storeCode = code;
-              await transaction.execute({ sql: "UPDATE bookings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", args: [serializeStoredValue(booking), String(row.id)] });
+              await transaction.execute({ sql: "UPDATE bookings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", args: [JSON.stringify(booking), String(row.id)] });
             }
             await transaction.execute({ sql: "UPDATE subscription_orders SET store_code = ? WHERE store_code = ?", args: [code, previousCode] });
           }
@@ -2342,7 +1951,7 @@ export default async function handler(request, response) {
         const storeResult = await db.execute({ sql: "SELECT settings FROM stores WHERE code = ?", args: [storeCode] });
         if (!storeResult.rows[0]) return response.status(404).json({ error: "No encontramos la sucursal." });
         const settings = { ...parseStoreSettings(storeResult.rows[0].settings), ...policy };
-        await db.execute({ sql: "UPDATE stores SET settings = ? WHERE code = ?", args: [serializeStoreSettings(settings), storeCode] });
+        await db.execute({ sql: "UPDATE stores SET settings = ? WHERE code = ?", args: [JSON.stringify(settings), storeCode] });
         return response.status(200).json({ code: storeCode, settings });
       } catch (error) {
         console.error("No se pudieron guardar las políticas de cancelación", error);
@@ -2359,7 +1968,7 @@ export default async function handler(request, response) {
         if (!settings) return response.status(400).json({ error: "Revisá los datos de contacto y transferencia bancaria." });
         if (!settings.transferHolder.trim()) return response.status(400).json({ error: "El titular de la cuenta es obligatorio." });
         if (!settings.transferCbu.trim() && !settings.transferAlias.trim()) return response.status(400).json({ error: "Completá el CBU o el alias para recibir transferencias bancarias." });
-        await db.execute({ sql: "UPDATE stores SET settings = ? WHERE code = ?", args: [serializeStoreSettings(settings), storeCode] });
+        await db.execute({ sql: "UPDATE stores SET settings = ? WHERE code = ?", args: [JSON.stringify(settings), storeCode] });
         return response.status(200).json({ code: storeCode, settings });
       } catch (error) {
         console.error("No se pudieron guardar los datos de la sucursal", error);
@@ -2407,256 +2016,259 @@ export default async function handler(request, response) {
           instagram: contact.instagram ?? currentSettings.instagram,
         });
         if (!settings) return response.status(400).json({ error: "Revisá los datos de contacto ingresados." });
-        await db.execute({ sql: "UPDATE stores SET settings = ? WHERE code = ?", args: [serializeStoreSettings(settings), storeCode] });
+        await db.execute({ sql: "UPDATE stores SET settings = ? WHERE code = ?", args: [JSON.stringify(settings), storeCode] });
         return response.status(200).json({ code: storeCode, settings });
       } catch (error) {
         console.error("No se pudieron guardar los datos de contacto", error);
         return response.status(500).json({ error: "No se pudieron guardar los datos de contacto." });
       }
     }
-    if (body?.action === "guest-booking") {
-        const booking = body.booking;
-        const customer = booking?.customer;
-        const id = recordId(booking);
-        const validEmail = typeof customer?.email === "string" && /^.+@.+\..+$/.test(customer.email.trim());
-        const parsedDate = typeof booking?.date === "string" ? new Date(`${booking.date}T12:00:00Z`) : null;
-        const todayInArgentina = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Argentina/Buenos_Aires" }).format(new Date());
-        const validBooking = id && id.length >= 20
-          && typeof customer?.fullName === "string" && customer.fullName.trim().length > 0 && customer.fullName.length <= 160
-          && typeof customer.phone === "string" && customer.phone.trim().length >= 6 && customer.phone.length <= 40
-          && validEmail
-          && typeof booking.barberId === "string" && booking.barberId.length <= 200
-          && Array.isArray(booking.serviceIds) && booking.serviceIds.length > 0 && booking.serviceIds.length <= 20
-          && typeof booking.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(booking.date)
-          && parsedDate && !Number.isNaN(parsedDate.getTime()) && parsedDate.toISOString().slice(0, 10) === booking.date && booking.date >= todayInArgentina
-          && typeof booking.time === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(booking.time)
-          && Number.isFinite(booking.duration) && booking.duration > 0 && booking.duration <= 1440
-          && Number.isFinite(booking.totalPrice) && booking.totalPrice >= 0 && booking.totalPrice <= 100000000
-          && ["pending-payment", "confirmed"].includes(booking.status);
-        if (!validBooking) return response.status(400).json({ error: "Los datos de la reserva no son válidos." });
-        let transaction;
-        try {
-          const storeCode = normalizeStoreCode(request.headers["x-store-code"]);
-          if (!storeCode) return response.status(400).json({ error: "Seleccioná una sucursal para reservar." });
-          const storeResult = await db.execute({ sql: "SELECT code, subscription_expires_at FROM stores WHERE code = ?", args: [storeCode] });
-          if (!storeResult.rows[0]) return response.status(404).json({ error: "No encontramos la sucursal seleccionada." });
-          if (!isSubscriptionActive(storeResult.rows[0].subscription_expires_at)) return response.status(403).json({ error: "Esta sucursal no tiene un plan activo para aceptar reservas." });
-          booking.storeCode = storeCode;
-          booking.cancellationPolicyAtBooking = snapshotCancellationPolicy(await getStoreCancellationPolicy(db, storeCode));
-          const professionalResult = await db.execute({ sql: "SELECT value FROM professionals WHERE id = ?", args: [storedRecordId(storeCode, booking.barberId)] });
-          if (!professionalResult.rows[0]) return response.status(400).json({ error: "El profesional elegido ya no está disponible." });
-          const professional = parseStoredValue(professionalResult.rows[0].value);
-          if (professional.isTest) return response.status(400).json({ error: "No se pueden reservar turnos de prueba." });
-          const serviceIds = [...new Set(booking.serviceIds)];
-          if (serviceIds.length !== booking.serviceIds.length) return response.status(400).json({ error: "La selección de servicios no es válida." });
-          const services = serviceIds.map((serviceId) => professional.services?.find((service) => service.id === serviceId));
-          if (services.some((service) => !service)) return response.status(400).json({ error: "Uno de los servicios ya no está disponible." });
-          const expectedDuration = services.reduce((sum, service) => sum + Number(service.duration), 0);
-          const expectedPrice = services.reduce((sum, service) => sum + Number(service.price), 0);
-          if (booking.duration !== expectedDuration || booking.totalPrice !== expectedPrice) {
-            return response.status(400).json({ error: "El precio o la duración del turno ya cambió. Volvé a seleccionar el servicio." });
-          }
-
-          const schedule = scheduleForDate(professional, booking.date);
-          let allowedSlots = professional.availableSlots ?? [];
-          let scheduleEnd = null;
-          if (schedule) {
-            if (schedule.closed) return response.status(400).json({ error: "El profesional no trabaja en esa fecha." });
-            const generated = scheduleSlots(schedule);
-            if (!generated) return response.status(400).json({ error: "El horario del profesional no es válido." });
-            allowedSlots = generated.slots;
-            scheduleEnd = generated.endMinute;
-          }
-          if (!allowedSlots.includes(booking.time)) return response.status(400).json({ error: "Ese horario no está dentro de la disponibilidad del profesional." });
-          const [hours, minutes] = booking.time.split(":").map(Number);
-          const startMinute = hours * 60 + minutes;
-          if (scheduleEnd !== null && startMinute + booking.duration > scheduleEnd) return response.status(400).json({ error: "El turno excede el horario de atención del profesional." });
-
-          transaction = await db.transaction("write");
-          const hasConflict = await hasBookingConflict(transaction, booking, storeCode, bookingCapacityForDate(professional, booking.date));
-          if (hasConflict) {
-            await transaction.rollback();
-            return response.status(409).json({ error: "Ese horario acaba de ser reservado o completó sus lugares disponibles. Elegí otro horario." });
-          }
-
-          await transaction.execute({
-            sql: "INSERT INTO bookings (id, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) ON CONFLICT(id) DO NOTHING",
-            args: [id, serializeStoredValue(booking)],
-          });
-          const notice = notificationForAdmin(booking, "new_booking", "Nuevo turno reservado", `${customer.fullName} reservó para el ${booking.date} a las ${booking.time}.`);
-          if (notice) await transaction.execute(notice);
-          await transaction.commit();
-          return response.status(201).json({ ok: true });
-        } catch (error) {
-          if (transaction) await transaction.rollback().catch(() => undefined);
-          console.error("No se pudo guardar la reserva pública", error);
-          return response.status(500).json({ error: "No se pudo guardar la reserva." });
-        }
-      }
+    if (user || body?.action !== "guest-booking") {
+      return response.status(400).json({ error: "Acción pública inválida." });
     }
+    const booking = body.booking;
+    const customer = booking?.customer;
+    const id = recordId(booking);
+    const validEmail = typeof customer?.email === "string" && /^.+@.+\..+$/.test(customer.email.trim());
+    const parsedDate = typeof booking?.date === "string" ? new Date(`${booking.date}T12:00:00Z`) : null;
+    const todayInArgentina = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Argentina/Buenos_Aires" }).format(new Date());
+    const validBooking = id && id.length >= 20
+      && typeof customer?.fullName === "string" && customer.fullName.trim().length > 0 && customer.fullName.length <= 160
+      && typeof customer.phone === "string" && customer.phone.trim().length >= 6 && customer.phone.length <= 40
+      && validEmail
+      && typeof booking.barberId === "string" && booking.barberId.length <= 200
+      && Array.isArray(booking.serviceIds) && booking.serviceIds.length > 0 && booking.serviceIds.length <= 20
+      && typeof booking.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(booking.date)
+      && parsedDate && !Number.isNaN(parsedDate.getTime()) && parsedDate.toISOString().slice(0, 10) === booking.date && booking.date >= todayInArgentina
+      && typeof booking.time === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(booking.time)
+      && Number.isFinite(booking.duration) && booking.duration > 0 && booking.duration <= 1440
+      && Number.isFinite(booking.totalPrice) && booking.totalPrice >= 0 && booking.totalPrice <= 100000000
+      && ["pending-payment", "confirmed"].includes(booking.status);
+    if (!validBooking) return response.status(400).json({ error: "Los datos de la reserva no son válidos." });
+    let transaction;
+    try {
+      const storeCode = normalizeStoreCode(request.headers["x-store-code"]);
+      if (!storeCode) return response.status(400).json({ error: "Seleccioná una sucursal para reservar." });
+      const storeResult = await db.execute({ sql: "SELECT code, subscription_expires_at FROM stores WHERE code = ?", args: [storeCode] });
+      if (!storeResult.rows[0]) return response.status(404).json({ error: "No encontramos la sucursal seleccionada." });
+      if (!isSubscriptionActive(storeResult.rows[0].subscription_expires_at)) return response.status(403).json({ error: "Esta sucursal no tiene un plan activo para aceptar reservas." });
+      booking.storeCode = storeCode;
+      booking.cancellationPolicyAtBooking = snapshotCancellationPolicy(await getStoreCancellationPolicy(db, storeCode));
+      const professionalResult = await db.execute({ sql: "SELECT value FROM professionals WHERE id = ?", args: [storedRecordId(storeCode, booking.barberId)] });
+      if (!professionalResult.rows[0]) return response.status(400).json({ error: "El profesional elegido ya no está disponible." });
+      const professional = JSON.parse(String(professionalResult.rows[0].value));
+      if (professional.isTest) return response.status(400).json({ error: "No se pueden reservar turnos de prueba." });
+      const serviceIds = [...new Set(booking.serviceIds)];
+      if (serviceIds.length !== booking.serviceIds.length) return response.status(400).json({ error: "La selección de servicios no es válida." });
+      const services = serviceIds.map((serviceId) => professional.services?.find((service) => service.id === serviceId));
+      if (services.some((service) => !service)) return response.status(400).json({ error: "Uno de los servicios ya no está disponible." });
+      const expectedDuration = services.reduce((sum, service) => sum + Number(service.duration), 0);
+      const expectedPrice = services.reduce((sum, service) => sum + Number(service.price), 0);
+      if (booking.duration !== expectedDuration || booking.totalPrice !== expectedPrice) {
+        return response.status(400).json({ error: "El precio o la duración del turno ya cambió. Volvé a seleccionar el servicio." });
+      }
+
+      const schedule = scheduleForDate(professional, booking.date);
+      let allowedSlots = professional.availableSlots ?? [];
+      let scheduleEnd = null;
+      if (schedule) {
+        if (schedule.closed) return response.status(400).json({ error: "El profesional no trabaja en esa fecha." });
+        const generated = scheduleSlots(schedule);
+        if (!generated) return response.status(400).json({ error: "El horario del profesional no es válido." });
+        allowedSlots = generated.slots;
+        scheduleEnd = generated.endMinute;
+      }
+      if (!allowedSlots.includes(booking.time)) return response.status(400).json({ error: "Ese horario no está dentro de la disponibilidad del profesional." });
+      const [hours, minutes] = booking.time.split(":").map(Number);
+      const startMinute = hours * 60 + minutes;
+      if (scheduleEnd !== null && startMinute + booking.duration > scheduleEnd) {
+        return response.status(400).json({ error: "El turno excede el horario de atención del profesional." });
+      }
+
+      transaction = await db.transaction("write");
+      const hasConflict = await hasBookingConflict(transaction, booking, storeCode, bookingCapacityForDate(professional, booking.date));
+      if (hasConflict) {
+        await transaction.rollback();
+        return response.status(409).json({ error: "Ese horario acaba de ser reservado o completó sus lugares disponibles. Elegí otro horario." });
+      }
+
+      await transaction.execute({
+        sql: "INSERT INTO bookings (id, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) ON CONFLICT(id) DO NOTHING",
+        args: [id, JSON.stringify(booking)],
+      });
+      const notice = notificationForAdmin(booking, "new_booking", "Nuevo turno reservado", `${customer.fullName} reservó para el ${booking.date} a las ${booking.time}.`);
+      if (notice) await transaction.execute(notice);
+      await transaction.commit();
+      return response.status(201).json({ ok: true });
+    } catch (error) {
+      if (transaction) await transaction.rollback().catch(() => undefined);
+      console.error("No se pudo guardar la reserva pública", error);
+      return response.status(500).json({ error: "No se pudo guardar la reserva." });
+    }
+  }
 
   if (!body || !COLLECTIONS.includes(body.collection)) {
-        return response.status(400).json({ error: "Colección inválida." });
-      }
+    return response.status(400).json({ error: "Colección inválida." });
+  }
 
-      const records = body.records;
-      const deleteIds = Array.isArray(body.deleteIds)
-        ? body.deleteIds.filter((id) => typeof id === "string" && id.length > 0 && id.length <= 200).slice(0, 100)
-        : [];
-      if (!Array.isArray(records) || records.length > 100 || JSON.stringify(body).length > 4_000_000) {
-        return response.status(413).json({ error: "La sincronización supera el tamaño permitido." });
+  const records = body.records;
+  const deleteIds = Array.isArray(body.deleteIds)
+    ? body.deleteIds.filter((id) => typeof id === "string" && id.length > 0 && id.length <= 200).slice(0, 100)
+    : [];
+  if (!Array.isArray(records) || records.length > 100 || JSON.stringify(body).length > 4_000_000) {
+    return response.status(413).json({ error: "La sincronización supera el tamaño permitido." });
+  }
+  let role = "client";
+  let storeCode = normalizeStoreCode(request.headers["x-store-code"]);
+  try {
+    if (user) {
+      const accountRole = await db.execute({ sql: "SELECT role, store_code FROM account_roles WHERE user_id = ?", args: [user.id] });
+      if (!accountRole.rows[0] || !["admin", "client"].includes(String(accountRole.rows[0].role))) {
+        return response.status(403).json({ error: "Configurá tu tipo de cuenta antes de guardar datos." });
       }
-      let role = "client";
-      let storeCode = normalizeStoreCode(request.headers["x-store-code"]);
-      try {
-        if (user) {
-          const accountRole = await db.execute({ sql: "SELECT role, store_code FROM account_roles WHERE user_id = ?", args: [user.id] });
-          if (!accountRole.rows[0] || !["admin", "client"].includes(String(accountRole.rows[0].role))) {
-            return response.status(403).json({ error: "Configurá tu tipo de cuenta antes de guardar datos." });
-          }
-          role = accountRole.rows[0].role;
-          if (role === "admin" && user.emailVerified) storeCode = normalizeStoreCode(accountRole.rows[0]?.store_code);
+      role = accountRole.rows[0].role;
+      if (role === "admin" && user.emailVerified) storeCode = normalizeStoreCode(accountRole.rows[0]?.store_code);
+    }
+    if (!storeCode) return response.status(400).json({ error: "Seleccioná una sucursal antes de guardar." });
+  } catch (error) {
+    console.error("No se pudo verificar el rol de la cuenta", error);
+    return response.status(500).json({ error: "No se pudo verificar el rol de la cuenta." });
+  }
+
+  if (body.collection === "professionals" && deleteIds.length > 0 && role !== "admin") {
+    return response.status(403).json({ error: "Solo un administrador puede eliminar profesionales." });
+  }
+
+  if (body.collection === "professionals" && role !== "admin") {
+    return response.status(403).json({ error: "Solo las cuentas administradoras pueden modificar profesionales." });
+  }
+
+  try {
+    const statements = [];
+    for (const record of records) {
+      const id = recordId(record);
+      if (!id) return response.status(400).json({ error: "Hay un registro con identificador inválido." });
+      record.storeCode = storeCode;
+      const databaseId = body.collection === "professionals" ? storedRecordId(storeCode, id) : id;
+      const storedRecord = await db.execute({ sql: `SELECT value FROM ${body.collection} WHERE id = ?`, args: [databaseId] });
+      if (storedRecord.rows[0]) {
+        const priorRecord = JSON.parse(String(storedRecord.rows[0].value));
+        if (normalizeStoreCode(priorRecord.storeCode) !== storeCode) {
+          return response.status(403).json({ error: "El registro no pertenece a la sucursal seleccionada." });
         }
-        if (!storeCode) return response.status(400).json({ error: "Seleccioná una sucursal antes de guardar." });
-      } catch (error) {
-        console.error("No se pudo verificar el rol de la cuenta", error);
-        return response.status(500).json({ error: "No se pudo verificar el rol de la cuenta." });
-      }
-
-      if (body.collection === "professionals" && deleteIds.length > 0 && role !== "admin") {
-        return response.status(403).json({ error: "Solo un administrador puede eliminar profesionales." });
-      }
-
-      if (body.collection === "professionals" && role !== "admin") {
-        return response.status(403).json({ error: "Solo las cuentas administradoras pueden modificar profesionales." });
-      }
-
-      try {
-        const statements = [];
-        for (const record of records) {
-          const id = recordId(record);
-          if (!id) return response.status(400).json({ error: "Hay un registro con identificador inválido." });
-          record.storeCode = storeCode;
-          const databaseId = body.collection === "professionals" ? storedRecordId(storeCode, id) : id;
-          const storedRecord = await db.execute({ sql: `SELECT value FROM ${body.collection} WHERE id = ?`, args: [databaseId] });
-          if (storedRecord.rows[0]) {
-            const booking = parseStoredValue(storedRecord.rows[0].value);
-            if (normalizeStoreCode(booking.storeCode) !== storeCode) {
-              return response.status(403).json({ error: "El registro no pertenece a la sucursal seleccionada." });
-            }
-            if (body.collection === "bookings") record.cancellationPolicyAtBooking = booking.cancellationPolicyAtBooking;
-            if (body.collection === "bookings" && role === "admin"
-              && booking.status !== record.status
-              && ["completed", "no-show"].includes(record.status)
-              && record.paymentStatus !== "approved") {
-              return response.status(409).json({ error: "Solo puedes indicar asistencia en turnos con el pago confirmado por el administrador." });
-            }
-          }
-          if (body.collection === "bookings" && !storedRecord.rows[0]) {
-            record.cancellationPolicyAtBooking = snapshotCancellationPolicy(await getStoreCancellationPolicy(db, storeCode));
-          }
-          if (body.collection === "bookings" && role !== "admin") {
-            if (normalizeStoreCode(record.storeCode) !== storeCode) return response.status(403).json({ error: "La reserva no corresponde a la sucursal seleccionada." });
-            if (typeof record.customer?.email !== "string" || record.customer.email.trim().toLowerCase() !== user.email) {
-              return response.status(403).json({ error: "Solo puedes guardar turnos asociados a tu propio correo." });
-            }
-            const existing = await db.execute({ sql: "SELECT value FROM bookings WHERE id = ?", args: [databaseId] });
-            if (existing.rows[0]) {
-              const prior = parseStoredValue(existing.rows[0].value);
-              if (prior.customer?.email?.trim().toLowerCase() !== user.email) {
-                return response.status(403).json({ error: "No puedes modificar un turno de otra persona." });
-              }
-              const immutableFields = ["id", "customer", "barberId", "serviceIds", "date", "time", "duration", "totalPrice", "status", "cancelledBy", "paymentReportedAt", "paymentCancellationStatus", "paymentCancellationRequestedAt", "refundCbu", "refundDestination", "refundDestinationType", "refundAmount", "refundRequestedAt", "refundConfirmedAt", "mercadoPagoPaymentId", "createdAt", "isTest"];
-              if (immutableFields.some((field) => JSON.stringify(prior[field]) !== JSON.stringify(record[field]))) {
-                return response.status(403).json({ error: "Solo puedes confirmar tu turno; los datos de la reserva no se pueden modificar desde la cuenta cliente." });
-              }
-              if (record.appointmentConfirmation !== "confirmed" && record.appointmentConfirmation !== "pending") {
-                return response.status(400).json({ error: "El estado de confirmación no es válido." });
-              }
-            } else {
-              if (!record.customer?.fullName || typeof record.customer.fullName !== "string"
-                || typeof record.customer.phone !== "string" || record.customer.phone.trim().length < 6
-                || typeof record.customer.email !== "string" || !/^.+@.+\..+$/.test(record.customer.email)
-                || !Array.isArray(record.serviceIds) || record.serviceIds.length === 0
-                || !/^\d{4}-\d{2}-\d{2}$/.test(record.date) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(record.time)
-                || !Number.isFinite(record.duration) || record.duration <= 0
-                || !Number.isFinite(record.totalPrice) || record.totalPrice < 0
-                || !["confirmed", "pending-payment"].includes(record.status)) {
-                return response.status(400).json({ error: "Los datos del turno no son válidos." });
-              }
-              const availabilityError = await validateBookingAvailability(db, record, storeCode, id);
-              if (availabilityError) {
-                const conflict = availabilityError.includes("acaba de ser reservado");
-                return response.status(conflict ? 409 : 400).json({ error: availabilityError });
-              }
-              const transaction = await db.transaction("write");
-              try {
-                const capacityProfessional = await transaction.execute({ sql: "SELECT value FROM professionals WHERE id = ?", args: [storedRecordId(storeCode, record.barberId)] });
-                if (!capacityProfessional.rows[0]) {
-                  await transaction.rollback();
-                  return response.status(400).json({ error: "El profesional elegido ya no está disponible." });
-                }
-                const professionalForCapacity = parseStoredValue(capacityProfessional.rows[0].value);
-                if (await hasBookingConflict(transaction, record, storeCode, bookingCapacityForDate(professionalForCapacity, record.date), id)) {
-                  await transaction.rollback();
-                  return response.status(409).json({ error: "Ese horario acaba de ser reservado o completó sus lugares disponibles. Elegí otro horario." });
-                }
-                await transaction.execute({
-                  sql: "INSERT INTO bookings (id, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) ON CONFLICT(id) DO NOTHING",
-                  args: [databaseId, serializeStoredValue(record)],
-                });
-                const notice = notificationForAdmin(record, "new_booking", "Nuevo turno reservado", `${record.customer.fullName} reservó para el ${record.date} a las ${record.time}.`);
-                if (notice) await transaction.execute(notice);
-                await transaction.commit();
-              } catch (error) {
-                await transaction.rollback().catch(() => undefined);
-                throw error;
-              }
-              continue;
-            }
-          }
-          statements.push({
-            sql: `INSERT INTO ${body.collection} (id, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)
-          ON CONFLICT(id) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP`,
-            args: [databaseId, serializeStoredValue(record)],
-          });
-          if (body.collection === "bookings" && role === "admin" && storedRecord.rows[0]) {
-            const priorBooking = parseStoredValue(storedRecord.rows[0].value);
-            const change = describeAdminBookingChange(priorBooking, record);
-            if (change) {
-              const notice = notificationForClient(record, change[0], change[1], change[2]);
-              if (notice) statements.push(notice);
-            }
-          }
+        if (body.collection === "bookings") record.cancellationPolicyAtBooking = priorRecord.cancellationPolicyAtBooking;
+        if (body.collection === "bookings" && role === "admin"
+          && priorRecord.status !== record.status
+          && ["completed", "no-show"].includes(record.status)
+          && record.paymentStatus !== "approved") {
+          return response.status(409).json({ error: "Solo puedes indicar asistencia en turnos con el pago confirmado por el administrador." });
         }
-        for (const id of deleteIds) {
-          if (role !== "admin") {
-            return response.status(403).json({ error: "Solo un administrador puede eliminar turnos." });
+      }
+      if (body.collection === "bookings" && !storedRecord.rows[0]) {
+        record.cancellationPolicyAtBooking = snapshotCancellationPolicy(await getStoreCancellationPolicy(db, storeCode));
+      }
+      if (body.collection === "bookings" && role !== "admin") {
+        if (normalizeStoreCode(record.storeCode) !== storeCode) return response.status(403).json({ error: "La reserva no corresponde a la sucursal seleccionada." });
+        if (typeof record.customer?.email !== "string" || record.customer.email.trim().toLowerCase() !== user.email) {
+          return response.status(403).json({ error: "Solo puedes guardar turnos asociados a tu propio correo." });
+        }
+        const existing = await db.execute({ sql: "SELECT value FROM bookings WHERE id = ?", args: [databaseId] });
+        if (existing.rows[0]) {
+          const prior = JSON.parse(String(existing.rows[0].value));
+          if (prior.customer?.email?.trim().toLowerCase() !== user.email) {
+            return response.status(403).json({ error: "No puedes modificar un turno de otra persona." });
           }
-          const databaseId = body.collection === "professionals" ? storedRecordId(storeCode, id) : id;
-          const existing = await db.execute({ sql: `SELECT value FROM ${body.collection} WHERE id = ?`, args: [databaseId] });
-          if (!existing.rows[0]) continue;
-          if (normalizeStoreCode(parseStoredValue(existing.rows[0].value).storeCode) !== storeCode) {
-            return response.status(403).json({ error: "El registro no pertenece a esta sucursal." });
+          const immutableFields = ["id", "customer", "barberId", "serviceIds", "date", "time", "duration", "totalPrice", "status", "cancelledBy", "paymentReportedAt", "paymentCancellationStatus", "paymentCancellationRequestedAt", "refundCbu", "refundDestination", "refundDestinationType", "refundAmount", "refundRequestedAt", "refundConfirmedAt", "mercadoPagoPaymentId", "createdAt", "isTest"];
+          if (immutableFields.some((field) => JSON.stringify(prior[field]) !== JSON.stringify(record[field]))) {
+            return response.status(403).json({ error: "Solo puedes confirmar tu turno; los datos de la reserva no se pueden modificar desde la cuenta cliente." });
           }
-          if (body.collection === "bookings" && role === "admin") {
-            const removedBooking = parseStoredValue(existing.rows[0].value);
-            if (hasPendingRefund(removedBooking)) {
-              return response.status(409).json({ error: "No se puede borrar el turno mientras la devolución esté pendiente." });
+          if (record.appointmentConfirmation !== "confirmed" && record.appointmentConfirmation !== "pending") {
+            return response.status(400).json({ error: "El estado de confirmación no es válido." });
+          }
+        } else {
+          if (!record.customer?.fullName || typeof record.customer.fullName !== "string"
+            || typeof record.customer.phone !== "string" || record.customer.phone.trim().length < 6
+            || typeof record.customer.email !== "string" || !/^.+@.+\..+$/.test(record.customer.email)
+            || !Array.isArray(record.serviceIds) || record.serviceIds.length === 0
+            || !/^\d{4}-\d{2}-\d{2}$/.test(record.date) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(record.time)
+            || !Number.isFinite(record.duration) || record.duration <= 0
+            || !Number.isFinite(record.totalPrice) || record.totalPrice < 0
+            || !["confirmed", "pending-payment"].includes(record.status)) {
+            return response.status(400).json({ error: "Los datos del turno no son válidos." });
+          }
+          const availabilityError = await validateBookingAvailability(db, record, storeCode, id);
+          if (availabilityError) {
+            const conflict = availabilityError.includes("acaba de ser reservado");
+            return response.status(conflict ? 409 : 400).json({ error: availabilityError });
+          }
+          const transaction = await db.transaction("write");
+          try {
+            const capacityProfessional = await transaction.execute({ sql: "SELECT value FROM professionals WHERE id = ?", args: [storedRecordId(storeCode, record.barberId)] });
+            if (!capacityProfessional.rows[0]) {
+              await transaction.rollback();
+              return response.status(400).json({ error: "El profesional elegido ya no está disponible." });
             }
-            removedBooking.adminPermanentlyDeletedAt = new Date().toISOString();
-            statements.push({
-              sql: "UPDATE bookings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-              args: [serializeStoredValue(removedBooking), databaseId],
+            const professionalForCapacity = JSON.parse(String(capacityProfessional.rows[0].value));
+            if (await hasBookingConflict(transaction, record, storeCode, bookingCapacityForDate(professionalForCapacity, record.date), id)) {
+              await transaction.rollback();
+              return response.status(409).json({ error: "Ese horario acaba de ser reservado o completó sus lugares disponibles. Elegí otro horario." });
+            }
+            await transaction.execute({
+              sql: "INSERT INTO bookings (id, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) ON CONFLICT(id) DO NOTHING",
+              args: [databaseId, JSON.stringify(record)],
             });
-            continue;
+            const notice = notificationForAdmin(record, "new_booking", "Nuevo turno reservado", `${record.customer.fullName} reservó para el ${record.date} a las ${record.time}.`);
+            if (notice) await transaction.execute(notice);
+            await transaction.commit();
+          } catch (error) {
+            await transaction.rollback().catch(() => undefined);
+            throw error;
           }
-          statements.push({ sql: `DELETE FROM ${body.collection} WHERE id = ?`, args: [databaseId] });
+          continue;
         }
-        if (statements.length) await db.batch(statements, "write");
-        return response.status(200).json({ ok: true });
-      } catch (error) {
-        console.error("No se pudieron guardar datos en Turso", error);
-        return response.status(500).json({ error: "No se pudieron guardar los datos." });
+      }
+      statements.push({
+        sql: `INSERT INTO ${body.collection} (id, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)
+          ON CONFLICT(id) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP`,
+        args: [databaseId, JSON.stringify(record)],
+      });
+      if (body.collection === "bookings" && role === "admin" && storedRecord.rows[0]) {
+        const priorBooking = JSON.parse(String(storedRecord.rows[0].value));
+        const change = describeAdminBookingChange(priorBooking, record);
+        if (change) {
+          const notice = notificationForClient(record, change[0], change[1], change[2]);
+          if (notice) statements.push(notice);
+        }
       }
     }
+    for (const id of deleteIds) {
+      if (role !== "admin") {
+        return response.status(403).json({ error: "Solo un administrador puede eliminar turnos." });
+      }
+      const databaseId = body.collection === "professionals" ? storedRecordId(storeCode, id) : id;
+      const existing = await db.execute({ sql: `SELECT value FROM ${body.collection} WHERE id = ?`, args: [databaseId] });
+      if (!existing.rows[0]) continue;
+      if (normalizeStoreCode(JSON.parse(String(existing.rows[0].value)).storeCode) !== storeCode) {
+        return response.status(403).json({ error: "El registro no pertenece a esta sucursal." });
+      }
+      if (body.collection === "bookings" && role === "admin") {
+        const removedBooking = JSON.parse(String(existing.rows[0].value));
+        if (hasPendingRefund(removedBooking)) {
+          return response.status(409).json({ error: "No se puede borrar el turno mientras la devolución esté pendiente." });
+        }
+        removedBooking.adminPermanentlyDeletedAt = new Date().toISOString();
+        statements.push({
+          sql: "UPDATE bookings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+          args: [JSON.stringify(removedBooking), databaseId],
+        });
+        continue;
+      }
+      statements.push({ sql: `DELETE FROM ${body.collection} WHERE id = ?`, args: [databaseId] });
+    }
+    if (statements.length) await db.batch(statements, "write");
+    return response.status(200).json({ ok: true });
+  } catch (error) {
+    console.error("No se pudieron guardar datos en Turso", error);
+    return response.status(500).json({ error: "No se pudieron guardar los datos." });
+  }
+}

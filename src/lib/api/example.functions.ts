@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
+import { z } from "zod";
+
 import { getServerConfig } from "../config.server";
-import { greetingInputSchema } from "./example.schema";
 
 // Example createServerFn. Server-side handler invoked from the client:
 //   const result = await getGreeting({ data: { name: "Ada" } })
@@ -11,7 +12,7 @@ import { greetingInputSchema } from "./example.schema";
 // Functions for server logic.
 
 export const getGreeting = createServerFn({ method: "POST" })
-  .inputValidator(greetingInputSchema)
+  .inputValidator(z.object({ name: z.string().min(1) }))
   .handler(async ({ data }) => {
     const config = getServerConfig();
     return {
