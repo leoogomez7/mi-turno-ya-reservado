@@ -240,13 +240,13 @@ export function AgendaManager() {
     const deletedIds: string[] = [];
     let failedCount = archivedBookings.length - deletableBookings.length;
     try {
-      for (const booking of deletableBookings) {
-        try {
-          await permanentlyDeleteArchivedBooking(booking.id);
-          deletedIds.push(booking.id);
-        } catch {
-          failedCount += 1;
-        }
+      for (let offset = 0; offset < deletableBookings.length; offset += 8) {
+        const batch = deletableBookings.slice(offset, offset + 8);
+        const results = await Promise.allSettled(batch.map((booking) => permanentlyDeleteArchivedBooking(booking.id)));
+        results.forEach((result, index) => {
+          if (result.status === "fulfilled") deletedIds.push(batch[index].id);
+          else failedCount += 1;
+        });
       }
       if (deletedIds.length) setBookings((current) => current.filter((booking) => !deletedIds.includes(booking.id)));
       if (failedCount) {

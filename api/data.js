@@ -676,6 +676,95 @@ function describeAdminBookingChange(previous, next) {
   return null;
 }
 
+async function updateAdminBooking(db, user, body) {
+  if (!user.emailVerified) return { status: 403, body: { error: "Verificá tu correo antes de modificar turnos." } };
+  const account = await db.execute({ sql: "SELECT role, store_code FROM account_roles WHERE user_id = ?", args: [user.id] });
+  if (account.rows[0]?.role !== "admin") return { status: 403, body: { error: "Solo un profesional puede actualizar turnos." } };
+  const storeCode = normalizeStoreCode(account.rows[0]?.store_code);
+  const bookingId = typeof body.bookingId === "string" ? body.bookingId.trim() : "";
+  const patch = body.patch;
+  if (!bookingId || bookingId.length > 200) return { status: 400, body: { error: "Identificador de turno inválido." } };
+  const allowedFields = new Set(["status", "paymentStatus", "cancelledBy", "barberId", "serviceIds", "duration", "totalPrice", "date", "time"]);
+  if (!patch || typeof patch !== "object" || Array.isArray(patch)
+    || !Object.keys(patch).length || Object.keys(patch).some((field) => !allowedFields.has(field))) {
+    return { status: 400, body: { error: "Los cambios del turno no son válidos." } };
+  }
+
+  const transaction = await db.transaction("write");
+  try {
+    const stored = await transaction.execute({ sql: "SELECT value FROM bookings WHERE id = ?", args: [bookingId] });
+    if (!stored.rows[0]) throw Object.assign(new Error("No encontramos ese turno."), { statusCode: 404 });
+    const previous = JSON.parse(String(stored.rows[0].value));
+    if (!storeCode || normalizeStoreCode(previous.storeCode) !== storeCode) {
+      throw Object.assign(new Error("El turno no corresponde a tu sucursal."), { statusCode: 403 });
+    }
+
+    const booking = { ...previous, ...patch };
+    const validStatuses = new Set(["pending-payment", "confirmed", "cancelled", "completed", "no-show"]);
+    if (patch.status !== undefined && !validStatuses.has(patch.status)) {
+      throw Object.assign(new Error("El estado del turno no es válido."), { statusCode: 400 });
+    }
+    if (patch.paymentStatus !== undefined && !["pending", "approved"].includes(patch.paymentStatus)) {
+      throw Object.assign(new Error("El estado del pago no es válido."), { statusCode: 400 });
+    }
+    if (patch.cancelledBy !== undefined && !["client", "professional"].includes(patch.cancelledBy)) {
+      throw Object.assign(new Error("El origen de la cancelación no es válido."), { statusCode: 400 });
+    }
+    if (["completed", "no-show"].includes(booking.status) && booking.paymentStatus !== "approved") {
+      throw Object.assign(new Error("Solo puedes indicar asistencia en turnos con el pago confirmado por el administrador."), { statusCode: 409 });
+    }
+    if (patch.paymentStatus === "approved" && !["confirmed", "pending-payment"].includes(previous.status)) {
+      throw Object.assign(new Error("Este turno ya no está pendiente de pago."), { statusCode: 409 });
+    }
+    if (booking.status === "cancelled" && !patch.cancelledBy) booking.cancelledBy = "professional";
+
+    const editFields = ["barberId", "serviceIds", "duration", "totalPrice", "date", "time"];
+    if (editFields.some((field) => Object.hasOwn(patch, field))) {
+      const barberId = typeof booking.barberId === "string" ? booking.barberId.trim() : "";
+      const serviceIds = Array.isArray(booking.serviceIds)
+        ? booking.serviceIds.map((serviceId) => typeof serviceId === "string" ? serviceId.trim() : "")
+        : [];
+      if (!barberId || barberId.length > 200 || serviceIds.length === 0 || serviceIds.length > 20
+        || serviceIds.some((serviceId) => !serviceId || serviceId.length > 200)
+        || new Set(serviceIds).size !== serviceIds.length) {
+        throw Object.assign(new Error("Elegí un profesional y servicios válidos."), { statusCode: 400 });
+      }
+      const professionalResult = await transaction.execute({
+        sql: "SELECT value FROM professionals WHERE id = ?",
+        args: [storedRecordId(storeCode, barberId)],
+      });
+      if (!professionalResult.rows[0]) throw Object.assign(new Error("El profesional elegido ya no está disponible."), { statusCode: 409 });
+      const professional = JSON.parse(String(professionalResult.rows[0].value));
+      const services = serviceIds.map((serviceId) => professional.services?.find((item) => item.id === serviceId));
+      if (services.some((service) => !service)) throw Object.assign(new Error("Uno de los servicios elegidos ya no está disponible."), { statusCode: 409 });
+      booking.barberId = barberId;
+      booking.serviceIds = serviceIds;
+      booking.duration = services.reduce((total, service) => total + Number(service.duration), 0);
+      booking.totalPrice = services.reduce((total, service) => total + Number(service.price), 0);
+      const availabilityError = await validateBookingAvailability(transaction, booking, storeCode, bookingId);
+      if (availabilityError) throw Object.assign(new Error(availabilityError), { statusCode: 409 });
+    }
+
+    await transaction.execute({
+      sql: "UPDATE bookings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+      args: [JSON.stringify(booking), bookingId],
+    });
+    const change = describeAdminBookingChange(previous, booking);
+    if (change) {
+      const notice = notificationForClient(booking, change[0], change[1], change[2]);
+      if (notice) await transaction.execute(notice);
+    }
+    await transaction.commit();
+    return { status: 200, body: { booking } };
+  } catch (error) {
+    await transaction.rollback().catch(() => undefined);
+    return {
+      status: Number.isInteger(error?.statusCode) ? error.statusCode : 500,
+      body: { error: error instanceof Error ? error.message : "No se pudo actualizar el turno." },
+    };
+  }
+}
+
 function scheduleForDate(professional, date) {
   const override = professional.scheduleDates?.find((entry) => entry.date === date);
   if (override) return override;
@@ -702,6 +791,7 @@ async function saveProfessionalRecords(db, records, deleteIds, storeCode) {
       if (priorProfessional) {
         const bookingsResult = await transaction.execute("SELECT id, value FROM bookings");
         const now = Date.now();
+        const affectedBookings = [];
         for (const row of bookingsResult.rows) {
           const booking = JSON.parse(String(row.value));
           if (booking.barberId !== id
@@ -713,13 +803,30 @@ async function saveProfessionalRecords(db, records, deleteIds, storeCode) {
           const wasOpen = !scheduleForDate(priorProfessional, booking.date)?.closed;
           const willBeClosed = Boolean(scheduleForDate(record, booking.date)?.closed);
           if (!wasOpen || !willBeClosed) continue;
-          if (booking.paymentStatus === "approved") {
-            throw Object.assign(
-              new Error(`No se puede cerrar el ${booking.date}: hay un turno con pago aprobado. Reprogramá ese turno o gestioná su devolución antes de cerrar la fecha.`),
-              { statusCode: 409 },
-            );
-          }
+          affectedBookings.push({ row, booking });
+        }
 
+        const paidBooking = affectedBookings.find(({ booking }) => booking.paymentStatus === "approved");
+        if (paidBooking) {
+          const date = paidBooking.booking.date;
+          const bookingCount = affectedBookings.filter(({ booking }) => booking.date === date).length;
+          const formattedDate = /^\d{4}-\d{2}-\d{2}$/.test(date)
+            ? `${date.slice(8, 10)}/${date.slice(5, 7)}/${date.slice(0, 4)}`
+            : date;
+          const bookingLabel = bookingCount === 1 ? "1 turno" : `${bookingCount} turnos`;
+          const reason = bookingCount === 1
+            ? "tiene un pago aprobado"
+            : "al menos uno tiene un pago aprobado";
+          const nextStep = bookingCount === 1
+            ? "Reprogramá el turno o gestioná su devolución"
+            : "Reprogramá los turnos o gestioná sus devoluciones";
+          throw Object.assign(
+            new Error(`No se puede cerrar el ${formattedDate}: hay ${bookingLabel} programado${bookingCount === 1 ? "" : "s"} para ese día y ${reason}. ${nextStep} antes de cerrar la fecha.`),
+            { statusCode: 409 },
+          );
+        }
+
+        for (const { row, booking } of affectedBookings) {
           booking.status = "cancelled";
           booking.cancelledBy = "professional";
           await transaction.execute({
@@ -987,6 +1094,15 @@ export default async function handler(request, response) {
     return response.status(400).json({ error: "El cuerpo JSON no es válido." });
   }
   if (request.method === "POST") {
+    if (user && body?.action === "admin-update-booking") {
+      try {
+        const result = await updateAdminBooking(db, user, body);
+        return response.status(result.status).json(result.body);
+      } catch (error) {
+        console.error("No se pudo actualizar el turno", error);
+        return response.status(500).json({ error: "No se pudo actualizar el turno." });
+      }
+    }
     if (user && body?.action === "archive-booking") {
       try {
         if (!user.emailVerified) return response.status(403).json({ error: "Verificá tu correo antes de archivar turnos." });

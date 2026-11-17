@@ -1,5 +1,5 @@
 import { getProfessional as findProfessional, getProfessionalService } from "./professional-store";
-import { getCloudRecords, isCloudInitialized, persistCloudCollection } from "./cloud-sync";
+import { getCloudRecords, isCloudInitialized, persistCloudCollection, updateAdminBooking } from "./cloud-sync";
 
 export interface Customer {
   fullName: string;
@@ -110,11 +110,8 @@ export const bookingStore = {
     return booking;
   },
   async update(id: string, patch: Partial<Booking>) {
-    const current = read();
-    const targetStoreCode = current.find((booking) => booking.id === id)?.storeCode;
-    const updated = current.map((booking) => booking.id === id ? { ...booking, ...patch } : booking);
-    if (!updated.some((booking) => booking.id === id)) throw new Error("No encontramos ese turno.");
-    await write(updated, targetStoreCode);
+    if (!read().some((booking) => booking.id === id)) throw new Error("No encontramos ese turno.");
+    return updateAdminBooking(id, patch);
   },
   async remove(id: string) {
     const current = read();

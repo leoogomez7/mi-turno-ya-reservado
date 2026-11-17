@@ -336,6 +336,12 @@ export async function confirmBookingRefund(bookingId: string) {
   return result;
 }
 
+export async function updateAdminBooking(bookingId: string, patch: Partial<Booking>) {
+  const result = await request<{ booking: Booking }>("POST", { action: "admin-update-booking", bookingId, patch });
+  setSnapshot({ ...snapshot, bookings: snapshot.bookings.map((item) => item.id === bookingId ? result.booking : item) });
+  return result;
+}
+
 export async function updateClientPaymentMethod(bookingId: string, paymentMethod: NonNullable<Booking["customer"]["paymentMethod"]>) {
   return request<{ booking: Booking }>("POST", { action: "update-client-payment-method", bookingId, paymentMethod });
 }
