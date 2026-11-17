@@ -129,7 +129,7 @@ export function AdminPage() {
                   value={startDate}
                   max={endDate}
                   onChange={(event) => setStartDate(event.target.value)}
-                  className="h-10 rounded-lg border border-border bg-background px-3 text-sm text-foreground scheme-dark"
+                  className="h-10 rounded-lg border border-border bg-background px-3 text-sm text-foreground scheme-dark [&::-webkit-calendar-picker-indicator]:invert"
                 />
               </label>
               <label className="grid gap-1 text-xs text-muted-foreground">
@@ -140,7 +140,7 @@ export function AdminPage() {
                   min={startDate}
                   max={format(new Date(), "yyyy-MM-dd")}
                   onChange={(event) => setEndDate(event.target.value)}
-                  className="h-10 rounded-lg border border-border bg-background px-3 text-sm text-foreground scheme-dark"
+                  className="h-10 rounded-lg border border-border bg-background px-3 text-sm text-foreground scheme-dark [&::-webkit-calendar-picker-indicator]:invert"
                 />
               </label>
             </div>
@@ -216,6 +216,16 @@ export function AdminPage() {
                   />
                 </Suspense>
               </div>
+              <div className="grid items-stretch gap-4 md:grid-cols-2">
+                <Suspense
+                  fallback={
+                    <div className="h-80 animate-pulse rounded-2xl border border-gold/30 bg-card" />
+                  }
+                >
+                  <ChartCard title="Servicios más solicitados" data={periodChartStats.servicesChart} />
+                  <ChartCard title="Turnos por profesionales" data={periodChartStats.barbersChart} />
+                </Suspense>
+              </div>
             </>
           ) : (
             <p
@@ -232,16 +242,6 @@ export function AdminPage() {
           </p>
         </section>
 
-        <div className="grid items-stretch gap-4 md:grid-cols-2">
-          <Suspense
-            fallback={
-              <div className="h-80 animate-pulse rounded-2xl border border-gold/30 bg-card" />
-            }
-          >
-            <ChartCard title="Servicios más solicitados" data={periodChartStats.servicesChart} />
-            <ChartCard title="Turnos por profesionales" data={periodChartStats.barbersChart} />
-          </Suspense>
-        </div>
       </main>
     </div>
   );
