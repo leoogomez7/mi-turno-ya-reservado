@@ -89,7 +89,6 @@ export function AdminPage() {
   const activeStartDate = historySelected ? historyBounds.start : startDate;
   const activeEndDate = historySelected ? historyBounds.end : endDate;
 
-  const stats = useMemo(() => computeStats(bookings), [bookings]);
   const periodBookings = useMemo(
     () =>
       bookings.filter(
@@ -197,14 +196,14 @@ export function AdminPage() {
           </div>
 
           <Dialog open={rangeDialogOpen} onOpenChange={setRangeDialogOpen}>
-            <DialogContent className="border-gold/30 bg-card text-foreground sm:max-w-md">
+            <DialogContent className="border-gold/30 bg-card text-foreground sm:max-w-xl">
               <DialogHeader>
                 <DialogTitle className="font-display text-xl">Seleccionar rango</DialogTitle>
                 <DialogDescription>
                   Elegí un período o consultá todos los datos históricos.
                 </DialogDescription>
               </DialogHeader>
-              <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid items-end gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
                 <label className="grid gap-1.5 text-sm text-muted-foreground">
                   Desde
                   <input
@@ -212,7 +211,7 @@ export function AdminPage() {
                     value={draftStartDate}
                     max={draftEndDate}
                     onChange={(event) => setDraftStartDate(event.target.value)}
-                    className="h-10 rounded-lg border border-border bg-background px-3 text-sm text-foreground scheme-dark [&::-webkit-calendar-picker-indicator]:invert"
+                    className="h-10 min-w-0 w-full rounded-lg border border-border bg-background px-2 text-sm text-foreground scheme-dark [&::-webkit-calendar-picker-indicator]:invert"
                   />
                 </label>
                 <label className="grid gap-1.5 text-sm text-muted-foreground">
@@ -222,20 +221,21 @@ export function AdminPage() {
                     value={draftEndDate}
                     min={draftStartDate}
                     onChange={(event) => setDraftEndDate(event.target.value)}
-                    className="h-10 rounded-lg border border-border bg-background px-3 text-sm text-foreground scheme-dark [&::-webkit-calendar-picker-indicator]:invert"
+                    className="h-10 min-w-0 w-full rounded-lg border border-border bg-background px-2 text-sm text-foreground scheme-dark [&::-webkit-calendar-picker-indicator]:invert"
                   />
                 </label>
-              </div>
-              <DialogFooter className="flex-col-reverse sm:flex-row sm:justify-between">
-                <Button type="button" variant="outline" onClick={selectHistory}>
-                  Total · histórico
-                </Button>
                 <Button
                   type="button"
                   onClick={applyDateRange}
                   disabled={!draftStartDate || !draftEndDate || draftStartDate > draftEndDate}
+                  className="w-full sm:w-auto"
                 >
                   Aplicar rango
+                </Button>
+              </div>
+              <DialogFooter className="justify-start">
+                <Button type="button" variant="outline" onClick={selectHistory}>
+                  Total · histórico
                 </Button>
               </DialogFooter>
             </DialogContent>
@@ -244,25 +244,33 @@ export function AdminPage() {
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <Stat
               icon={TrendingUp}
-              label="Profesional con más atención · histórico"
-              value={`${stats.topBarber.name} · ${stats.topBarber.count}`}
+              label={`Profesional con más atención ${historySelected ? "· histórico" : "· período"}`}
+              value={`${periodStats.topBarber.name} · ${periodStats.topBarber.count}`}
             />
             <Stat
               icon={TrendingDown}
-              label="Profesional con menos atención · histórico"
-              value={`${stats.lowBarber.name} · ${stats.lowBarber.count}`}
-            />
-            <Stat icon={Users} label="Último cliente" value={stats.lastClient} />
-            <Stat icon={Calendar} label="Último profesional" value={stats.lastBarber} />
-            <Stat
-              icon={Scissors}
-              label="Profesional con más servicios realizados · histórico"
-              value={`${stats.topServiceBarber.name} · ${stats.topServiceBarber.count}`}
+              label={`Profesional con menos atención ${historySelected ? "· histórico" : "· período"}`}
+              value={`${periodStats.lowBarber.name} · ${periodStats.lowBarber.count}`}
             />
             <Stat
+              icon={Users}
+              label={`Último cliente ${historySelected ? "· histórico" : "· período"}`}
+              value={periodStats.lastClient}
+            />
+            <Stat
+              icon={Calendar}
+              label={`Último profesional ${historySelected ? "· histórico" : "· período"}`}
+              value={periodStats.lastBarber}
+            />
+            <Stat
               icon={Scissors}
-              label="Profesional con menos servicios realizados · histórico"
-              value={`${stats.lowServiceBarber.name} · ${stats.lowServiceBarber.count}`}
+              label={`Profesional con más servicios realizados ${historySelected ? "· histórico" : "· período"}`}
+              value={`${periodStats.topServiceBarber.name} · ${periodStats.topServiceBarber.count}`}
+            />
+            <Stat
+              icon={Scissors}
+              label={`Profesional con menos servicios realizados ${historySelected ? "· histórico" : "· período"}`}
+              value={`${periodStats.lowServiceBarber.name} · ${periodStats.lowServiceBarber.count}`}
             />
           </div>
 
@@ -560,6 +568,10 @@ function computePeriodStats(bookings: Booking[], startDate: string, endDate: str
       totalServices: 0,
       topBarber: { name: "-", count: 0 },
       lowBarber: { name: "-", count: 0 },
+      topServiceBarber: { name: "-", count: 0 },
+      lowServiceBarber: { name: "-", count: 0 },
+      lastClient: "-",
+      lastBarber: "-",
       mostBookingsMonth: "—",
       mostServicesMonth: "—",
       highestRevenueMonth: "—",
@@ -585,9 +597,16 @@ function computePeriodStats(bookings: Booking[], startDate: string, endDate: str
       .all()
       .map((professional) => [professional.id, { name: professional.name, count: 0 }]),
   );
-  bookings.forEach((booking) => {
-    if (!isAttendedBooking(booking)) return;
-    if (booking.date < startDate || booking.date > endDate) return;
+  const barberServiceCounts = new Map(
+    professionalStore
+      .all()
+      .map((professional) => [professional.id, { name: professional.name, count: 0 }]),
+  );
+  const attendedInRange = bookings.filter(
+    (booking) =>
+      isAttendedBooking(booking) && booking.date >= startDate && booking.date <= endDate,
+  );
+  attendedInRange.forEach((booking) => {
     const month = statsByMonth.get(booking.date.slice(0, 7));
     if (!month) return;
     month.turns += 1;
@@ -599,9 +618,21 @@ function computePeriodStats(bookings: Booking[], startDate: string, endDate: str
     };
     barber.count += 1;
     barberCounts.set(booking.barberId, barber);
+    const serviceBarber = barberServiceCounts.get(booking.barberId) ?? {
+      name: getProfessional(booking.barberId)?.name ?? "Profesional eliminado",
+      count: 0,
+    };
+    serviceBarber.count += booking.serviceIds.length;
+    barberServiceCounts.set(booking.barberId, serviceBarber);
   });
 
   const sortedBarbers = [...barberCounts.values()].sort((a, b) => b.count - a.count);
+  const sortedBarbersByServices = [...barberServiceCounts.values()].sort(
+    (a, b) => b.count - a.count,
+  );
+  const lastBooking = [...attendedInRange].sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+  )[0];
 
   const mostBookingsMonth = formatMonthMetric(monthly, "turns", "max");
   const mostServicesMonth = formatMonthMetric(monthly, "services", "max");
@@ -616,6 +647,11 @@ function computePeriodStats(bookings: Booking[], startDate: string, endDate: str
     totalServices: monthly.reduce((total, month) => total + month.services, 0),
     topBarber: sortedBarbers[0] ?? { name: "-", count: 0 },
     lowBarber: sortedBarbers[sortedBarbers.length - 1] ?? { name: "-", count: 0 },
+    topServiceBarber: sortedBarbersByServices[0] ?? { name: "-", count: 0 },
+    lowServiceBarber:
+      sortedBarbersByServices[sortedBarbersByServices.length - 1] ?? { name: "-", count: 0 },
+    lastClient: lastBooking?.customer.fullName ?? "-",
+    lastBarber: lastBooking ? (getProfessional(lastBooking.barberId)?.name ?? "-") : "-",
     mostBookingsMonth,
     mostServicesMonth,
     highestRevenueMonth,
