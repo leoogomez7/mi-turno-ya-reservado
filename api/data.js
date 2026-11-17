@@ -685,6 +685,79 @@ function scheduleForDate(professional, date) {
     ?? { date, start: "", end: "", closed: true };
 }
 
+async function saveProfessionalRecords(db, records, deleteIds, storeCode) {
+  const transaction = await db.transaction("write");
+  try {
+    for (const record of records) {
+      const id = recordId(record);
+      if (!id) throw Object.assign(new Error("Hay un registro con identificador inválido."), { statusCode: 400 });
+      record.storeCode = storeCode;
+      const databaseId = storedRecordId(storeCode, id);
+      const storedResult = await transaction.execute({ sql: "SELECT value FROM professionals WHERE id = ?", args: [databaseId] });
+      const priorProfessional = storedResult.rows[0] ? JSON.parse(String(storedResult.rows[0].value)) : null;
+      if (priorProfessional && normalizeStoreCode(priorProfessional.storeCode) !== storeCode) {
+        throw Object.assign(new Error("El registro no pertenece a la sucursal seleccionada."), { statusCode: 403 });
+      }
+
+      if (priorProfessional) {
+        const bookingsResult = await transaction.execute("SELECT id, value FROM bookings");
+        const now = Date.now();
+        for (const row of bookingsResult.rows) {
+          const booking = JSON.parse(String(row.value));
+          if (booking.barberId !== id
+            || normalizeStoreCode(booking.storeCode) !== storeCode
+            || !["confirmed", "pending-payment"].includes(booking.status)) continue;
+          const appointmentAt = Date.parse(`${booking.date}T${booking.time}:00-03:00`);
+          if (Number.isFinite(appointmentAt) && appointmentAt <= now) continue;
+
+          const wasOpen = !scheduleForDate(priorProfessional, booking.date)?.closed;
+          const willBeClosed = Boolean(scheduleForDate(record, booking.date)?.closed);
+          if (!wasOpen || !willBeClosed) continue;
+          if (booking.paymentStatus === "approved") {
+            throw Object.assign(
+              new Error(`No se puede cerrar el ${booking.date}: hay un turno con pago aprobado. Reprogramá ese turno o gestioná su devolución antes de cerrar la fecha.`),
+              { statusCode: 409 },
+            );
+          }
+
+          booking.status = "cancelled";
+          booking.cancelledBy = "professional";
+          await transaction.execute({
+            sql: "UPDATE bookings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            args: [JSON.stringify(booking), String(row.id)],
+          });
+          const notice = notificationForClient(booking, "booking_cancelled", "Turno cancelado", "El profesional canceló tu turno porque no atenderá en esa fecha.");
+          if (notice) await transaction.execute(notice);
+        }
+      }
+
+      await transaction.execute({
+        sql: "INSERT INTO professionals (id, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) ON CONFLICT(id) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP",
+        args: [databaseId, JSON.stringify(record)],
+      });
+    }
+
+    for (const id of deleteIds) {
+      const databaseId = storedRecordId(storeCode, id);
+      const existing = await transaction.execute({ sql: "SELECT value FROM professionals WHERE id = ?", args: [databaseId] });
+      if (!existing.rows[0]) continue;
+      if (normalizeStoreCode(JSON.parse(String(existing.rows[0].value)).storeCode) !== storeCode) {
+        throw Object.assign(new Error("El registro no pertenece a esta sucursal."), { statusCode: 403 });
+      }
+      await transaction.execute({ sql: "DELETE FROM professionals WHERE id = ?", args: [databaseId] });
+    }
+
+    await transaction.commit();
+    return { status: 200, body: { ok: true } };
+  } catch (error) {
+    await transaction.rollback().catch(() => undefined);
+    return {
+      status: Number.isInteger(error?.statusCode) ? error.statusCode : 500,
+      body: { error: error instanceof Error ? error.message : "No se pudieron guardar los profesionales." },
+    };
+  }
+}
+
 function bookingCapacityForDate(professional, date) {
   const schedule = scheduleForDate(professional, date);
   const dayOfWeek = new Date(`${date}T12:00:00Z`).getUTCDay();
@@ -2148,6 +2221,12 @@ export default async function handler(request, response) {
 
   if (body.collection === "professionals" && role !== "admin") {
     return response.status(403).json({ error: "Solo las cuentas administradoras pueden modificar profesionales." });
+  }
+
+  if (body.collection === "professionals") {
+    const result = await saveProfessionalRecords(db, records, deleteIds, storeCode);
+    if (result.status !== 200) console.error("No se pudieron guardar los horarios del profesional", result.body.error);
+    return response.status(result.status).json(result.body);
   }
 
   try {

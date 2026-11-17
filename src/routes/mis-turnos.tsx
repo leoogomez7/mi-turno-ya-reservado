@@ -41,6 +41,7 @@ function MyBookingsPage() {
   const [editedProfessionalId, setEditedProfessionalId] = useState("");
   const [editedServiceIds, setEditedServiceIds] = useState<string[]>([]);
   const [editedDate, setEditedDate] = useState("");
+  const [datePickerOpen, setDatePickerOpen] = useState(false);
   const [editedTime, setEditedTime] = useState("");
   const [paymentBooking, setPaymentBooking] = useState<Booking | null>(null);
   const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
@@ -540,9 +541,9 @@ function MyBookingsPage() {
             </div>
             <div className="space-y-2 text-sm text-muted-foreground">
               <span className="flex items-center gap-2"><CalendarDays className="h-4 w-4 text-gold" />Fecha</span>
-              <Popover>
+              <Popover open={datePickerOpen} onOpenChange={setDatePickerOpen}>
                 <PopoverTrigger asChild><Button type="button" variant="outline" className="w-full justify-between font-normal" disabled={!editingProfessional || !editingServices.length}><span>{editedDate ? format(parseISO(`${editedDate}T12:00:00`), "dd/MM/yyyy", { locale: es }) : "Seleccionar fecha"}</span><CalendarDays className="h-4 w-4 text-gold" /></Button></PopoverTrigger>
-                <PopoverContent className="gold-scrollbar w-auto p-0" align="start"><Calendar mode="single" locale={es} selected={editedDate ? parseISO(`${editedDate}T12:00:00`) : undefined} onSelect={(date) => { setEditedDate(date ? format(date, "yyyy-MM-dd") : ""); setEditedTime(""); }} disabled={(date) => format(date, "yyyy-MM-dd") < format(new Date(), "yyyy-MM-dd") || !editingProfessional || !isProfessionalAvailableOnDate(editingProfessional, date)} initialFocus /></PopoverContent>
+                <PopoverContent className="gold-scrollbar w-auto p-0" align="start"><Calendar mode="single" locale={es} selected={editedDate ? parseISO(`${editedDate}T12:00:00`) : undefined} onSelect={(date) => { setEditedDate(date ? format(date, "yyyy-MM-dd") : ""); setEditedTime(""); setDatePickerOpen(false); }} disabled={(date) => format(date, "yyyy-MM-dd") < format(new Date(), "yyyy-MM-dd") || !editingProfessional || !isProfessionalAvailableOnDate(editingProfessional, date)} initialFocus /></PopoverContent>
               </Popover>
             </div>
             <label className="space-y-2 text-sm text-muted-foreground">

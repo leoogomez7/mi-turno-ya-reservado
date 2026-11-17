@@ -599,11 +599,11 @@ export function ProfessionalsManager() {
         nextEntry,
       ].sort((a, b) => a.date.localeCompare(b.date)),
     };
-    setForm(nextForm);
     setSavingScheduleDate(true);
     try {
       const saved = await saveExistingProfessionalDraft(nextForm, "Horario de la fecha guardado.");
       if (!saved) return;
+      setForm(nextForm);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "No se pudo guardar el horario.");
       return;

@@ -27,6 +27,7 @@ export function AgendaManager() {
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
   const [editMode, setEditMode] = useState<"attendance" | "turno" | "payment" | null>(null);
   const [editedDate, setEditedDate] = useState("");
+  const [datePickerOpen, setDatePickerOpen] = useState(false);
   const [editedTime, setEditedTime] = useState("");
   const [editedProfessionalId, setEditedProfessionalId] = useState("");
   const [editedServiceIds, setEditedServiceIds] = useState<string[]>([]);
@@ -543,9 +544,9 @@ export function AgendaManager() {
                     {editedServices.length > 0 && <p className="text-xs text-muted-foreground">Duración total: {editedDuration} min · Total: <span className="font-semibold text-gold">${editedTotalPrice.toLocaleString("es-AR")}</span></p>}
                   </div>
                   <div className="block space-y-2 text-sm text-muted-foreground"><span className="flex items-center gap-2"><CalendarDays className="h-4 w-4 text-gold" />Fecha</span>
-                    <Popover>
+                    <Popover open={datePickerOpen} onOpenChange={setDatePickerOpen}>
                       <PopoverTrigger asChild><Button type="button" variant="outline" className="w-full justify-between font-normal" disabled={!editedProfessional || !editedServices.length}><span>{editedDate ? format(parseISO(`${editedDate}T12:00:00`), "dd/MM/yyyy", { locale: es }) : "Seleccionar fecha"}</span><CalendarDays className="h-4 w-4 text-gold" /></Button></PopoverTrigger>
-                      <PopoverContent className="gold-scrollbar w-auto p-0" align="start"><Calendar mode="single" locale={es} selected={editedDate ? parseISO(`${editedDate}T12:00:00`) : undefined} onSelect={(date) => { setEditedDate(date ? format(date, "yyyy-MM-dd") : ""); setEditedTime(""); }} disabled={(date) => format(date, "yyyy-MM-dd") < format(new Date(), "yyyy-MM-dd") || !editedProfessional || !isProfessionalAvailableOnDate(editedProfessional, date)} initialFocus /></PopoverContent>
+                      <PopoverContent className="gold-scrollbar w-auto p-0" align="start"><Calendar mode="single" locale={es} selected={editedDate ? parseISO(`${editedDate}T12:00:00`) : undefined} onSelect={(date) => { setEditedDate(date ? format(date, "yyyy-MM-dd") : ""); setEditedTime(""); setDatePickerOpen(false); }} disabled={(date) => format(date, "yyyy-MM-dd") < format(new Date(), "yyyy-MM-dd") || !editedProfessional || !isProfessionalAvailableOnDate(editedProfessional, date)} initialFocus /></PopoverContent>
                     </Popover>
                   </div>
                   <label className="block text-sm text-muted-foreground"><span className="flex items-center gap-2"><Clock3 className="h-4 w-4 text-gold" />Horario</span><Select value={editedTime} onValueChange={setEditedTime} disabled={!editedDate || !editedServices.length}><SelectTrigger className="mt-2"><SelectValue placeholder="Seleccionar hora" /></SelectTrigger><SelectContent className="gold-scrollbar max-h-60">{availableSlots.map((slot) => <SelectItem key={slot.time} value={slot.time}>{slot.time} · {slot.available} {slot.available === 1 ? "turno disponible" : "turnos disponibles"}</SelectItem>)}</SelectContent></Select>{editedDate && editedServices.length > 0 && availableSlots.length === 0 && <span className="mt-1 block text-xs">No hay horarios disponibles para los servicios seleccionados.</span>}</label>
