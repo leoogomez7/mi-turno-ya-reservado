@@ -410,7 +410,7 @@ function Stat({
       <div className="truncate font-display text-3xl font-semibold" title={String(value)}>
         {value}
       </div>
-      <div className="mt-1 h-8 overflow-hidden text-xs uppercase tracking-wider text-muted-foreground">
+      <div className="mt-1 overflow-hidden text-xs uppercase tracking-wider text-muted-foreground">
         {label}
       </div>
     </div>
