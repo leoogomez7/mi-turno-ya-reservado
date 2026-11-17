@@ -1517,25 +1517,15 @@ export default async function handler(request, response) {
             args: [userStoreCode.length + 1, `${userStoreCode}:`],
           })
         : db.execute("SELECT id, value FROM professionals ORDER BY updated_at DESC");
-      const storesQuery =
-        role === "admin" && !reservationMode && userStoreCode
-          ? db.execute({
-              sql: `SELECT stores.code, stores.name, stores.owner_id, stores.settings, stores.logo,
-            stores.subscription_expires_at, stores.subscription_plan_type,
-            EXISTS(SELECT 1 FROM store_payment_credentials credentials
-              WHERE credentials.store_code = stores.code
-                AND credentials.public_key != ''
-                AND credentials.encrypted_access_token != '') AS mercado_pago_configured
-            FROM stores WHERE upper(stores.code) = ?`,
-              args: [userStoreCode],
-            })
-          : db.execute(`SELECT stores.code, stores.name, stores.owner_id, stores.settings, stores.logo,
+      const storesQuery = db.execute(
+        `SELECT stores.code, stores.name, stores.owner_id, stores.settings, stores.logo,
           stores.subscription_expires_at, stores.subscription_plan_type,
           EXISTS(SELECT 1 FROM store_payment_credentials credentials
             WHERE credentials.store_code = stores.code
               AND credentials.public_key != ''
               AND credentials.encrypted_access_token != '') AS mercado_pago_configured
-          FROM stores ORDER BY stores.name COLLATE NOCASE`);
+          FROM stores ORDER BY stores.name COLLATE NOCASE`,
+      );
       const [bookingRows, professionalRows, storesResult] = await Promise.all([
         bookingQuery,
         professionalQuery,
