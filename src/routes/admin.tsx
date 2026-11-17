@@ -208,7 +208,6 @@ export function AdminPage() {
                   <input
                     type="date"
                     value={draftStartDate}
-                    max={draftEndDate}
                     onChange={(event) => setDraftStartDate(event.target.value)}
                     className="h-10 min-w-0 w-full rounded-lg border border-border bg-background px-2 text-sm text-foreground scheme-dark [&::-webkit-calendar-picker-indicator]:invert"
                   />
