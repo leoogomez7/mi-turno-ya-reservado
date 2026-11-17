@@ -243,32 +243,32 @@ export function AdminPage() {
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <Stat
               icon={TrendingUp}
-              label={`Profesional con más atención ${historySelected ? "· histórico" : "· período"}`}
+              label="Profesional con más atención"
               value={`${periodStats.topBarber.name} · ${periodStats.topBarber.count}`}
             />
             <Stat
               icon={TrendingDown}
-              label={`Profesional con menos atención ${historySelected ? "· histórico" : "· período"}`}
+              label="Profesional con menos atención"
               value={`${periodStats.lowBarber.name} · ${periodStats.lowBarber.count}`}
             />
             <Stat
               icon={Users}
-              label={`Último cliente ${historySelected ? "· histórico" : "· período"}`}
+              label="Último cliente"
               value={periodStats.lastClient}
             />
             <Stat
               icon={Calendar}
-              label={`Último profesional ${historySelected ? "· histórico" : "· período"}`}
+              label="Último profesional"
               value={periodStats.lastBarber}
             />
             <Stat
               icon={Scissors}
-              label={`Profesional con más servicios realizados ${historySelected ? "· histórico" : "· período"}`}
+              label="Profesional con más servicios realizados"
               value={`${periodStats.topServiceBarber.name} · ${periodStats.topServiceBarber.count}`}
             />
             <Stat
               icon={Scissors}
-              label={`Profesional con menos servicios realizados ${historySelected ? "· histórico" : "· período"}`}
+              label="Profesional con menos servicios realizados"
               value={`${periodStats.lowServiceBarber.name} · ${periodStats.lowServiceBarber.count}`}
             />
           </div>
@@ -403,12 +403,16 @@ function Stat({
   value: string | number;
 }) {
   return (
-    <div className="rounded-2xl border border-gold/30 bg-card p-5">
+    <div className="h-46.5 min-w-0 overflow-hidden rounded-2xl border border-gold/30 bg-card p-5">
       <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-gold/15 text-gold">
         <Icon className="h-5 w-5" />
       </div>
-      <div className="font-display text-3xl font-semibold">{value}</div>
-      <div className="mt-1 text-xs uppercase tracking-wider text-muted-foreground">{label}</div>
+      <div className="truncate font-display text-3xl font-semibold" title={String(value)}>
+        {value}
+      </div>
+      <div className="mt-1 h-8 overflow-hidden text-xs uppercase tracking-wider text-muted-foreground">
+        {label}
+      </div>
     </div>
   );
 }
