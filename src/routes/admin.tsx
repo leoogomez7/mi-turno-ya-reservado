@@ -13,6 +13,7 @@ import { es } from "date-fns/locale";
 import {
   Calendar,
   CalendarDays,
+  CalendarRange,
   DollarSign,
   Scissors,
   TrendingDown,
@@ -31,6 +32,15 @@ import {
 import { AuthRequired } from "@/components/auth-required";
 import { useAppAuth } from "@/lib/auth";
 import { LoadingScreen } from "@/components/loading-screen";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 const ChartCard = lazy(() =>
   import("@/components/admin-charts").then((module) => ({ default: module.ChartCard })),
@@ -54,6 +64,10 @@ export function AdminPage() {
     format(startOfMonth(subMonths(new Date(), 11)), "yyyy-MM-dd"),
   );
   const [endDate, setEndDate] = useState(() => format(new Date(), "yyyy-MM-dd"));
+  const [rangeDialogOpen, setRangeDialogOpen] = useState(false);
+  const [draftStartDate, setDraftStartDate] = useState(startDate);
+  const [draftEndDate, setDraftEndDate] = useState(endDate);
+  const [historySelected, setHistorySelected] = useState(false);
 
   useEffect(() => {
     const reload = () => {
@@ -65,24 +79,36 @@ export function AdminPage() {
     return () => window.removeEventListener("bookings:changed", reload);
   }, []);
 
+  const historyBounds = useMemo(() => {
+    const dates = bookings.map((booking) => booking.date).filter(Boolean).sort();
+    return {
+      start: dates[0] ?? startDate,
+      end: dates[dates.length - 1] ?? endDate,
+    };
+  }, [bookings, endDate, startDate]);
+  const activeStartDate = historySelected ? historyBounds.start : startDate;
+  const activeEndDate = historySelected ? historyBounds.end : endDate;
+
   const stats = useMemo(() => computeStats(bookings), [bookings]);
   const periodBookings = useMemo(
     () =>
       bookings.filter(
         (booking) =>
-          isAttendedBooking(booking) && booking.date >= startDate && booking.date <= endDate,
+          isAttendedBooking(booking) &&
+          booking.date >= activeStartDate &&
+          booking.date <= activeEndDate,
       ),
-    [bookings, endDate, startDate],
+    [activeEndDate, activeStartDate, bookings],
   );
   const pendingPeriodBookings = useMemo(
     () =>
       bookings.filter(
         (booking) =>
           isPendingAttendanceBooking(booking) &&
-          booking.date >= startDate &&
-          booking.date <= endDate,
+              booking.date >= activeStartDate &&
+              booking.date <= activeEndDate,
       ),
-    [bookings, endDate, startDate],
+            [activeEndDate, activeStartDate, bookings],
   );
   const futureRevenue = useMemo(
     () =>
@@ -100,11 +126,31 @@ export function AdminPage() {
     0,
   );
   const periodStats = useMemo(
-    () => computePeriodStats(bookings, startDate, endDate),
-    [bookings, endDate, startDate],
+    () => computePeriodStats(bookings, activeStartDate, activeEndDate),
+    [activeEndDate, activeStartDate, bookings],
   );
   const periodChartStats = useMemo(() => computeStats(periodBookings), [periodBookings]);
-  const validDateRange = Boolean(startDate && endDate && startDate <= endDate);
+  const validDateRange = Boolean(
+    activeStartDate && activeEndDate && activeStartDate <= activeEndDate,
+  );
+
+  function openRangeDialog() {
+    setDraftStartDate(startDate);
+    setDraftEndDate(endDate);
+    setRangeDialogOpen(true);
+  }
+
+  function applyDateRange() {
+    setStartDate(draftStartDate);
+    setEndDate(draftEndDate);
+    setHistorySelected(false);
+    setRangeDialogOpen(false);
+  }
+
+  function selectHistory() {
+    setHistorySelected(true);
+    setRangeDialogOpen(false);
+  }
 
   if (isLoading || (isAuthenticated && role === "admin" && !statsReady))
     return <LoadingScreen message="Preparando tus estadísticas" />;
@@ -120,21 +166,6 @@ export function AdminPage() {
     <div className="min-h-screen bg-gradient-dark">
       <SiteHeader />
       <main className="mx-auto grid w-full max-w-7xl gap-4 px-4 py-10 sm:px-6">
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <Stat
-            icon={TrendingUp}
-            label="Profesional con más atención · histórico"
-            value={`${stats.topBarber.name} · ${stats.topBarber.count}`}
-          />
-          <Stat
-            icon={TrendingDown}
-            label="Profesional con menos atención · histórico"
-            value={`${stats.lowBarber.name} · ${stats.lowBarber.count}`}
-          />
-          <Stat icon={Users} label="Último cliente" value={stats.lastClient} />
-          <Stat icon={Calendar} label="Último profesional" value={stats.lastBarber} />
-        </div>
-
         <section className="space-y-4 rounded-3xl border border-gold/30 bg-card p-4 sm:p-6">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
@@ -146,28 +177,93 @@ export function AdminPage() {
                 Compará turnos, servicios e ingresos en el período que elijas.
               </p>
             </div>
-            <div className="grid grid-cols-2 gap-3 sm:flex sm:items-end">
-              <label className="grid gap-1 text-xs text-muted-foreground">
-                Desde
-                <input
-                  type="date"
-                  value={startDate}
-                  max={endDate}
-                  onChange={(event) => setStartDate(event.target.value)}
-                  className="h-10 rounded-lg border border-border bg-background px-3 text-sm text-foreground scheme-dark [&::-webkit-calendar-picker-indicator]:invert"
-                />
-              </label>
-              <label className="grid gap-1 text-xs text-muted-foreground">
-                Hasta
-                <input
-                  type="date"
-                  value={endDate}
-                  min={startDate}
-                  onChange={(event) => setEndDate(event.target.value)}
-                  className="h-10 rounded-lg border border-border bg-background px-3 text-sm text-foreground scheme-dark [&::-webkit-calendar-picker-indicator]:invert"
-                />
-              </label>
+            <div className="flex flex-col items-start gap-1 lg:items-end">
+              <span className="text-xs text-muted-foreground">Período</span>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={openRangeDialog}
+                className="h-10 border-gold/30 bg-background px-3 text-sm text-foreground hover:border-gold/60 hover:bg-background"
+              >
+                <CalendarRange className="text-gold" />
+                Seleccionar rango
+              </Button>
+              <span className="text-xs text-muted-foreground">
+                {historySelected
+                  ? "Total · histórico"
+                  : `${format(parseISO(startDate), "dd/MM/yyyy")} – ${format(parseISO(endDate), "dd/MM/yyyy")}`}
+              </span>
             </div>
+          </div>
+
+          <Dialog open={rangeDialogOpen} onOpenChange={setRangeDialogOpen}>
+            <DialogContent className="border-gold/30 bg-card text-foreground sm:max-w-md">
+              <DialogHeader>
+                <DialogTitle className="font-display text-xl">Seleccionar rango</DialogTitle>
+                <DialogDescription>
+                  Elegí un período o consultá todos los datos históricos.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label className="grid gap-1.5 text-sm text-muted-foreground">
+                  Desde
+                  <input
+                    type="date"
+                    value={draftStartDate}
+                    max={draftEndDate}
+                    onChange={(event) => setDraftStartDate(event.target.value)}
+                    className="h-10 rounded-lg border border-border bg-background px-3 text-sm text-foreground scheme-dark [&::-webkit-calendar-picker-indicator]:invert"
+                  />
+                </label>
+                <label className="grid gap-1.5 text-sm text-muted-foreground">
+                  Hasta
+                  <input
+                    type="date"
+                    value={draftEndDate}
+                    min={draftStartDate}
+                    onChange={(event) => setDraftEndDate(event.target.value)}
+                    className="h-10 rounded-lg border border-border bg-background px-3 text-sm text-foreground scheme-dark [&::-webkit-calendar-picker-indicator]:invert"
+                  />
+                </label>
+              </div>
+              <DialogFooter className="flex-col-reverse sm:flex-row sm:justify-between">
+                <Button type="button" variant="outline" onClick={selectHistory}>
+                  Total · histórico
+                </Button>
+                <Button
+                  type="button"
+                  onClick={applyDateRange}
+                  disabled={!draftStartDate || !draftEndDate || draftStartDate > draftEndDate}
+                >
+                  Aplicar rango
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <Stat
+              icon={TrendingUp}
+              label="Profesional con más atención · histórico"
+              value={`${stats.topBarber.name} · ${stats.topBarber.count}`}
+            />
+            <Stat
+              icon={TrendingDown}
+              label="Profesional con menos atención · histórico"
+              value={`${stats.lowBarber.name} · ${stats.lowBarber.count}`}
+            />
+            <Stat icon={Users} label="Último cliente" value={stats.lastClient} />
+            <Stat icon={Calendar} label="Último profesional" value={stats.lastBarber} />
+            <Stat
+              icon={Scissors}
+              label="Profesional con más servicios realizados · histórico"
+              value={`${stats.topServiceBarber.name} · ${stats.topServiceBarber.count}`}
+            />
+            <Stat
+              icon={Scissors}
+              label="Profesional con menos servicios realizados · histórico"
+              value={`${stats.lowServiceBarber.name} · ${stats.lowServiceBarber.count}`}
+            />
           </div>
 
           {validDateRange ? (
@@ -374,6 +470,26 @@ function computeStats(bookings: Booking[]) {
   const topBarber = sortedBarbers[0] ?? { name: "-", count: 0 };
   const lowBarber = sortedBarbers[sortedBarbers.length - 1] ?? { name: "-", count: 0 };
 
+  const barberServiceCount: Record<string, number> = {};
+  allProfessionals.forEach((professional) => {
+    barberServiceCount[professional.id] = 0;
+  });
+  attended.forEach((booking) => {
+    barberServiceCount[booking.barberId] =
+      (barberServiceCount[booking.barberId] ?? 0) + booking.serviceIds.length;
+  });
+  const sortedBarbersByServices = Object.entries(barberServiceCount)
+    .map(([id, count]) => ({
+      name: getProfessional(id)?.name ?? "Profesional eliminado",
+      count,
+    }))
+    .sort((a, b) => b.count - a.count);
+  const topServiceBarber = sortedBarbersByServices[0] ?? { name: "-", count: 0 };
+  const lowServiceBarber = sortedBarbersByServices[sortedBarbersByServices.length - 1] ?? {
+    name: "-",
+    count: 0,
+  };
+
   const lastBooking = [...attended].sort(
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
   )[0];
@@ -389,6 +505,8 @@ function computeStats(bookings: Booking[]) {
     barbersChart,
     topBarber,
     lowBarber,
+    topServiceBarber,
+    lowServiceBarber,
     lastClient,
     lastBarber,
   };
