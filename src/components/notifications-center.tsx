@@ -3,8 +3,23 @@ import { useNavigate } from "@tanstack/react-router";
 import { Bell, Check, ExternalLink, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { BOOKING_HIGHLIGHT_KEY, deleteAllNotifications, deleteNotification, getNotifications, notificationBookingExists, setNotificationRead, type BookingNotification } from "@/lib/cloud-sync";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  BOOKING_HIGHLIGHT_KEY,
+  deleteAllNotifications,
+  deleteNotification,
+  getNotifications,
+  notificationBookingExists,
+  setNotificationRead,
+  type BookingNotification,
+} from "@/lib/cloud-sync";
 import type { AccountRole } from "@/lib/auth";
 
 function parseNotificationTimestamp(value: string) {
@@ -27,7 +42,13 @@ function formatBuenosAiresTimestamp(value: string) {
   }).format(parseNotificationTimestamp(value));
 }
 
-export function NotificationsCenter({ isAuthenticated, role }: { isAuthenticated: boolean; role: AccountRole | null }) {
+export function NotificationsCenter({
+  isAuthenticated,
+  role,
+}: {
+  isAuthenticated: boolean;
+  role: AccountRole | null;
+}) {
   const [notifications, setNotifications] = useState<BookingNotification[]>([]);
   const [newCount, setNewCount] = useState(0);
   const [promptOpen, setPromptOpen] = useState(false);
@@ -67,15 +88,17 @@ export function NotificationsCenter({ isAuthenticated, role }: { isAuthenticated
         const { notifications: loaded, newForPrompt } = await getNotifications();
         if (!active || requestSequence !== refreshSequenceRef.current) return;
         setNotifications((current) => {
-          return loaded.filter((notification) => !deletedNotificationIdsRef.current.has(notification.id)).map((notification) => {
-            const pendingReadAt = pendingReadRef.current.get(notification.id);
-            if (!pendingReadAt) return notification;
-            if (notification.readAt) {
-              pendingReadRef.current.delete(notification.id);
-              return notification;
-            }
-            return { ...notification, readAt: pendingReadAt };
-          });
+          return loaded
+            .filter((notification) => !deletedNotificationIdsRef.current.has(notification.id))
+            .map((notification) => {
+              const pendingReadAt = pendingReadRef.current.get(notification.id);
+              if (!pendingReadAt) return notification;
+              if (notification.readAt) {
+                pendingReadRef.current.delete(notification.id);
+                return notification;
+              }
+              return { ...notification, readAt: pendingReadAt };
+            });
         });
         if (showWelcome) {
           setNewCount(newForPrompt.length);
@@ -83,13 +106,19 @@ export function NotificationsCenter({ isAuthenticated, role }: { isAuthenticated
         }
         setError("");
       } catch (reason) {
-        if (active && requestSequence === refreshSequenceRef.current) setError(reason instanceof Error ? reason.message : "No se pudieron cargar las notificaciones.");
+        if (active && requestSequence === refreshSequenceRef.current)
+          setError(
+            reason instanceof Error ? reason.message : "No se pudieron cargar las notificaciones.",
+          );
       } finally {
-        if (active && showWelcome && requestSequence === refreshSequenceRef.current) setLoading(false);
+        if (active && showWelcome && requestSequence === refreshSequenceRef.current)
+          setLoading(false);
       }
     };
     void refresh(true);
-    const refreshQuietly = () => { void refresh(false); };
+    const refreshQuietly = () => {
+      void refresh(false);
+    };
     const intervalId = window.setInterval(refreshQuietly, 30000);
     window.addEventListener("focus", refreshQuietly);
     return () => {
@@ -117,14 +146,18 @@ export function NotificationsCenter({ isAuthenticated, role }: { isAuthenticated
     markingIdsRef.current.add(notification.id);
     pendingReadRef.current.set(notification.id, readAt);
     setMarkingIds((current) => new Set(current).add(notification.id));
-    setNotifications((current) => current.map((item) => item.id === notification.id ? { ...item, readAt } : item));
+    setNotifications((current) =>
+      current.map((item) => (item.id === notification.id ? { ...item, readAt } : item)),
+    );
     try {
       await setNotificationRead(notification.id, true);
     } catch (reason) {
       pendingReadRef.current.delete(notification.id);
-      setNotifications((current) => current.map((item) => item.id === notification.id
-        ? { ...item, readAt: notification.readAt }
-        : item));
+      setNotifications((current) =>
+        current.map((item) =>
+          item.id === notification.id ? { ...item, readAt: notification.readAt } : item,
+        ),
+      );
       setError(reason instanceof Error ? reason.message : "No se pudo actualizar la notificación.");
     } finally {
       markingIdsRef.current.delete(notification.id);
@@ -146,19 +179,33 @@ export function NotificationsCenter({ isAuthenticated, role }: { isAuthenticated
       markingIdsRef.current.add(notification.id);
     }
     setMarkingIds((current) => new Set([...current, ...unread.map((item) => item.id)]));
-    setNotifications((current) => current.map((item) => item.readAt ? item : { ...item, readAt: now }));
+    setNotifications((current) =>
+      current.map((item) => (item.readAt ? item : { ...item, readAt: now })),
+    );
     try {
-      const results = await Promise.allSettled(unread.map((item) => setNotificationRead(item.id, true)));
-      const failedIds = new Set(results.flatMap((result, index) => result.status === "rejected" ? [unread[index].id] : []));
+      const results = await Promise.allSettled(
+        unread.map((item) => setNotificationRead(item.id, true)),
+      );
+      const failedIds = new Set(
+        results.flatMap((result, index) =>
+          result.status === "rejected" ? [unread[index].id] : [],
+        ),
+      );
       if (failedIds.size) {
         for (const id of failedIds) pendingReadRef.current.delete(id);
-        setNotifications((current) => current.map((item) => {
-          const original = unread.find((notification) => notification.id === item.id);
-          return original && failedIds.has(item.id) ? { ...item, readAt: original.readAt } : item;
-        }));
+        setNotifications((current) =>
+          current.map((item) => {
+            const original = unread.find((notification) => notification.id === item.id);
+            return original && failedIds.has(item.id) ? { ...item, readAt: original.readAt } : item;
+          }),
+        );
         const firstFailure = results.find((result) => result.status === "rejected");
         const reason = firstFailure?.status === "rejected" ? firstFailure.reason : undefined;
-        setError(reason instanceof Error ? reason.message : "Algunas notificaciones no se pudieron marcar como leídas.");
+        setError(
+          reason instanceof Error
+            ? reason.message
+            : "Algunas notificaciones no se pudieron marcar como leídas.",
+        );
       }
     } finally {
       for (const notification of unread) markingIdsRef.current.delete(notification.id);
@@ -188,7 +235,9 @@ export function NotificationsCenter({ isAuthenticated, role }: { isAuthenticated
       await deleteNotification(notification.id);
     } catch (reason) {
       deletedNotificationIdsRef.current.delete(notification.id);
-      setNotifications((current) => [...current, notification].sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
+      setNotifications((current) =>
+        [...current, notification].sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+      );
       if (wasMissing) setMissingBookingIds((current) => new Set(current).add(notification.id));
       setError(reason instanceof Error ? reason.message : "No se pudo eliminar la notificación.");
     } finally {
@@ -202,7 +251,14 @@ export function NotificationsCenter({ isAuthenticated, role }: { isAuthenticated
   }
 
   async function removeAllNotifications() {
-    if (deletingAll || markingAll || markingIds.size > 0 || deletingIds.size > 0 || notifications.length === 0) return;
+    if (
+      deletingAll ||
+      markingAll ||
+      markingIds.size > 0 ||
+      deletingIds.size > 0 ||
+      notifications.length === 0
+    )
+      return;
     setDeletingAll(true);
     const previousNotifications = notifications;
     const previousMissingBookingIds = new Set(missingBookingIds);
@@ -210,7 +266,9 @@ export function NotificationsCenter({ isAuthenticated, role }: { isAuthenticated
     setNotifications([]);
     setMissingBookingIds(new Set());
     pendingReadRef.current.clear();
-    previousNotifications.forEach((notification) => deletedNotificationIdsRef.current.add(notification.id));
+    previousNotifications.forEach((notification) =>
+      deletedNotificationIdsRef.current.add(notification.id),
+    );
     try {
       await deleteAllNotifications();
       setError("");
@@ -219,7 +277,11 @@ export function NotificationsCenter({ isAuthenticated, role }: { isAuthenticated
       deletedNotificationIdsRef.current = previousDeletedIds;
       setNotifications(previousNotifications);
       setMissingBookingIds(previousMissingBookingIds);
-      setError(reason instanceof Error ? reason.message : "No se pudieron eliminar todas las notificaciones.");
+      setError(
+        reason instanceof Error
+          ? reason.message
+          : "No se pudieron eliminar todas las notificaciones.",
+      );
     } finally {
       setDeletingAll(false);
     }
@@ -247,7 +309,11 @@ export function NotificationsCenter({ isAuthenticated, role }: { isAuthenticated
       await navigate({ to: role === "admin" ? "/agenda" : "/mis-turnos" });
       window.setTimeout(() => window.dispatchEvent(new Event("mi-turno-ya:highlight-booking")), 0);
     } catch (reason) {
-      toast.error(reason instanceof Error ? reason.message : "No se pudo comprobar si el turno sigue disponible.");
+      toast.error(
+        reason instanceof Error
+          ? reason.message
+          : "No se pudo comprobar si el turno sigue disponible.",
+      );
     } finally {
       checkingBookingIdsRef.current.delete(notification.id);
       setCheckingBookingIds((current) => {
@@ -261,66 +327,155 @@ export function NotificationsCenter({ isAuthenticated, role }: { isAuthenticated
   if (!isAuthenticated || (role !== "admin" && role !== "client")) return null;
 
   const unreadCount = notifications.filter((item) => !item.readAt).length;
-  const isMobileViewport = typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches;
+  const isMobileViewport =
+    typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches;
   const notificationPanelContent = (
     <>
       <div className="mb-3 flex items-center justify-between gap-2 border-b border-border pb-2 pr-8 md:pr-0">
         <h2 className="font-semibold">Notificaciones</h2>
         <div className="flex items-center gap-3">
-          {unreadCount > 0 && <button type="button" disabled={markingAll || deletingAll || deletingIds.size > 0} className="text-xs text-gold hover:underline disabled:cursor-wait disabled:opacity-70" onClick={() => void markAllRead()}>{markingAll ? "Marcando como leídas..." : "Marcar todas leídas"}</button>}
-          {notifications.length > 0 && <button type="button" disabled={deletingAll || markingAll || markingIds.size > 0 || deletingIds.size > 0} className="text-xs text-red-300 hover:underline disabled:cursor-wait disabled:opacity-70" onClick={() => void removeAllNotifications()}>{deletingAll ? "Borrando…" : "Borrar todas"}</button>}
+          {unreadCount > 0 && (
+            <button
+              type="button"
+              disabled={markingAll || deletingAll || deletingIds.size > 0}
+              className="text-xs text-gold hover:underline disabled:cursor-wait disabled:opacity-70"
+              onClick={() => void markAllRead()}
+            >
+              {markingAll ? "Marcando como leídas..." : "Marcar todas leídas"}
+            </button>
+          )}
+          {notifications.length > 0 && (
+            <button
+              type="button"
+              disabled={deletingAll || markingAll || markingIds.size > 0 || deletingIds.size > 0}
+              className="text-xs text-red-300 hover:underline disabled:cursor-wait disabled:opacity-70"
+              onClick={() => void removeAllNotifications()}
+            >
+              {deletingAll ? "Borrando…" : "Borrar todas"}
+            </button>
+          )}
         </div>
       </div>
-      {error && <p role="alert" className="mb-2 rounded-lg bg-red-500/10 p-2 text-xs text-red-300">{error}</p>}
-      {loading ? <p className="py-5 text-center text-sm text-muted-foreground">Cargando…</p>
-        : notifications.length === 0 ? <p className="py-5 text-center text-sm text-muted-foreground">Todavía no tenés notificaciones.</p>
-          : <ul className="gold-scrollbar max-h-[min(65vh,28rem)] space-y-2 overflow-y-auto pr-1">
-            {notifications.map((notification) => (
-              <li key={notification.id} className={`rounded-xl border p-3 ${notification.readAt ? "border-border bg-card/60" : "border-gold/40 bg-gold/5"}`}>
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold">{notification.title}</p>
-                    <p className="mt-1 text-xs leading-5 text-muted-foreground">{notification.message.replace(/\b(\d{4})-(\d{2})-(\d{2})\b/g, "$3/$2/$1")}</p>
-                    <time className="mt-2 block text-[11px] text-muted-foreground" dateTime={parseNotificationTimestamp(notification.createdAt).toISOString()}>
-                      {formatBuenosAiresTimestamp(notification.createdAt)}
-                    </time>
-                  </div>
-                  <span className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${notification.readAt ? "bg-border" : "bg-gold"}`} aria-label={notification.readAt ? "Leída" : "Sin leer"} />
+      {error && (
+        <p role="alert" className="mb-2 rounded-lg bg-red-500/10 p-2 text-xs text-red-300">
+          {error}
+        </p>
+      )}
+      {loading ? (
+        <p className="py-5 text-center text-sm text-muted-foreground">Cargando…</p>
+      ) : notifications.length === 0 ? (
+        <p className="py-5 text-center text-sm text-muted-foreground">
+          Todavía no tenés notificaciones.
+        </p>
+      ) : (
+        <ul className="gold-scrollbar max-h-[min(65vh,28rem)] space-y-2 overflow-y-auto pr-1">
+          {notifications.map((notification) => (
+            <li
+              key={notification.id}
+              className={`rounded-xl border p-3 ${notification.readAt ? "border-border bg-card/60" : "border-gold/40 bg-gold/5"}`}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold">{notification.title}</p>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                    {notification.message.replace(/\b(\d{4})-(\d{2})-(\d{2})\b/g, "$3/$2/$1")}
+                  </p>
+                  <time
+                    className="mt-2 block text-[11px] text-muted-foreground"
+                    dateTime={parseNotificationTimestamp(notification.createdAt).toISOString()}
+                  >
+                    {formatBuenosAiresTimestamp(notification.createdAt)}
+                  </time>
                 </div>
-                {missingBookingIds.has(notification.id) ? (
-                  <div className="mt-2 flex w-full min-w-0 items-center gap-2">
-                    <span className="min-w-0 flex-1 rounded-md border border-white/15 bg-black px-2 py-1.5 text-xs text-white">No se encuentra el turno.</span>
-                    <div className="flex shrink-0 items-center gap-2">
-                      {markingIds.has(notification.id)
-                        ? <span className="text-[11px] text-muted-foreground">Marcando...</span>
-                        : notification.readAt
-                          ? <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground"><Check className="h-3 w-3" /> Leída</span>
-                          : <button type="button" disabled={markingAll} className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground disabled:opacity-70" onClick={() => void markRead(notification)}><Check className="h-3 w-3" /> Leída</button>}
-                      <button type="button" disabled={deletingIds.has(notification.id)} aria-label="Eliminar notificación" title="Eliminar notificación" className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-red-500/10 hover:text-red-300 disabled:opacity-60" onClick={() => void removeNotification(notification)}>
-                        <Trash2 className="h-3.5 w-3.5" />
+                <span
+                  className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${notification.readAt ? "bg-border" : "bg-gold"}`}
+                  aria-label={notification.readAt ? "Leída" : "Sin leer"}
+                />
+              </div>
+              {missingBookingIds.has(notification.id) ? (
+                <div className="mt-2 flex w-full min-w-0 items-center gap-2">
+                  <span className="min-w-0 flex-1 rounded-md border border-white/15 bg-black px-2 py-1.5 text-xs text-white">
+                    No se encuentra el turno.
+                  </span>
+                  <div className="flex shrink-0 items-center gap-2">
+                    {markingIds.has(notification.id) ? (
+                      <span className="text-[11px] text-muted-foreground">Marcando...</span>
+                    ) : notification.readAt ? (
+                      <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+                        <Check className="h-3 w-3" /> Leída
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={markingAll}
+                        className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground disabled:opacity-70"
+                        onClick={() => void markRead(notification)}
+                      >
+                        <Check className="h-3 w-3" /> Leída
                       </button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-                    <button type="button" disabled={checkingBookingIds.has(notification.id)} className="inline-flex items-center gap-1 text-xs text-gold hover:underline disabled:cursor-wait disabled:opacity-70" onClick={() => void viewBooking(notification)}>
-                      {checkingBookingIds.has(notification.id) ? "Buscando turno..." : <>Ver turno <ExternalLink className="h-3 w-3" /></>}
+                    )}
+                    <button
+                      type="button"
+                      disabled={deletingIds.has(notification.id)}
+                      aria-label="Eliminar notificación"
+                      title="Eliminar notificación"
+                      className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-red-500/10 hover:text-red-300 disabled:opacity-60"
+                      onClick={() => void removeNotification(notification)}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
                     </button>
-                    <div className="flex items-center gap-3">
-                      {markingIds.has(notification.id)
-                        ? <span className="text-xs text-muted-foreground">Marcando como leída...</span>
-                        : notification.readAt
-                          ? <span className="inline-flex items-center gap-1 text-xs text-muted-foreground"><Check className="h-3 w-3" /> Leída</span>
-                          : <button type="button" disabled={markingAll} className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground disabled:cursor-wait disabled:opacity-70" onClick={() => void markRead(notification)}><Check className="h-3 w-3" /> Marcar como leída</button>}
-                      <button type="button" disabled={deletingIds.has(notification.id)} aria-label="Eliminar notificación" title="Eliminar notificación" className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-red-500/10 hover:text-red-300 disabled:cursor-wait disabled:opacity-60" onClick={() => void removeNotification(notification)}>
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
                   </div>
-                )}
-              </li>
-            ))}
-          </ul>}
+                </div>
+              ) : (
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                  <button
+                    type="button"
+                    disabled={checkingBookingIds.has(notification.id)}
+                    className="inline-flex items-center gap-1 text-xs text-gold hover:underline disabled:cursor-wait disabled:opacity-70"
+                    onClick={() => void viewBooking(notification)}
+                  >
+                    {checkingBookingIds.has(notification.id) ? (
+                      "Buscando turno..."
+                    ) : (
+                      <>
+                        Ver turno <ExternalLink className="h-3 w-3" />
+                      </>
+                    )}
+                  </button>
+                  <div className="flex items-center gap-3">
+                    {markingIds.has(notification.id) ? (
+                      <span className="text-xs text-muted-foreground">Marcando como leída...</span>
+                    ) : notification.readAt ? (
+                      <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                        <Check className="h-3 w-3" /> Leída
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={markingAll}
+                        className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground disabled:cursor-wait disabled:opacity-70"
+                        onClick={() => void markRead(notification)}
+                      >
+                        <Check className="h-3 w-3" /> Marcar como leída
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      disabled={deletingIds.has(notification.id)}
+                      aria-label="Eliminar notificación"
+                      title="Eliminar notificación"
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-red-500/10 hover:text-red-300 disabled:cursor-wait disabled:opacity-60"
+                      onClick={() => void removeNotification(notification)}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
     </>
   );
 
@@ -339,11 +494,18 @@ export function NotificationsCenter({ isAuthenticated, role }: { isAuthenticated
         className="relative h-9 w-9 rounded-full border border-gold/40 text-gold hover:border-gold hover:bg-gold/10 hover:text-gold sm:h-10 sm:w-10 md:border-border/60 md:text-foreground md:hover:border-gold/50 md:hover:bg-transparent md:hover:text-gold"
       >
         <Bell className="h-5 w-5" />
-        {unreadCount > 0 && <span className="absolute -right-1 -top-1 flex min-h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">{unreadCount > 99 ? "99+" : unreadCount}</span>}
+        {unreadCount > 0 && (
+          <span className="absolute -right-1 -top-1 flex min-h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+            {unreadCount > 99 ? "99+" : unreadCount}
+          </span>
+        )}
       </Button>
 
       <Dialog open={panelOpen && isMobileViewport} onOpenChange={setPanelOpen}>
-        <DialogContent aria-label="Notificaciones" className="max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] max-w-lg overflow-y-auto rounded-2xl border-gold/40 bg-background p-4 text-foreground sm:p-6 md:hidden">
+        <DialogContent
+          aria-label="Notificaciones"
+          className="max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] max-w-lg overflow-y-auto rounded-2xl border-gold/40 bg-background p-4 text-foreground sm:p-6 md:hidden"
+        >
           <DialogHeader className="sr-only">
             <DialogTitle>Notificaciones</DialogTitle>
           </DialogHeader>
@@ -351,23 +513,41 @@ export function NotificationsCenter({ isAuthenticated, role }: { isAuthenticated
         </DialogContent>
       </Dialog>
 
-      {panelOpen && <section aria-label="Notificaciones" className="absolute right-0 top-full z-60 mt-2 hidden w-[min(22rem,calc(100vw-1.5rem))] rounded-2xl border border-gold/40 bg-background p-3 text-foreground shadow-2xl md:block">
-        {notificationPanelContent}
-      </section>}
+      {panelOpen && (
+        <section
+          aria-label="Notificaciones"
+          className="absolute right-0 top-full z-60 mt-2 hidden w-[min(22rem,calc(100vw-1.5rem))] rounded-2xl border border-gold/40 bg-background p-3 text-foreground shadow-2xl md:block"
+        >
+          {notificationPanelContent}
+        </section>
+      )}
 
       <Dialog open={promptOpen} onOpenChange={setPromptOpen}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Nuevas notificaciones a revisar</DialogTitle>
-            <DialogDescription>{newCount === 1 ? "Tenés una novedad sobre un turno." : `Tenés ${newCount} novedades sobre turnos.`} Podés consultarlas ahora o más tarde desde la campanita.</DialogDescription>
+            <DialogDescription>
+              {newCount === 1
+                ? "Tenés una novedad sobre un turno."
+                : `Tenés ${newCount} novedades sobre turnos.`}{" "}
+              Podés consultarlas ahora o más tarde desde la campanita.
+            </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setPromptOpen(false)}>Más tarde</Button>
-            <Button type="button" className="bg-gold text-primary-foreground hover:bg-gold-soft" onClick={() => {
-              setPromptOpen(false);
-              setPanelOpen(true);
-              window.setTimeout(() => bellRef.current?.focus(), 0);
-            }}>Ver notificaciones</Button>
+            <Button type="button" variant="outline" onClick={() => setPromptOpen(false)}>
+              Más tarde
+            </Button>
+            <Button
+              type="button"
+              className="bg-gold text-primary-foreground hover:bg-gold-soft"
+              onClick={() => {
+                setPromptOpen(false);
+                setPanelOpen(true);
+                window.setTimeout(() => bellRef.current?.focus(), 0);
+              }}
+            >
+              Ver notificaciones
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

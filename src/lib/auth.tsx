@@ -1,4 +1,12 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 import { KindeProvider, useKindeAuth } from "@kinde-oss/kinde-auth-react";
 import { AUTH_CONFIG, AUTH_CONFIGURED } from "@/lib/env";
 
@@ -19,8 +27,18 @@ type AuthContextValue = {
   role: AccountRole | null;
   setVerifiedRole: (role: AccountRole | null) => void;
   getIdToken: () => Promise<string | undefined>;
-  login: (role?: AccountRole, email?: string, adminCode?: string, storeCode?: string) => void | Promise<void>;
-  register: (role: AccountRole, email?: string, adminCode?: string, storeCode?: string) => void | Promise<void>;
+  login: (
+    role?: AccountRole,
+    email?: string,
+    adminCode?: string,
+    storeCode?: string,
+  ) => void | Promise<void>;
+  register: (
+    role: AccountRole,
+    email?: string,
+    adminCode?: string,
+    storeCode?: string,
+  ) => void | Promise<void>;
   logout: () => void | Promise<void>;
 };
 
@@ -41,7 +59,17 @@ const AuthContext = createContext<AuthContextValue>(unavailableAuth);
 
 export function rememberAuthReturnPath(path: string) {
   if (typeof window === "undefined") return;
-  const allowedPaths = ["/admin", "/agenda", "/estadisticas", "/plan", "/configuracion", "/profesionales", "/mis-turnos", "/mis-datos", "/reserva"];
+  const allowedPaths = [
+    "/admin",
+    "/agenda",
+    "/estadisticas",
+    "/plan",
+    "/configuracion",
+    "/profesionales",
+    "/mis-turnos",
+    "/mis-datos",
+    "/reserva",
+  ];
   if (allowedPaths.includes(path)) {
     window.sessionStorage.setItem("kinde-auth-return-path", path);
   }
@@ -50,18 +78,27 @@ export function rememberAuthReturnPath(path: string) {
 export function rememberSignupRole(role: AccountRole) {
   if (typeof window === "undefined") return;
   window.sessionStorage.setItem("kinde-signup-role", role);
-  window.sessionStorage.setItem("kinde-auth-return-path", role === "admin" ? "/configuracion" : "/reserva");
+  window.sessionStorage.setItem(
+    "kinde-auth-return-path",
+    role === "admin" ? "/configuracion" : "/reserva",
+  );
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  if (!AUTH_CONFIGURED) return <AuthContext.Provider value={unavailableAuth}>{children}</AuthContext.Provider>;
+  if (!AUTH_CONFIGURED)
+    return <AuthContext.Provider value={unavailableAuth}>{children}</AuthContext.Provider>;
 
   const appOrigin = typeof window === "undefined" ? "" : window.location.origin;
   const cleanedDomain = AUTH_CONFIG.domain.replace(/\/+$/, "");
   const domain = /^https?:\/\//i.test(cleanedDomain) ? cleanedDomain : `https://${cleanedDomain}`;
 
   return (
-    <KindeProvider clientId={AUTH_CONFIG.clientId} domain={domain} redirectUri={appOrigin} logoutUri={`${appOrigin}/reserva`}>
+    <KindeProvider
+      clientId={AUTH_CONFIG.clientId}
+      domain={domain}
+      redirectUri={appOrigin}
+      logoutUri={`${appOrigin}/reserva`}
+    >
       <KindeSession>{children}</KindeSession>
     </KindeProvider>
   );
@@ -70,14 +107,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 function KindeSession({ children }: { children: ReactNode }) {
   const { isAuthenticated, isLoading, user, login, register, logout, getIdToken } = useKindeAuth();
   const [role, setRole] = useState<AccountRole | null>(null);
-  const setVerifiedRole = useCallback((verifiedRole: AccountRole | null) => setRole(verifiedRole), []);
+  const setVerifiedRole = useCallback(
+    (verifiedRole: AccountRole | null) => setRole(verifiedRole),
+    [],
+  );
 
   useEffect(() => {
     setRole(null);
   }, [isAuthenticated, user?.id]);
 
   const value = useMemo<AuthContextValue>(() => {
-    const startAuth = async (action: typeof login | typeof register, _requestedRole: AccountRole, email?: string) => {
+    const startAuth = async (
+      action: typeof login | typeof register,
+      _requestedRole: AccountRole,
+      email?: string,
+    ) => {
       try {
         await action({
           ...(AUTH_CONFIG.orgCode ? { orgCode: AUTH_CONFIG.orgCode } : {}),
@@ -86,7 +130,9 @@ function KindeSession({ children }: { children: ReactNode }) {
         });
       } catch (error) {
         console.error("No se pudo iniciar la autenticación de Kinde", error);
-        window.alert("Kinde no pudo iniciar. Verificá el dominio, Client ID y las URLs autorizadas.");
+        window.alert(
+          "Kinde no pudo iniciar. Verificá el dominio, Client ID y las URLs autorizadas.",
+        );
       }
     };
 
@@ -105,7 +151,17 @@ function KindeSession({ children }: { children: ReactNode }) {
         await logout({ redirectUrl: `${window.location.origin}/reserva` });
       },
     };
-  }, [getIdToken, isAuthenticated, isLoading, login, logout, register, role, setVerifiedRole, user]);
+  }, [
+    getIdToken,
+    isAuthenticated,
+    isLoading,
+    login,
+    logout,
+    register,
+    role,
+    setVerifiedRole,
+    user,
+  ]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

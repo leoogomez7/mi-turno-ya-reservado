@@ -1,6 +1,17 @@
 import { createFileRoute, Link, redirect, useLocation, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import { Check, ChevronLeft, ChevronRight, Star, Clock, Calendar as CalIcon, Briefcase, User, Copy } from "lucide-react";
+import {
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  Star,
+  Clock,
+  Calendar as CalIcon,
+  Briefcase,
+  User,
+  Copy,
+  type LucideIcon,
+} from "lucide-react";
 import { addDays, format, isBefore, isSameDay, parseISO, startOfToday } from "date-fns";
 import { es } from "date-fns/locale";
 
@@ -9,15 +20,39 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { normalizeWhatsappNumber } from "@/lib/utils";
 
 import { bookingStore, type Booking, type Customer } from "@/lib/booking-store";
-import { type Professional, getScheduleForDate, generateSlotsFromSchedule, isProfessionalAvailableOnDate } from "@/lib/professional-store";
+import {
+  type Professional,
+  getScheduleForDate,
+  generateSlotsFromSchedule,
+  isProfessionalAvailableOnDate,
+} from "@/lib/professional-store";
 import { useAppAuth } from "@/lib/auth";
-import { bootstrapCloudData, createPublicBooking, getAvailableStores, getClientProfile, getCloudRecords, getCurrentStoreCode, isCloudInitialized, isCloudReady, loadReservationStore, selectStore, type Store } from "@/lib/cloud-sync";
+import {
+  bootstrapCloudData,
+  createPublicBooking,
+  getAvailableStores,
+  getClientProfile,
+  getCloudRecords,
+  getCurrentStoreCode,
+  isCloudInitialized,
+  isCloudReady,
+  loadReservationStore,
+  selectStore,
+  type Store,
+} from "@/lib/cloud-sync";
 
 export const Route = createFileRoute("/book")({
   beforeLoad: () => {
@@ -34,7 +69,8 @@ const STEP_PATHS = {
   4: "/reserva/confirmacion",
 } as const;
 function stepForPath(pathname: string) {
-  return Object.entries(STEP_PATHS).find(([, path]) => path === pathname)?.[0] as keyof typeof STEP_PATHS | undefined;
+  return Object.entries(STEP_PATHS).find(([, path]) => path === pathname)?.[0] as
+    keyof typeof STEP_PATHS | undefined;
 }
 
 const EMPTY_CUSTOMER: Customer = {
@@ -47,10 +83,14 @@ const EMPTY_CUSTOMER: Customer = {
 
 function paymentMethodLabel(paymentMethod: Customer["paymentMethod"] | undefined) {
   switch (paymentMethod) {
-    case "efectivo": return "Efectivo";
-    case "transferencia": return "Transferencia Bancaria";
-    case "tarjeta o mercado pago": return "Tarjeta o MercadoPago";
-    default: return "Sin seleccionar";
+    case "efectivo":
+      return "Efectivo";
+    case "transferencia":
+      return "Transferencia Bancaria";
+    case "tarjeta o mercado pago":
+      return "Tarjeta o MercadoPago";
+    default:
+      return "Sin seleccionar";
   }
 }
 
@@ -76,12 +116,19 @@ export function BookPage() {
   const [confirmingBooking, setConfirmingBooking] = useState(false);
   const [startingPayment, setStartingPayment] = useState(false);
   const [paymentDialog, setPaymentDialog] = useState<"transfer" | null>(null);
-  const [pendingTransferReturn, setPendingTransferReturn] = useState<Pick<ReservationResult, "date" | "time" | "totalPrice"> | null>(null);
+  const [pendingTransferReturn, setPendingTransferReturn] = useState<Pick<
+    ReservationResult,
+    "date" | "time" | "totalPrice"
+  > | null>(null);
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [reservationResult, setReservationResult] = useState<ReservationResult | null>(null);
   const [stores, setStores] = useState<Store[]>(getAvailableStores());
-  const [reservationProfessionals, setReservationProfessionals] = useState<Professional[]>(getCloudRecords("professionals"));
-  const [reservationBookings, setReservationBookings] = useState<Booking[]>(getCloudRecords("bookings"));
+  const [reservationProfessionals, setReservationProfessionals] = useState<Professional[]>(
+    getCloudRecords("professionals"),
+  );
+  const [reservationBookings, setReservationBookings] = useState<Booking[]>(
+    getCloudRecords("bookings"),
+  );
   const [selectedStoreCode, setSelectedStoreCode] = useState(getCurrentStoreCode());
   const [storeSelectionHydrated, setStoreSelectionHydrated] = useState(false);
   const [cloudDataReady, setCloudDataReady] = useState(isCloudInitialized);
@@ -117,19 +164,33 @@ export function BookPage() {
       .then((profile) => {
         if (cancelled) return;
         const accountEmail = user?.email?.trim().toLowerCase();
-        const previousBookingPhone = bookingStore.all().find((booking) => booking.customer.email.trim().toLowerCase() === accountEmail)?.customer.phone;
-        setCustomer((current) => current.phone ? current : { ...current, phone: profile.phone || previousBookingPhone || "" });
+        const previousBookingPhone = bookingStore
+          .all()
+          .find((booking) => booking.customer.email.trim().toLowerCase() === accountEmail)
+          ?.customer.phone;
+        setCustomer((current) =>
+          current.phone
+            ? current
+            : { ...current, phone: profile.phone || previousBookingPhone || "" },
+        );
       })
       .catch(() => {
         if (cancelled) return;
         const accountEmail = user?.email?.trim().toLowerCase();
-        const previousBookingPhone = bookingStore.all().find((booking) => booking.customer.email.trim().toLowerCase() === accountEmail)?.customer.phone;
-        setCustomer((current) => current.phone ? current : { ...current, phone: previousBookingPhone || "" });
+        const previousBookingPhone = bookingStore
+          .all()
+          .find((booking) => booking.customer.email.trim().toLowerCase() === accountEmail)
+          ?.customer.phone;
+        setCustomer((current) =>
+          current.phone ? current : { ...current, phone: previousBookingPhone || "" },
+        );
       })
       .finally(() => {
         if (!cancelled) setClientProfileLoaded(true);
       });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [profileReloadKey, role, user?.email, user?.familyName, user?.givenName]);
 
   useEffect(() => {
@@ -166,8 +227,8 @@ export function BookPage() {
     const currentCode = selectedStoreCode || getCurrentStoreCode();
     const currentStore = stores.find((store) => store.code === currentCode);
     const hasActiveStore = Boolean(
-      currentStore?.subscriptionExpiresAt
-      && Date.parse(currentStore.subscriptionExpiresAt) > Date.now(),
+      currentStore?.subscriptionExpiresAt &&
+      Date.parse(currentStore.subscriptionExpiresAt) > Date.now(),
     );
 
     if (hasActiveStore) {
@@ -207,7 +268,9 @@ export function BookPage() {
       })
       .catch((error: unknown) => {
         if (cancelled) return;
-        toast.error(error instanceof Error ? error.message : "No se pudo cargar la sucursal elegida.");
+        toast.error(
+          error instanceof Error ? error.message : "No se pudo cargar la sucursal elegida.",
+        );
       })
       .finally(() => {
         if (!cancelled) setStoreLoading(false);
@@ -219,7 +282,15 @@ export function BookPage() {
 
   useEffect(() => {
     if (!paymentReturn) return;
-    let pendingPayment: { bookingId?: string; cancellationToken?: string; storeCode?: string; date?: string; time?: string; paymentMethod?: Customer["paymentMethod"]; whatsappMessage?: string } = {};
+    let pendingPayment: {
+      bookingId?: string;
+      cancellationToken?: string;
+      storeCode?: string;
+      date?: string;
+      time?: string;
+      paymentMethod?: Customer["paymentMethod"];
+      whatsappMessage?: string;
+    } = {};
     try {
       const saved = window.localStorage.getItem(PENDING_PAYMENT_SESSION_KEY);
       if (saved) pendingPayment = JSON.parse(saved) as typeof pendingPayment;
@@ -228,26 +299,33 @@ export function BookPage() {
     }
     let cancelled = false;
     void (async () => {
-      let resultKind: ReservationResult["kind"] = paymentReturn === "pending" ? "payment-pending" : "payment-failure";
+      let resultKind: ReservationResult["kind"] =
+        paymentReturn === "pending" ? "payment-pending" : "payment-failure";
       if (paymentReturn === "success" && pendingPayment.bookingId) {
         try {
           const response = await fetch("/api/data", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ action: "verify-booking-payment", bookingId: pendingPayment.bookingId }),
+            body: JSON.stringify({
+              action: "verify-booking-payment",
+              bookingId: pendingPayment.bookingId,
+            }),
             cache: "no-store",
           });
-          const result = await response.json() as { approved?: boolean; error?: string };
+          const result = (await response.json()) as { approved?: boolean; error?: string };
           resultKind = response.ok && result.approved ? "payment-success" : "payment-pending";
         } catch {
           resultKind = "payment-pending";
         }
       } else if (paymentReturn === "failure") {
         resultKind = "payment-pending";
-        toast.error("El pago no se completó. Tu turno sigue confirmado y podés intentar pagar nuevamente.");
+        toast.error(
+          "El pago no se completó. Tu turno sigue confirmado y podés intentar pagar nuevamente.",
+        );
       }
       if (cancelled) return;
-      if (resultKind !== "payment-pending") window.localStorage.removeItem(PENDING_PAYMENT_SESSION_KEY);
+      if (resultKind !== "payment-pending")
+        window.localStorage.removeItem(PENDING_PAYMENT_SESSION_KEY);
       setReservationResult({
         kind: resultKind,
         date: pendingPayment.date ?? "",
@@ -256,7 +334,9 @@ export function BookPage() {
       });
       void navigate({ to: "/reserva", replace: true });
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [navigate, paymentReturn]);
 
   useEffect(() => {
@@ -285,12 +365,17 @@ export function BookPage() {
   const activeStores = stores.filter((store) =>
     Boolean(store.subscriptionExpiresAt && Date.parse(store.subscriptionExpiresAt) > Date.now()),
   );
-  const matchingStores = activeStores.filter((store) => `${store.name} ${store.code}`.toLowerCase().includes(storeSearch.trim().toLowerCase()));
+  const matchingStores = activeStores.filter((store) =>
+    `${store.name} ${store.code}`.toLowerCase().includes(storeSearch.trim().toLowerCase()),
+  );
   const selectedStore = activeStores.find((store) => store.code === selectedStoreCode);
   const storeSettings = selectedStore?.settings;
 
   useEffect(() => {
-    if (customer.paymentMethod === "tarjeta o mercado pago" && !selectedStore?.mercadoPagoConfigured) {
+    if (
+      customer.paymentMethod === "tarjeta o mercado pago" &&
+      !selectedStore?.mercadoPagoConfigured
+    ) {
       setCustomer((current) => ({ ...current, paymentMethod: undefined }));
     }
   }, [customer.paymentMethod, selectedStore?.mercadoPagoConfigured]);
@@ -334,11 +419,21 @@ export function BookPage() {
     return bookingStore.add(input);
   }
 
-  const selectedProfessional = reservationProfessionals.find((professional) => professional.id === barberId);
+  const selectedProfessional = reservationProfessionals.find(
+    (professional) => professional.id === barberId,
+  );
   const selectedServices = selectedProfessional?.services ?? [];
-  const selectedServiceIds = serviceIds.filter((id) => selectedServices.some((service) => service.id === id));
-  const duration = selectedServices.reduce((total, service) => total + (selectedServiceIds.includes(service.id) ? service.duration : 0), 0);
-  const price = selectedServices.reduce((total, service) => total + (selectedServiceIds.includes(service.id) ? service.price : 0), 0);
+  const selectedServiceIds = serviceIds.filter((id) =>
+    selectedServices.some((service) => service.id === id),
+  );
+  const duration = selectedServices.reduce(
+    (total, service) => total + (selectedServiceIds.includes(service.id) ? service.duration : 0),
+    0,
+  );
+  const price = selectedServices.reduce(
+    (total, service) => total + (selectedServiceIds.includes(service.id) ? service.price : 0),
+    0,
+  );
 
   function selectProfessional(nextBarberId: string) {
     if (nextBarberId === barberId) return;
@@ -395,109 +490,142 @@ Observaciones: ${customer.notes || "Ninguna"}`;
 
   const canNext = useMemo(() => {
     if (step === 0) {
-      return customer.fullName.trim().length > 0
-        && customer.phone.trim().length >= 6
-        && /.+@.+\..+/.test(customer.email)
-        && !!customer.paymentMethod;
+      return (
+        customer.fullName.trim().length > 0 &&
+        customer.phone.trim().length >= 6 &&
+        /.+@.+\..+/.test(customer.email) &&
+        !!customer.paymentMethod
+      );
     }
     if (step === 1) return !!barberId;
-    if (step === 2) return selectedServiceIds.length > 0 && selectedServiceIds.length === serviceIds.length;
+    if (step === 2)
+      return selectedServiceIds.length > 0 && selectedServiceIds.length === serviceIds.length;
     if (step === 3) return !!date && !!time;
     return true;
   }, [step, customer, barberId, serviceIds, selectedServiceIds, date, time]);
 
   async function confirm() {
     if (confirmingBooking) return;
-    if (isAuthenticated && role === "client" && user?.email && customer.email.trim().toLowerCase() !== user.email.trim().toLowerCase()) {
-      toast.error("Para ver este turno en tu cuenta, usá el mismo correo con el que iniciaste sesión.");
+    if (
+      isAuthenticated &&
+      role === "client" &&
+      user?.email &&
+      customer.email.trim().toLowerCase() !== user.email.trim().toLowerCase()
+    ) {
+      toast.error(
+        "Para ver este turno en tu cuenta, usá el mismo correo con el que iniciaste sesión.",
+      );
       return;
     }
     if (!date || !time) {
       toast.error("Seleccioná fecha y horario antes de confirmar.");
       return;
     }
-    if (!selectedProfessional || selectedServiceIds.length === 0 || selectedServiceIds.length !== serviceIds.length) {
+    if (
+      !selectedProfessional ||
+      selectedServiceIds.length === 0 ||
+      selectedServiceIds.length !== serviceIds.length
+    ) {
       toast.error("Volvé a elegir los servicios del profesional seleccionado.");
       return;
     }
 
     setConfirmingBooking(true);
     try {
-    if (customer.paymentMethod === "transferencia") {
+      if (customer.paymentMethod === "transferencia") {
+        try {
+          await saveBooking({
+            storeCode: selectedStoreCode,
+            customer,
+            barberId,
+            serviceIds: selectedServiceIds,
+            date: format(date, "yyyy-MM-dd"),
+            time,
+            duration,
+            totalPrice: price,
+            status: "confirmed",
+            paymentStatus: "pending",
+          });
+          setReservationResult({
+            kind: "payment-pending",
+            date: format(date, "yyyy-MM-dd"),
+            time,
+            totalPrice: price,
+            paymentMethod: "transferencia",
+          });
+        } catch (error) {
+          toast.error(error instanceof Error ? error.message : "No se pudo guardar el turno.");
+        }
+        return;
+      }
+
+      if (customer.paymentMethod === "tarjeta o mercado pago") {
+        setPaymentError(null);
+        let pendingBooking: Booking | null = null;
+        try {
+          pendingBooking = await saveBooking({
+            storeCode: selectedStoreCode,
+            customer,
+            barberId,
+            serviceIds: selectedServiceIds,
+            date: format(date, "yyyy-MM-dd"),
+            time,
+            duration,
+            totalPrice: price,
+            status: "confirmed",
+            paymentStatus: "pending",
+          });
+          window.localStorage.setItem(
+            PENDING_PAYMENT_SESSION_KEY,
+            JSON.stringify({
+              bookingId: pendingBooking.id,
+              cancellationToken: pendingBooking.cancellationToken,
+              storeCode: selectedStoreCode,
+              date: format(date, "yyyy-MM-dd"),
+              time,
+              paymentMethod: customer.paymentMethod,
+              whatsappMessage: createBookingWhatsAppMessage(true),
+            }),
+          );
+          setReservationResult({
+            kind: "payment-pending",
+            date: format(date, "yyyy-MM-dd"),
+            time,
+            paymentMethod: customer.paymentMethod,
+          });
+        } catch (error) {
+          setReservationResult(null);
+          if (pendingBooking) {
+            setReservationResult({
+              kind: "payment-pending",
+              date: pendingBooking.date,
+              time: pendingBooking.time,
+              totalPrice: pendingBooking.totalPrice,
+              paymentMethod: pendingBooking.customer.paymentMethod,
+            });
+          }
+          setPaymentError(error instanceof Error ? error.message : "No se pudo preparar el pago.");
+        }
+        return;
+      }
+
       try {
         await saveBooking({
-        storeCode: selectedStoreCode,
-        customer, barberId, serviceIds: selectedServiceIds,
-        date: format(date, "yyyy-MM-dd"),
-        time, duration, totalPrice: price, status: "confirmed", paymentStatus: "pending",
-        });
-        setReservationResult({
-          kind: "payment-pending",
+          storeCode: selectedStoreCode,
+          customer,
+          barberId,
+          serviceIds: selectedServiceIds,
           date: format(date, "yyyy-MM-dd"),
           time,
+          duration,
           totalPrice: price,
-          paymentMethod: "transferencia",
+          status: "confirmed",
         });
+        setReservationResult({ kind: "confirmed", date: format(date, "yyyy-MM-dd"), time });
+        toast.success("¡Turno confirmado!");
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "No se pudo guardar el turno.");
       }
-      return;
-    }
-
-    if (customer.paymentMethod === "tarjeta o mercado pago") {
-      setPaymentError(null);
-      let pendingBooking: Booking | null = null;
-      try {
-        pendingBooking = await saveBooking({
-          storeCode: selectedStoreCode,
-          customer, barberId, serviceIds: selectedServiceIds,
-          date: format(date, "yyyy-MM-dd"),
-          time, duration, totalPrice: price, status: "confirmed", paymentStatus: "pending",
-        });
-        window.localStorage.setItem(PENDING_PAYMENT_SESSION_KEY, JSON.stringify({
-          bookingId: pendingBooking.id,
-          cancellationToken: pendingBooking.cancellationToken,
-          storeCode: selectedStoreCode,
-          date: format(date, "yyyy-MM-dd"),
-          time,
-          paymentMethod: customer.paymentMethod,
-          whatsappMessage: createBookingWhatsAppMessage(true),
-        }));
-        setReservationResult({
-          kind: "payment-pending",
-          date: format(date, "yyyy-MM-dd"),
-          time,
-          paymentMethod: customer.paymentMethod,
-        });
-      } catch (error) {
-        setReservationResult(null);
-        if (pendingBooking) {
-          setReservationResult({
-            kind: "payment-pending",
-            date: pendingBooking.date,
-            time: pendingBooking.time,
-            totalPrice: pendingBooking.totalPrice,
-            paymentMethod: pendingBooking.customer.paymentMethod,
-          });
-        }
-        setPaymentError(error instanceof Error ? error.message : "No se pudo preparar el pago.");
-      }
-      return;
-    }
-
-    try {
-      await saveBooking({
-        storeCode: selectedStoreCode,
-        customer, barberId, serviceIds: selectedServiceIds,
-        date: format(date, "yyyy-MM-dd"),
-        time, duration, totalPrice: price,
-        status: "confirmed",
-      });
-      setReservationResult({ kind: "confirmed", date: format(date, "yyyy-MM-dd"), time });
-      toast.success("¡Turno confirmado!");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "No se pudo guardar el turno.");
-    }
     } finally {
       setConfirmingBooking(false);
     }
@@ -514,16 +642,23 @@ Observaciones: ${customer.notes || "Ninguna"}`;
     setStartingPayment(true);
     try {
       const saved = window.localStorage.getItem(PENDING_PAYMENT_SESSION_KEY);
-      const pendingPayment = saved ? JSON.parse(saved) as { bookingId?: string; cancellationToken?: string } : null;
-      if (!pendingPayment?.bookingId) throw new Error("No encontramos el turno pendiente para iniciar el pago.");
+      const pendingPayment = saved
+        ? (JSON.parse(saved) as { bookingId?: string; cancellationToken?: string })
+        : null;
+      if (!pendingPayment?.bookingId)
+        throw new Error("No encontramos el turno pendiente para iniciar el pago.");
 
       const response = await fetch("/api/mercadopago/preference", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bookingId: pendingPayment.bookingId, cancellationToken: pendingPayment.cancellationToken }),
+        body: JSON.stringify({
+          bookingId: pendingPayment.bookingId,
+          cancellationToken: pendingPayment.cancellationToken,
+        }),
       });
-      const result = await response.json() as { initPoint?: string; error?: string };
-      if (!response.ok || !result.initPoint) throw new Error(result.error || "No se pudo preparar el pago.");
+      const result = (await response.json()) as { initPoint?: string; error?: string };
+      if (!response.ok || !result.initPoint)
+        throw new Error(result.error || "No se pudo preparar el pago.");
       paymentTab.location.href = result.initPoint;
     } catch (error) {
       paymentTab.close();
@@ -541,7 +676,7 @@ Observaciones: ${customer.notes || "Ninguna"}`;
     let message = createBookingWhatsAppMessage(true);
     try {
       const saved = window.localStorage.getItem(PENDING_PAYMENT_SESSION_KEY);
-      const pendingPayment = saved ? JSON.parse(saved) as { whatsappMessage?: string } : null;
+      const pendingPayment = saved ? (JSON.parse(saved) as { whatsappMessage?: string }) : null;
       if (pendingPayment?.whatsappMessage) message = pendingPayment.whatsappMessage;
     } catch {
       // Uses the current form data if no saved message is available.
@@ -551,7 +686,11 @@ Observaciones: ${customer.notes || "Ninguna"}`;
   }
 
   function openTransferPaymentDetails(result: ReservationResult) {
-    setPendingTransferReturn({ date: result.date, time: result.time, totalPrice: result.totalPrice });
+    setPendingTransferReturn({
+      date: result.date,
+      time: result.time,
+      totalPrice: result.totalPrice,
+    });
     setReservationResult(null);
     setPaymentDialog("transfer");
   }
@@ -639,103 +778,219 @@ Observaciones: ${customer.notes || "Ninguna"}`;
     <div className="min-h-screen bg-gradient-dark">
       <SiteHeader />
       <main className="mx-auto w-full max-w-7xl px-4 py-10 sm:px-6">
-        {step === 0 && <section
-          className={cn(
-            "mb-4 w-full rounded-3xl border border-gold/30 bg-card p-6",
-            (!selectedStoreCode || !selectedStore) && "cursor-pointer transition-colors hover:bg-gold/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold",
-          )}
-          role={!selectedStoreCode || !selectedStore ? "button" : undefined}
-          tabIndex={!selectedStoreCode || !selectedStore ? 0 : undefined}
-          aria-label={!selectedStoreCode || !selectedStore ? "Buscar sucursal para reservar" : undefined}
-          onClick={() => {
-            if (!selectedStoreCode || !selectedStore) setStorePickerOpen(true);
-          }}
-          onKeyDown={(event) => {
-            if ((!selectedStoreCode || !selectedStore) && (event.key === "Enter" || event.key === " ")) {
-              event.preventDefault();
-              setStorePickerOpen(true);
+        {step === 0 && (
+          <section
+            className={cn(
+              "mb-4 w-full rounded-3xl border border-gold/30 bg-card p-6",
+              (!selectedStoreCode || !selectedStore) &&
+                "cursor-pointer transition-colors hover:bg-gold/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold",
+            )}
+            role={!selectedStoreCode || !selectedStore ? "button" : undefined}
+            tabIndex={!selectedStoreCode || !selectedStore ? 0 : undefined}
+            aria-label={
+              !selectedStoreCode || !selectedStore ? "Buscar sucursal para reservar" : undefined
             }
-          }}
-        >
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex min-w-0 items-center gap-3">
-              {selectedStore?.logo && (
-                <img src={selectedStore.logo} alt={`Logo de ${selectedStore.name}`} className="h-14 w-14 shrink-0 object-contain" />
-              )}
-              <div className="min-w-0">
-              <p className="text-xs uppercase tracking-widest text-gold">{selectedStore ? "Sucursal seleccionada" : "Antes de reservar"}</p>
-              <h2 className="mt-1 flex flex-wrap items-baseline gap-x-2 font-display text-2xl font-semibold">
-                {selectedStore ? (
-                  <>
-                    <span>{selectedStore?.name ?? "Sucursal no disponible"}</span>
-                    {selectedStore && <span className="font-sans text-sm font-medium text-muted-foreground">{selectedStore.code}</span>}
-                  </>
-                ) : "Seleccioná una sucursal · Tocá aquí para buscar"}
-              </h2>
+            onClick={() => {
+              if (!selectedStoreCode || !selectedStore) setStorePickerOpen(true);
+            }}
+            onKeyDown={(event) => {
+              if (
+                (!selectedStoreCode || !selectedStore) &&
+                (event.key === "Enter" || event.key === " ")
+              ) {
+                event.preventDefault();
+                setStorePickerOpen(true);
+              }
+            }}
+          >
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-3">
+                {selectedStore?.logo && (
+                  <img
+                    src={selectedStore.logo}
+                    alt={`Logo de ${selectedStore.name}`}
+                    className="h-14 w-14 shrink-0 object-contain"
+                  />
+                )}
+                <div className="min-w-0">
+                  <p className="text-xs uppercase tracking-widest text-gold">
+                    {selectedStore ? "Sucursal seleccionada" : "Antes de reservar"}
+                  </p>
+                  <h2 className="mt-1 flex flex-wrap items-baseline gap-x-2 font-display text-2xl font-semibold">
+                    {selectedStore ? (
+                      <>
+                        <span>{selectedStore?.name ?? "Sucursal no disponible"}</span>
+                        {selectedStore && (
+                          <span className="font-sans text-sm font-medium text-muted-foreground">
+                            {selectedStore.code}
+                          </span>
+                        )}
+                      </>
+                    ) : (
+                      "Seleccioná una sucursal · Tocá aquí para buscar"
+                    )}
+                  </h2>
+                </div>
               </div>
-            </div>
-            <div className="flex items-center gap-3">
-              {selectedStore && <Button type="button" className="h-10 px-4 text-sm bg-gold text-primary-foreground hover:bg-gold-soft" onClick={() => setStorePickerOpen(true)}>Cambiar sucursal</Button>}
-            </div>
-          </div>
-        </section>}
-        {step === 0 && <Dialog open={storePickerOpen} onOpenChange={(open) => {
-          setStorePickerOpen(open);
-        }}>
-          <DialogContent className="w-[calc(100vw-2rem)] sm:max-w-lg">
-            <DialogHeader>
-              <DialogTitle className="font-display text-2xl">Elegí una sucursal</DialogTitle>
-              <DialogDescription>Buscá por nombre o código.</DialogDescription>
-            </DialogHeader>
-            <div className="space-y-3">
-              <div className="relative">
-                <Input
-                  autoFocus
-                  value={storeSearch}
-                  onChange={(event) => {
-                    setStoreSearch(event.target.value);
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      event.preventDefault();
-                      if (matchingStores.length === 1) void chooseStore(matchingStores[0]);
-                    }
-                  }}
-                  placeholder="Nombre o código de sucursal"
-                  aria-controls="store-search-results"
-                  aria-expanded={Boolean(storeSearch.trim() && matchingStores.length)}
-                />
-                {storeSearch.trim() && matchingStores.length > 0 && (
-                  <div id="store-search-results" role="listbox" aria-label="Sucursales encontradas" className="mt-1 rounded-xl border border-gold/40 bg-background p-1 shadow-xl">
-                    {matchingStores.map((store) => (
-                      <button key={store.code} type="button" role="option" aria-selected={store.code === selectedStoreCode} disabled={storeLoading} onClick={() => void chooseStore(store)} className="flex w-full items-center justify-between gap-4 rounded-lg px-3 py-2.5 text-left transition hover:bg-gold/10 focus-visible:bg-gold/10 focus-visible:outline-none disabled:opacity-60">
-                        <span className="flex min-w-0 items-center gap-3">
-                          {store.logo && <img src={store.logo} alt={`Logo de ${store.name}`} className="h-10 w-10 shrink-0 object-contain" />}
-                          <span className="truncate font-medium">{store.name}</span>
-                        </span>
-                        <span className="shrink-0 text-sm text-muted-foreground">{store.code}</span>
-                      </button>
-                    ))}
-                  </div>
+              <div className="flex items-center gap-3">
+                {selectedStore && (
+                  <Button
+                    type="button"
+                    className="h-10 px-4 text-sm bg-gold text-primary-foreground hover:bg-gold-soft"
+                    onClick={() => setStorePickerOpen(true)}
+                  >
+                    Cambiar sucursal
+                  </Button>
                 )}
               </div>
-              {storeLoading && (
-                <p role="status" aria-live="polite" className="rounded-lg border border-gold/30 bg-gold/10 px-3 py-2 text-sm text-gold">
-                  Agregando sucursal…
-                </p>
-              )}
-              {!storeLoading && storeSearch.trim() && matchingStores.length === 0 && <p role="status" className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">No encontramos sucursales con ese nombre o código.</p>}
             </div>
-          </DialogContent>
-        </Dialog>}
+          </section>
+        )}
+        {step === 0 && (
+          <Dialog
+            open={storePickerOpen}
+            onOpenChange={(open) => {
+              setStorePickerOpen(open);
+            }}
+          >
+            <DialogContent className="w-[calc(100vw-2rem)] sm:max-w-lg">
+              <DialogHeader>
+                <DialogTitle className="font-display text-2xl">Elegí una sucursal</DialogTitle>
+                <DialogDescription>Buscá por nombre o código.</DialogDescription>
+              </DialogHeader>
+              <div className="space-y-3">
+                <div className="relative">
+                  <Input
+                    autoFocus
+                    value={storeSearch}
+                    onChange={(event) => {
+                      setStoreSearch(event.target.value);
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        if (matchingStores.length === 1) void chooseStore(matchingStores[0]);
+                      }
+                    }}
+                    placeholder="Nombre o código de sucursal"
+                    aria-controls="store-search-results"
+                    aria-expanded={Boolean(storeSearch.trim() && matchingStores.length)}
+                  />
+                  {storeSearch.trim() && matchingStores.length > 0 && (
+                    <div
+                      id="store-search-results"
+                      role="listbox"
+                      aria-label="Sucursales encontradas"
+                      className="mt-1 rounded-xl border border-gold/40 bg-background p-1 shadow-xl"
+                    >
+                      {matchingStores.map((store) => (
+                        <button
+                          key={store.code}
+                          type="button"
+                          role="option"
+                          aria-selected={store.code === selectedStoreCode}
+                          disabled={storeLoading}
+                          onClick={() => void chooseStore(store)}
+                          className="flex w-full items-center justify-between gap-4 rounded-lg px-3 py-2.5 text-left transition hover:bg-gold/10 focus-visible:bg-gold/10 focus-visible:outline-none disabled:opacity-60"
+                        >
+                          <span className="flex min-w-0 items-center gap-3">
+                            {store.logo && (
+                              <img
+                                src={store.logo}
+                                alt={`Logo de ${store.name}`}
+                                className="h-10 w-10 shrink-0 object-contain"
+                              />
+                            )}
+                            <span className="truncate font-medium">{store.name}</span>
+                          </span>
+                          <span className="shrink-0 text-sm text-muted-foreground">
+                            {store.code}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                {storeLoading && (
+                  <p
+                    role="status"
+                    aria-live="polite"
+                    className="rounded-lg border border-gold/30 bg-gold/10 px-3 py-2 text-sm text-gold"
+                  >
+                    Agregando sucursal…
+                  </p>
+                )}
+                {!storeLoading && storeSearch.trim() && matchingStores.length === 0 && (
+                  <p
+                    role="status"
+                    className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300"
+                  >
+                    No encontramos sucursales con ese nombre o código.
+                  </p>
+                )}
+              </div>
+            </DialogContent>
+          </Dialog>
+        )}
         <Stepper step={step} />
 
         <div className="mt-4 w-full rounded-2xl border border-gold/30 bg-card p-5 sm:p-6">
-          {step === 0 && <StepCustomer customer={customer} setCustomer={setCustomer} mercadoPagoAvailable={Boolean(selectedStore?.mercadoPagoConfigured)} phoneLoading={role === "client" && !clientProfileLoaded} />}
-          {step === 1 && <StepBarber professionals={reservationProfessionals} value={barberId} onChange={selectProfessional} />}
-          {step === 2 && <StepServices key={barberId} professional={selectedProfessional} value={selectedServiceIds} onChange={selectServices} />}
-          {step === 3 && <StepDateTime professional={selectedProfessional} bookings={reservationBookings} date={date} setDate={setDate} time={time} setTime={setTime} barberId={barberId} duration={duration} />}
-          {step === 4 && (date ? <StepConfirm professional={selectedProfessional} storeName={selectedStore?.name ?? selectedStoreCode} storeCode={selectedStoreCode} storeLogo={selectedStore?.logo} storeAddress={storeSettings?.address ?? ""} cancellationPolicy={storeSettings} customer={customer} serviceIds={selectedServiceIds} date={date} time={time} duration={duration} price={price} /> : <p className="py-8 text-center text-sm text-muted-foreground">Seleccioná fecha y horario para ver el resumen.</p>)}
+          {step === 0 && (
+            <StepCustomer
+              customer={customer}
+              setCustomer={setCustomer}
+              mercadoPagoAvailable={Boolean(selectedStore?.mercadoPagoConfigured)}
+              phoneLoading={role === "client" && !clientProfileLoaded}
+            />
+          )}
+          {step === 1 && (
+            <StepBarber
+              professionals={reservationProfessionals}
+              value={barberId}
+              onChange={selectProfessional}
+            />
+          )}
+          {step === 2 && (
+            <StepServices
+              key={barberId}
+              professional={selectedProfessional}
+              value={selectedServiceIds}
+              onChange={selectServices}
+            />
+          )}
+          {step === 3 && (
+            <StepDateTime
+              professional={selectedProfessional}
+              bookings={reservationBookings}
+              date={date}
+              setDate={setDate}
+              time={time}
+              setTime={setTime}
+              barberId={barberId}
+              duration={duration}
+            />
+          )}
+          {step === 4 &&
+            (date ? (
+              <StepConfirm
+                professional={selectedProfessional}
+                storeName={selectedStore?.name ?? selectedStoreCode}
+                storeCode={selectedStoreCode}
+                storeLogo={selectedStore?.logo}
+                storeAddress={storeSettings?.address ?? ""}
+                cancellationPolicy={storeSettings}
+                customer={customer}
+                serviceIds={selectedServiceIds}
+                date={date}
+                time={time}
+                duration={duration}
+                price={price}
+              />
+            ) : (
+              <p className="py-8 text-center text-sm text-muted-foreground">
+                Seleccioná fecha y horario para ver el resumen.
+              </p>
+            ))}
         </div>
 
         {stepError && (
@@ -744,7 +999,10 @@ Observaciones: ${customer.notes || "Ninguna"}`;
           </div>
         )}
         {paymentError && (
-          <div role="alert" className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+          <div
+            role="alert"
+            className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300"
+          >
             {paymentError}
           </div>
         )}
@@ -760,17 +1018,31 @@ Observaciones: ${customer.notes || "Ninguna"}`;
             <ChevronLeft className="mr-1 h-4 w-4" /> Atrás
           </Button>
           {step < STEPS.length - 1 ? (
-            <Button type="button" onClick={handleContinue} className="bg-gold text-primary-foreground hover:bg-gold-soft">
+            <Button
+              type="button"
+              onClick={handleContinue}
+              className="bg-gold text-primary-foreground hover:bg-gold-soft"
+            >
               Continuar <ChevronRight className="ml-1 h-4 w-4" />
             </Button>
           ) : (
-            <Button type="button" disabled={confirmingBooking || storeLoading || !cloudDataReady} onClick={() => void confirm()} className="h-12 bg-gold px-8 text-base font-semibold text-primary-foreground shadow-gold hover:bg-gold-soft">
+            <Button
+              type="button"
+              disabled={confirmingBooking || storeLoading || !cloudDataReady}
+              onClick={() => void confirm()}
+              className="h-12 bg-gold px-8 text-base font-semibold text-primary-foreground shadow-gold hover:bg-gold-soft"
+            >
               {confirmingBooking ? "CONFIRMANDO..." : "CONFIRMAR TURNO"}
             </Button>
           )}
         </div>
       </main>
-      <Dialog open={paymentDialog === "transfer"} onOpenChange={(open) => { if (!open) closeTransferPaymentDetails(); }}>
+      <Dialog
+        open={paymentDialog === "transfer"}
+        onOpenChange={(open) => {
+          if (!open) closeTransferPaymentDetails();
+        }}
+      >
         <DialogContent>
           {paymentDialog === "transfer" && (
             <>
@@ -778,59 +1050,128 @@ Observaciones: ${customer.notes || "Ninguna"}`;
                 <DialogTitle>Turno reservado · Transferencia pendiente</DialogTitle>
               </DialogHeader>
               <div className="space-y-3 rounded-xl border border-border bg-card p-4 text-sm">
-                <TransferDetail label="Titular" value={storeSettings?.transferHolder ?? ""} onCopy={copyTransferValue} />
-                <TransferDetail label="Banco" value={storeSettings?.transferBank ?? ""} onCopy={copyTransferValue} />
-                <TransferDetail label="CBU" value={storeSettings?.transferCbu ?? ""} onCopy={copyTransferValue} copyable={!!storeSettings?.transferCbu.trim()} />
-                <TransferDetail label="Alias" value={storeSettings?.transferAlias ?? ""} onCopy={copyTransferValue} copyable={!storeSettings?.transferCbu.trim() && !!storeSettings?.transferAlias.trim()} />
-                <p className="border-t border-border pt-3 font-semibold text-gold">Total a pagar: ${(pendingTransferReturn?.totalPrice ?? 0).toLocaleString("es-AR")}</p>
+                <TransferDetail
+                  label="Titular"
+                  value={storeSettings?.transferHolder ?? ""}
+                  onCopy={copyTransferValue}
+                />
+                <TransferDetail
+                  label="Banco"
+                  value={storeSettings?.transferBank ?? ""}
+                  onCopy={copyTransferValue}
+                />
+                <TransferDetail
+                  label="CBU"
+                  value={storeSettings?.transferCbu ?? ""}
+                  onCopy={copyTransferValue}
+                  copyable={!!storeSettings?.transferCbu.trim()}
+                />
+                <TransferDetail
+                  label="Alias"
+                  value={storeSettings?.transferAlias ?? ""}
+                  onCopy={copyTransferValue}
+                  copyable={
+                    !storeSettings?.transferCbu.trim() && !!storeSettings?.transferAlias.trim()
+                  }
+                />
+                <p className="border-t border-border pt-3 font-semibold text-gold">
+                  Total a pagar: ${(pendingTransferReturn?.totalPrice ?? 0).toLocaleString("es-AR")}
+                </p>
               </div>
               <DialogFooter>
-                <Button onClick={closeTransferPaymentDetails} className="bg-gold text-primary-foreground hover:bg-gold-soft">Volver a la reserva</Button>
+                <Button
+                  onClick={closeTransferPaymentDetails}
+                  className="bg-gold text-primary-foreground hover:bg-gold-soft"
+                >
+                  Volver a la reserva
+                </Button>
               </DialogFooter>
             </>
           )}
         </DialogContent>
       </Dialog>
-      <Dialog open={reservationResult !== null} onOpenChange={(open) => {
-        if (!open) startNewBooking();
-      }}>
-        <DialogContent className={reservationResult?.kind === "payment-pending" ? "sm:max-w-2xl" : undefined}>
+      <Dialog
+        open={reservationResult !== null}
+        onOpenChange={(open) => {
+          if (!open) startNewBooking();
+        }}
+      >
+        <DialogContent
+          className={reservationResult?.kind === "payment-pending" ? "sm:max-w-2xl" : undefined}
+        >
           <DialogHeader>
             <DialogTitle>
-              {reservationResult?.kind === "confirmed" ? "¡Turno confirmado!"
-                : reservationResult?.kind === "payment-success" ? "¡Turno confirmado y pagado!"
-                    : reservationResult?.kind === "payment-pending" ? "Turno reservado · Pago pendiente"
-                      : "Turno no confirmado"}
+              {reservationResult?.kind === "confirmed"
+                ? "¡Turno confirmado!"
+                : reservationResult?.kind === "payment-success"
+                  ? "¡Turno confirmado y pagado!"
+                  : reservationResult?.kind === "payment-pending"
+                    ? "Turno reservado · Pago pendiente"
+                    : "Turno no confirmado"}
             </DialogTitle>
             <DialogDescription>
-              {reservationResult?.kind === "confirmed" ? "Tu reserva quedó confirmada."
-                : reservationResult?.kind === "payment-success" ? "Mercado Pago confirmó el pago y el turno ya figura como pagado en la agenda de la sucursal."
-                  : reservationResult?.kind === "payment-pending" ? reservationResult.paymentMethod === "transferencia"
-                    ? "Tu turno ya quedó confirmado. La sucursal actualizará el estado del pago cuando verifique la transferencia bancaria."
+              {reservationResult?.kind === "confirmed"
+                ? "Tu reserva quedó confirmada."
+                : reservationResult?.kind === "payment-success"
+                  ? "Mercado Pago confirmó el pago y el turno ya figura como pagado en la agenda de la sucursal."
+                  : reservationResult?.kind === "payment-pending"
+                    ? reservationResult.paymentMethod === "transferencia"
+                      ? "Tu turno ya quedó confirmado. La sucursal actualizará el estado del pago cuando verifique la transferencia bancaria."
                       : "Tu turno ya quedó confirmado y reservado. El pago está pendiente y la agenda se actualizará automáticamente cuando Mercado Pago lo apruebe."
-                      : "El pago no se completó y el horario fue liberado. Podés volver a elegir fecha y hora."}
+                    : "El pago no se completó y el horario fue liberado. Podés volver a elegir fecha y hora."}
             </DialogDescription>
           </DialogHeader>
-          {(reservationResult?.kind === "confirmed" || reservationResult?.kind === "payment-success" || reservationResult?.kind === "payment-pending") && (
+          {(reservationResult?.kind === "confirmed" ||
+            reservationResult?.kind === "payment-success" ||
+            reservationResult?.kind === "payment-pending") && (
             <div className="rounded-xl border border-gold/30 bg-card p-3">
               <div className="flex items-center gap-3">
-                {selectedStore?.logo && <img src={selectedStore.logo} alt={`Logo de ${selectedStore.name}`} className="h-14 w-14 shrink-0 object-contain" />}
+                {selectedStore?.logo && (
+                  <img
+                    src={selectedStore.logo}
+                    alt={`Logo de ${selectedStore.name}`}
+                    className="h-14 w-14 shrink-0 object-contain"
+                  />
+                )}
                 <div className="min-w-0">
                   <p className="text-xs uppercase tracking-wider text-muted-foreground">Sucursal</p>
-                  <p className="truncate font-semibold">{selectedStore?.name ?? selectedStoreCode}</p>
+                  <p className="truncate font-semibold">
+                    {selectedStore?.name ?? selectedStoreCode}
+                  </p>
                   <p className="text-xs text-muted-foreground">Código: {selectedStoreCode}</p>
                 </div>
               </div>
               {reservationResult.date && reservationResult.time && (
                 <div className="mt-3 border-t border-border/70 pt-3 text-sm">
-                  {storeSettings?.address && <p className="mb-1"><span className="text-muted-foreground">Dirección: </span>{storeSettings.address}</p>}
-                  <p><span className="text-muted-foreground">Fecha: </span>{format(parseISO(reservationResult.date), "EEEE d 'de' MMMM yyyy", { locale: es })}</p>
-                  <p className="mt-1"><span className="text-muted-foreground">Horario: </span>{reservationResult.time}</p>
+                  {storeSettings?.address && (
+                    <p className="mb-1">
+                      <span className="text-muted-foreground">Dirección: </span>
+                      {storeSettings.address}
+                    </p>
+                  )}
+                  <p>
+                    <span className="text-muted-foreground">Fecha: </span>
+                    {format(parseISO(reservationResult.date), "EEEE d 'de' MMMM yyyy", {
+                      locale: es,
+                    })}
+                  </p>
+                  <p className="mt-1">
+                    <span className="text-muted-foreground">Horario: </span>
+                    {reservationResult.time}
+                  </p>
                 </div>
               )}
             </div>
           )}
-          <DialogFooter className={reservationResult?.kind === "payment-pending" ? "flex-wrap gap-2 sm:flex-nowrap sm:flex-row sm:justify-end" : reservationResult?.kind === "confirmed" && customer.paymentMethod === "efectivo" ? "sm:justify-end" : undefined}>
+          <DialogFooter
+            className={
+              reservationResult?.kind === "payment-pending"
+                ? "flex-wrap gap-2 sm:flex-nowrap sm:flex-row sm:justify-end"
+                : reservationResult?.kind === "confirmed" && customer.paymentMethod === "efectivo"
+                  ? "sm:justify-end"
+                  : undefined
+            }
+          >
             {reservationResult?.kind === "payment-pending" && (
               <>
                 <Button
@@ -889,7 +1230,9 @@ Observaciones: ${customer.notes || "Ninguna"}`;
                 onClick={startNewBooking}
                 className="bg-gold text-primary-foreground hover:bg-gold-soft"
               >
-                {reservationResult?.kind === "payment-failure" ? "Sacar turno nuevamente" : "Reservar otro turno"}
+                {reservationResult?.kind === "payment-failure"
+                  ? "Sacar turno nuevamente"
+                  : "Reservar otro turno"}
               </Button>
             )}
           </DialogFooter>
@@ -899,11 +1242,34 @@ Observaciones: ${customer.notes || "Ninguna"}`;
   );
 }
 
-function TransferDetail({ label, value, onCopy, copyable = false }: { label: string; value: string; onCopy: (value: string) => void; copyable?: boolean }) {
+function TransferDetail({
+  label,
+  value,
+  onCopy,
+  copyable = false,
+}: {
+  label: string;
+  value: string;
+  onCopy: (value: string) => void;
+  copyable?: boolean;
+}) {
   return (
     <div className="flex items-center justify-between gap-3">
-      <div className="min-w-0"><p className="text-xs text-muted-foreground">{label}</p><p className="break-all font-medium">{value || "No informado"}</p></div>
-      {copyable && value.trim() && <Button type="button" size="icon" variant="ghost" aria-label={`Copiar ${label}`} onClick={() => onCopy(value)}><Copy className="h-4 w-4" /></Button>}
+      <div className="min-w-0">
+        <p className="text-xs text-muted-foreground">{label}</p>
+        <p className="break-all font-medium">{value || "No informado"}</p>
+      </div>
+      {copyable && value.trim() && (
+        <Button
+          type="button"
+          size="icon"
+          variant="ghost"
+          aria-label={`Copiar ${label}`}
+          onClick={() => onCopy(value)}
+        >
+          <Copy className="h-4 w-4" />
+        </Button>
+      )}
     </div>
   );
 }
@@ -913,29 +1279,48 @@ function Stepper({ step }: { step: number }) {
     <div className="w-full rounded-2xl border border-gold/30 bg-card p-3 sm:p-4">
       <div className="mx-auto flex w-fit max-w-full items-center justify-center gap-2 sm:gap-3">
         {STEPS.map((label, i) => {
-        const done = i < step;
-        const active = i === step;
-        return (
-          <div key={label} className="flex shrink-0 items-center gap-2">
-            <div className={cn(
-              "flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-xs font-semibold transition",
-              done && "border-gold bg-gold text-primary-foreground",
-              active && "border-gold text-gold",
-              !done && !active && "border-border text-muted-foreground"
-            )}>
-              {done ? <Check className="h-4 w-4" /> : i + 1}
+          const done = i < step;
+          const active = i === step;
+          return (
+            <div key={label} className="flex shrink-0 items-center gap-2">
+              <div
+                className={cn(
+                  "flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-xs font-semibold transition",
+                  done && "border-gold bg-gold text-primary-foreground",
+                  active && "border-gold text-gold",
+                  !done && !active && "border-border text-muted-foreground",
+                )}
+              >
+                {done ? <Check className="h-4 w-4" /> : i + 1}
+              </div>
+              <span
+                className={cn(
+                  "hidden text-xs sm:inline",
+                  active ? "text-foreground" : "text-muted-foreground",
+                )}
+              >
+                {label}
+              </span>
+              {i < STEPS.length - 1 && (
+                <div className={cn("h-px w-4 sm:w-8 md:w-12", done ? "bg-gold" : "bg-border")} />
+              )}
             </div>
-            <span className={cn("hidden text-xs sm:inline", active ? "text-foreground" : "text-muted-foreground")}>{label}</span>
-            {i < STEPS.length - 1 && <div className={cn("h-px w-4 sm:w-8 md:w-12", done ? "bg-gold" : "bg-border")} />}
-          </div>
-        );
+          );
         })}
       </div>
     </div>
   );
 }
 
-function SectionTitle({ icon: Icon, title, subtitle }: { icon: any; title: string; subtitle: string }) {
+function SectionTitle({
+  icon: Icon,
+  title,
+  subtitle,
+}: {
+  icon: LucideIcon;
+  title: string;
+  subtitle: string;
+}) {
   return (
     <div className="mb-3">
       <div className="mb-1 inline-flex items-center gap-2 text-xs uppercase tracking-widest text-gold">
@@ -946,31 +1331,79 @@ function SectionTitle({ icon: Icon, title, subtitle }: { icon: any; title: strin
   );
 }
 
-function StepCustomer({ customer, setCustomer, mercadoPagoAvailable, phoneLoading }: { customer: Customer; setCustomer: (c: Customer) => void; mercadoPagoAvailable: boolean; phoneLoading: boolean }) {
+function StepCustomer({
+  customer,
+  setCustomer,
+  mercadoPagoAvailable,
+  phoneLoading,
+}: {
+  customer: Customer;
+  setCustomer: (c: Customer) => void;
+  mercadoPagoAvailable: boolean;
+  phoneLoading: boolean;
+}) {
   return (
     <div>
       <SectionTitle icon={User} title="Paso 1" subtitle="Tus datos" />
       <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Nombre completo *"><Input required value={customer.fullName} onChange={(e) => setCustomer({ ...customer, fullName: e.target.value })} /></Field>
-        <Field label="Teléfono *"><Input required value={customer.phone} onChange={(e) => setCustomer({ ...customer, phone: e.target.value })} disabled={phoneLoading} placeholder={phoneLoading ? "Cargando..." : ""} /></Field>
-        <Field label="Correo electrónico *"><Input required type="email" value={customer.email} onChange={(e) => setCustomer({ ...customer, email: e.target.value })} /></Field>
+        <Field label="Nombre completo *">
+          <Input
+            required
+            value={customer.fullName}
+            onChange={(e) => setCustomer({ ...customer, fullName: e.target.value })}
+          />
+        </Field>
+        <Field label="Teléfono *">
+          <Input
+            required
+            value={customer.phone}
+            onChange={(e) => setCustomer({ ...customer, phone: e.target.value })}
+            disabled={phoneLoading}
+            placeholder={phoneLoading ? "Cargando..." : ""}
+          />
+        </Field>
+        <Field label="Correo electrónico *">
+          <Input
+            required
+            type="email"
+            value={customer.email}
+            onChange={(e) => setCustomer({ ...customer, email: e.target.value })}
+          />
+        </Field>
         <Field label="Método de pago *">
           <select
             required
             className="block w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-gold focus:ring-2 focus:ring-gold/20"
             value={customer.paymentMethod ?? ""}
-            onChange={(e) => setCustomer({ ...customer, paymentMethod: e.target.value as Customer["paymentMethod"] })}
+            onChange={(e) =>
+              setCustomer({
+                ...customer,
+                paymentMethod: e.target.value as Customer["paymentMethod"],
+              })
+            }
           >
-            <option value="" disabled>Seleccioná un método de pago</option>
+            <option value="" disabled>
+              Seleccioná un método de pago
+            </option>
             <option value="efectivo">Efectivo</option>
             <option value="transferencia">Transferencia Bancaria</option>
-            {mercadoPagoAvailable && <option value="tarjeta o mercado pago">Tarjeta o MercadoPago</option>}
+            {mercadoPagoAvailable && (
+              <option value="tarjeta o mercado pago">Tarjeta o MercadoPago</option>
+            )}
           </select>
-          {!mercadoPagoAvailable && <p className="mt-1 text-xs text-muted-foreground">Tarjeta o Mercado Pago no está disponible en esta sucursal.</p>}
+          {!mercadoPagoAvailable && (
+            <p className="mt-1 text-xs text-muted-foreground">
+              Tarjeta o Mercado Pago no está disponible en esta sucursal.
+            </p>
+          )}
         </Field>
         <div className="sm:col-span-2">
           <Field label="Observaciones">
-            <Textarea rows={2} value={customer.notes} onChange={(e) => setCustomer({ ...customer, notes: e.target.value })} />
+            <Textarea
+              rows={2}
+              value={customer.notes}
+              onChange={(e) => setCustomer({ ...customer, notes: e.target.value })}
+            />
           </Field>
         </div>
       </div>
@@ -987,7 +1420,15 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-function StepBarber({ professionals, value, onChange }: { professionals: Professional[]; value: string; onChange: (v: string) => void }) {
+function StepBarber({
+  professionals,
+  value,
+  onChange,
+}: {
+  professionals: Professional[];
+  value: string;
+  onChange: (v: string) => void;
+}) {
   return (
     <div>
       <SectionTitle icon={Briefcase} title="Paso 2" subtitle="Elegí tu profesional" />
@@ -1006,17 +1447,26 @@ function StepBarber({ professionals, value, onChange }: { professionals: Profess
                 onClick={() => onChange(b.id)}
                 className={cn(
                   "group flex items-center gap-4 rounded-xl border p-4 text-left transition-all",
-                  selected ? "border-gold bg-gold/5 shadow-gold" : "border-border bg-card hover:border-gold/40"
+                  selected
+                    ? "border-gold bg-gold/5 shadow-gold"
+                    : "border-border bg-card hover:border-gold/40",
                 )}
               >
                 <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-linear-to-br from-gold/30 to-gold/5 font-display text-lg font-semibold text-gold">
-                  {b.name.split(" ").map((word) => word[0]).join("").slice(0, 2).toUpperCase()}
+                  {b.name
+                    .split(" ")
+                    .map((word) => word[0])
+                    .join("")
+                    .slice(0, 2)
+                    .toUpperCase()}
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="font-display text-lg font-semibold">{b.name}</div>
                   <div className="text-sm text-muted-foreground">{b.specialty}</div>
                   {b.address && <div className="text-sm text-muted-foreground">{b.address}</div>}
-                  <div className="mt-1 text-xs text-muted-foreground">{b.services.length} servicios</div>
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    {b.services.length} servicios
+                  </div>
                 </div>
                 {selected && <Check className="h-5 w-5 text-gold" />}
               </button>
@@ -1029,60 +1479,85 @@ function StepBarber({ professionals, value, onChange }: { professionals: Profess
 }
 
 function StepServices({
-  value, onChange, professional,
+  value,
+  onChange,
+  professional,
 }: {
-  value: string[]; onChange: (v: string[]) => void;
+  value: string[];
+  onChange: (v: string[]) => void;
   professional?: Professional;
 }) {
   const professionalServices = professional?.services ?? [];
-  const toggle = (id: string) => onChange(value.includes(id) ? value.filter((x) => x !== id) : [...value, id]);
-  const totalDur = professionalServices.reduce((total, service) => total + (value.includes(service.id) ? service.duration : 0), 0);
-  const totalPrice = professionalServices.reduce((total, service) => total + (value.includes(service.id) ? service.price : 0), 0);
+  const toggle = (id: string) =>
+    onChange(value.includes(id) ? value.filter((x) => x !== id) : [...value, id]);
+  const totalDur = professionalServices.reduce(
+    (total, service) => total + (value.includes(service.id) ? service.duration : 0),
+    0,
+  );
+  const totalPrice = professionalServices.reduce(
+    (total, service) => total + (value.includes(service.id) ? service.price : 0),
+    0,
+  );
 
   return (
     <div>
       <SectionTitle icon={Star} title="Paso 3" subtitle="Servicios" />
-      <p className="mb-4 text-sm text-muted-foreground">Podés seleccionar varios. El tiempo se suma automáticamente.</p>
+      <p className="mb-4 text-sm text-muted-foreground">
+        Podés seleccionar varios. El tiempo se suma automáticamente.
+      </p>
 
       <div className="grid gap-2 sm:grid-cols-2">
         {professionalServices.length === 0 ? (
           <div className="rounded-2xl border border-border bg-muted p-6 text-sm text-muted-foreground">
             Seleccioná un profesional para ver sus servicios disponibles.
           </div>
-        ) : professionalServices.map((s) => {
-          const selected = value.includes(s.id);
-          return (
-            <button
-              type="button"
-              key={s.id}
-              onClick={() => toggle(s.id)}
-              className={cn(
-                "flex items-center justify-between rounded-xl border px-4 py-3 text-left transition",
-                selected ? "border-gold bg-gold/5" : "border-border bg-card hover:border-gold/30"
-              )}
-            >
-              <div>
-                <div className="font-medium">{s.name}</div>
-                <div className="text-xs text-muted-foreground">{s.duration} min</div>
-              </div>
-              <div className="flex items-center gap-3">
-                <span className="font-display text-base font-semibold text-gold">${s.price.toLocaleString("es-AR")}</span>
-                <div className={cn("flex h-5 w-5 items-center justify-center rounded-md border", selected ? "border-gold bg-gold text-primary-foreground" : "border-border")}> 
-                  {selected && <Check className="h-3 w-3" />}
+        ) : (
+          professionalServices.map((s) => {
+            const selected = value.includes(s.id);
+            return (
+              <button
+                type="button"
+                key={s.id}
+                onClick={() => toggle(s.id)}
+                className={cn(
+                  "flex items-center justify-between rounded-xl border px-4 py-3 text-left transition",
+                  selected ? "border-gold bg-gold/5" : "border-border bg-card hover:border-gold/30",
+                )}
+              >
+                <div>
+                  <div className="font-medium">{s.name}</div>
+                  <div className="text-xs text-muted-foreground">{s.duration} min</div>
                 </div>
-              </div>
-            </button>
-          );
-        })}
+                <div className="flex items-center gap-3">
+                  <span className="font-display text-base font-semibold text-gold">
+                    ${s.price.toLocaleString("es-AR")}
+                  </span>
+                  <div
+                    className={cn(
+                      "flex h-5 w-5 items-center justify-center rounded-md border",
+                      selected ? "border-gold bg-gold text-primary-foreground" : "border-border",
+                    )}
+                  >
+                    {selected && <Check className="h-3 w-3" />}
+                  </div>
+                </div>
+              </button>
+            );
+          })
+        )}
       </div>
 
       {value.length > 0 && (
         <div className="mt-6 flex items-center justify-between rounded-xl border border-gold/30 bg-gold/5 px-5 py-4">
           <div className="text-sm">
-            <span className="text-muted-foreground">{value.length} servicio{value.length > 1 ? "s" : ""} · </span>
+            <span className="text-muted-foreground">
+              {value.length} servicio{value.length > 1 ? "s" : ""} ·{" "}
+            </span>
             <span className="font-medium">{totalDur} min</span>
           </div>
-          <div className="font-display text-xl font-semibold text-gold">${totalPrice.toLocaleString("es-AR")}</div>
+          <div className="font-display text-xl font-semibold text-gold">
+            ${totalPrice.toLocaleString("es-AR")}
+          </div>
         </div>
       )}
     </div>
@@ -1090,35 +1565,51 @@ function StepServices({
 }
 
 function StepDateTime({
-  date, setDate, time, setTime, barberId, duration, professional, bookings,
+  date,
+  setDate,
+  time,
+  setTime,
+  barberId,
+  duration,
+  professional,
+  bookings,
 }: {
-  date: Date | null; setDate: (d: Date) => void;
-  time: string; setTime: (t: string) => void;
-  barberId: string; duration: number;
+  date: Date | null;
+  setDate: (d: Date) => void;
+  time: string;
+  setTime: (t: string) => void;
+  barberId: string;
+  duration: number;
   professional?: Professional;
   bookings: Booking[];
 }) {
   const today = startOfToday();
   const scheduledDates = professional?.scheduleDates
     ?.map((entry) => ({ ...entry, parsed: parseISO(entry.date) }))
-    .filter((entry) => !Number.isNaN(entry.parsed.getTime()) && entry.parsed >= today && !entry.closed)
+    .filter(
+      (entry) => !Number.isNaN(entry.parsed.getTime()) && entry.parsed >= today && !entry.closed,
+    )
     .sort((a, b) => a.parsed.getTime() - b.parsed.getTime());
   const hasWeeklySchedule = (professional?.weeklySchedule?.length ?? 0) > 0;
   const hasSpecificSchedule = (professional?.scheduleDates?.length ?? 0) > 0;
   const days = hasWeeklySchedule
-    ? Array.from({ length: 60 }, (_, i) => addDays(today, i)).filter((day) => professional && isProfessionalAvailableOnDate(professional, day))
+    ? Array.from({ length: 60 }, (_, i) => addDays(today, i)).filter(
+        (day) => professional && isProfessionalAvailableOnDate(professional, day),
+      )
     : hasSpecificSchedule
-      ? scheduledDates?.map((entry) => entry.parsed) ?? []
-    : professional?.availableSlots.length
-      ? Array.from({ length: 21 }, (_, i) => addDays(today, i))
-      : [];
+      ? (scheduledDates?.map((entry) => entry.parsed) ?? [])
+      : professional?.availableSlots.length
+        ? Array.from({ length: 21 }, (_, i) => addDays(today, i))
+        : [];
   const professionalSlots = professional?.availableSlots ?? [];
   const dateKey = date ? format(date, "yyyy-MM-dd") : "";
   const slotsNeeded = Math.max(1, Math.ceil(duration / 15));
   const scheduleDay = date && professional ? getScheduleForDate(professional, date) : undefined;
   const slotCapacity = scheduleDay?.capacity ?? 1;
   const slots = scheduleDay
-    ? scheduleDay.closed ? [] : generateSlotsFromSchedule(scheduleDay)
+    ? scheduleDay.closed
+      ? []
+      : generateSlotsFromSchedule(scheduleDay)
     : professionalSlots;
 
   function fitsSelectedDuration(slot: string): boolean {
@@ -1140,7 +1631,12 @@ function StepDateTime({
     const start = hours * 60 + minutes;
     const end = start + duration;
     const overlappingBookings = bookings.filter((booking) => {
-      if (booking.date !== dateKey || booking.barberId !== barberId || booking.status === "cancelled") return false;
+      if (
+        booking.date !== dateKey ||
+        booking.barberId !== barberId ||
+        booking.status === "cancelled"
+      )
+        return false;
       const [bookingHours, bookingMinutes] = booking.time.split(":").map(Number);
       const bookingStart = bookingHours * 60 + bookingMinutes;
       return start < bookingStart + booking.duration && bookingStart < end;
@@ -1165,13 +1661,15 @@ function StepDateTime({
     <div>
       <SectionTitle icon={CalIcon} title="Paso 4" subtitle="Fecha y horario" />
 
-      <Label className="mb-3 block text-xs uppercase tracking-wider text-muted-foreground">Fecha</Label>
+      <Label className="mb-3 block text-xs uppercase tracking-wider text-muted-foreground">
+        Fecha
+      </Label>
       <div className="-mx-1 flex gap-2 overflow-x-auto pb-3">
         {days.map((d) => {
           const scheduleForDay = professional ? getScheduleForDate(professional, d) : undefined;
           const closed = scheduleForDay
             ? scheduleForDay.closed || generateSlotsFromSchedule(scheduleForDay).length === 0
-            : hasSpecificSchedule && !hasWeeklySchedule || professionalSlots.length === 0;
+            : (hasSpecificSchedule && !hasWeeklySchedule) || professionalSlots.length === 0;
           const selected = date && isSameDay(d, date);
           const past = isBefore(d, today);
           const disabled = closed || past;
@@ -1180,14 +1678,21 @@ function StepDateTime({
               type="button"
               key={d.toISOString()}
               disabled={disabled}
-              onClick={() => { setDate(d); setTime(""); }}
+              onClick={() => {
+                setDate(d);
+                setTime("");
+              }}
               className={cn(
                 "flex w-16 shrink-0 flex-col items-center rounded-xl border px-2 py-3 transition",
-                selected ? "border-gold bg-gold text-primary-foreground" : "border-border bg-card hover:border-gold/40",
-                disabled && "cursor-not-allowed opacity-30 hover:border-border"
+                selected
+                  ? "border-gold bg-gold text-primary-foreground"
+                  : "border-border bg-card hover:border-gold/40",
+                disabled && "cursor-not-allowed opacity-30 hover:border-border",
               )}
             >
-              <span className="text-[10px] uppercase tracking-widest">{format(d, "EEE", { locale: es })}</span>
+              <span className="text-[10px] uppercase tracking-widest">
+                {format(d, "EEE", { locale: es })}
+              </span>
               <span className="font-display text-2xl font-semibold">{format(d, "d")}</span>
               <span className="text-[10px] uppercase">{format(d, "MMM", { locale: es })}</span>
             </button>
@@ -1196,15 +1701,22 @@ function StepDateTime({
       </div>
 
       <Label className="mb-3 mt-6 block text-xs uppercase tracking-wider text-muted-foreground">
-        Horario {date && <span className="ml-2 normal-case text-muted-foreground/70">({duration} min)</span>}
+        Horario{" "}
+        {date && (
+          <span className="ml-2 normal-case text-muted-foreground/70">({duration} min)</span>
+        )}
       </Label>
       {!date ? (
         <p className="text-sm text-muted-foreground">Elegí primero una fecha.</p>
       ) : slots.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No hay horarios disponibles para esta fecha. Elegí otro día o revisá la disponibilidad del profesional.</p>
+        <p className="text-sm text-muted-foreground">
+          No hay horarios disponibles para esta fecha. Elegí otro día o revisá la disponibilidad del
+          profesional.
+        </p>
       ) : !hasDurationFit ? (
         <p className="text-sm text-muted-foreground">
-          Se sobrepasa el turno: la duración seleccionada ({duration} min) no entra en el horario de esta fecha. Elegí un horario anterior o un servicio de menor duración.
+          Se sobrepasa el turno: la duración seleccionada ({duration} min) no entra en el horario de
+          esta fecha. Elegí un horario anterior o un servicio de menor duración.
         </p>
       ) : (
         <div className="grid grid-cols-3 gap-2 sm:grid-cols-5 md:grid-cols-6">
@@ -1221,13 +1733,19 @@ function StepDateTime({
                 onClick={() => setTime(s)}
                 className={cn(
                   "flex flex-col items-center rounded-lg border px-2 py-2 text-sm font-medium transition",
-                  selected ? "border-gold bg-gold text-primary-foreground" : "border-border bg-card hover:border-gold/40",
-                  !avail && "cursor-not-allowed opacity-25 line-through hover:border-border"
+                  selected
+                    ? "border-gold bg-gold text-primary-foreground"
+                    : "border-border bg-card hover:border-gold/40",
+                  !avail && "cursor-not-allowed opacity-25 line-through hover:border-border",
                 )}
               >
                 <span>{s}</span>
                 <span className="text-[10px] font-normal opacity-75">
-                  {!durationFits ? "Se sobrepasa el turno" : avail ? `${remaining} disponible${remaining === 1 ? "" : "s"}` : "Completo"}
+                  {!durationFits
+                    ? "Se sobrepasa el turno"
+                    : avail
+                      ? `${remaining} disponible${remaining === 1 ? "" : "s"}`
+                      : "Completo"}
                 </span>
               </button>
             );
@@ -1239,13 +1757,31 @@ function StepDateTime({
 }
 
 function StepConfirm({
-  professional, storeName, storeCode, storeLogo, storeAddress, cancellationPolicy, customer, serviceIds, date, time, duration, price,
+  professional,
+  storeName,
+  storeCode,
+  storeLogo,
+  storeAddress,
+  cancellationPolicy,
+  customer,
+  serviceIds,
+  date,
+  time,
+  duration,
+  price,
 }: {
   professional?: Professional;
-  storeName: string; storeCode: string; storeLogo?: string; storeAddress: string;
+  storeName: string;
+  storeCode: string;
+  storeLogo?: string;
+  storeAddress: string;
   cancellationPolicy?: Store["settings"];
-  customer: Customer; serviceIds: string[];
-  date: Date; time: string; duration: number; price: number;
+  customer: Customer;
+  serviceIds: string[];
+  date: Date;
+  time: string;
+  duration: number;
+  price: number;
 }) {
   const serviceNames = serviceIds
     .map((id) => professional?.services.find((service) => service.id === id)?.name)
@@ -1254,19 +1790,35 @@ function StepConfirm({
   return (
     <div>
       <SectionTitle icon={Check} title="Paso 5" subtitle="Resumen de tu turno" />
-      <div role="note" className="mb-4 rounded-xl border border-red-500/50 bg-red-500/10 p-4 text-sm text-red-200">
+      <div
+        role="note"
+        className="mb-4 rounded-xl border border-red-500/50 bg-red-500/10 p-4 text-sm text-red-200"
+      >
         <p className="font-semibold text-red-300">Políticas de cancelación y devolución</p>
-        <p className="mt-1">{cancellationPolicy?.noRefunds || !cancellationPolicy?.allowRefunds
-          ? "Esta sucursal no acepta devoluciones de pagos."
-          : `Si se aprueba una devolución, se reintegrará el ${cancellationPolicy?.refundPercent ?? 100}% del importe pagado.`}</p>
-        <p className="mt-1">Podés solicitar cancelación hasta {cancellationPolicy?.cancellationWindowMinutes ?? 30} minutos antes del turno. Las solicitudes fuera de ese plazo no estarán disponibles.</p>
+        <p className="mt-1">
+          {cancellationPolicy?.noRefunds || !cancellationPolicy?.allowRefunds
+            ? "Esta sucursal no acepta devoluciones de pagos."
+            : `Si se aprueba una devolución, se reintegrará el ${cancellationPolicy?.refundPercent ?? 100}% del importe pagado.`}
+        </p>
+        <p className="mt-1">
+          Podés solicitar cancelación hasta {cancellationPolicy?.cancellationWindowMinutes ?? 30}{" "}
+          minutos antes del turno. Las solicitudes fuera de ese plazo no estarán disponibles.
+        </p>
       </div>
       <div className="grid gap-3 text-sm">
         <div className="flex items-center justify-between gap-4 border-b border-border/60 py-3">
           <span className="text-xs uppercase tracking-wider text-muted-foreground">Sucursal</span>
           <span className="flex min-w-0 items-center gap-2 text-right font-medium">
-            {storeLogo && <img src={storeLogo} alt={`Logo de ${storeName}`} className="h-10 w-10 shrink-0 object-contain" />}
-            <span className="min-w-0">{storeName} · {storeCode}</span>
+            {storeLogo && (
+              <img
+                src={storeLogo}
+                alt={`Logo de ${storeName}`}
+                className="h-10 w-10 shrink-0 object-contain"
+              />
+            )}
+            <span className="min-w-0">
+              {storeName} · {storeCode}
+            </span>
           </span>
         </div>
         {storeAddress && <Row label="Dirección" value={storeAddress} />}
@@ -1282,7 +1834,9 @@ function StepConfirm({
       </div>
       <div className="mt-6 flex items-center justify-between rounded-xl border border-gold/30 bg-gold/5 px-5 py-4">
         <span className="text-sm uppercase tracking-wider text-muted-foreground">Precio total</span>
-        <span className="font-display text-3xl font-semibold text-gold">${price.toLocaleString("es-AR")}</span>
+        <span className="font-display text-3xl font-semibold text-gold">
+          ${price.toLocaleString("es-AR")}
+        </span>
       </div>
       <p className="mt-4 text-center text-xs text-muted-foreground">
         Una vez confirmado, el horario quedará reservado.
@@ -1291,7 +1845,7 @@ function StepConfirm({
   );
 }
 
-function Row({ label, value, icon: Icon }: { label: string; value: string; icon?: any }) {
+function Row({ label, value, icon: Icon }: { label: string; value: string; icon?: LucideIcon }) {
   return (
     <div className="flex items-start justify-between gap-4 border-b border-border/60 py-3 last:border-0">
       <span className="text-xs uppercase tracking-wider text-muted-foreground">{label}</span>

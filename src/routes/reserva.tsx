@@ -5,7 +5,11 @@ export const Route = createFileRoute("/reserva")({
   head: () => ({
     meta: [
       { title: "Reservar turno" },
-      { name: "description", content: "Reservá tu turno en pocos pasos: elegí el rubro profesional, servicio, fecha y horario." },
+      {
+        name: "description",
+        content:
+          "Reservá tu turno en pocos pasos: elegí el rubro profesional, servicio, fecha y horario.",
+      },
     ],
   }),
   component: BookPage,

@@ -2,20 +2,65 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
-import { CalendarDays, Clock3, Copy, LoaderCircle, Plus, Scissors, Search, Trash2, UserRound } from "lucide-react";
+import {
+  CalendarDays,
+  Clock3,
+  Copy,
+  Plus,
+  Scissors,
+  Search,
+  Trash2,
+  UserRound,
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { SiteHeader } from "@/components/site-header";
 import { AuthRequired } from "@/components/auth-required";
 import { useAppAuth } from "@/lib/auth";
-import { canArchiveBooking, canDeleteBooking, getBookingArchiveLabel, type Booking } from "@/lib/booking-store";
-import { getAvailableSlotCapacities, isProfessionalAvailableOnDate, type Professional } from "@/lib/professional-store";
-import { archiveBooking, BOOKING_HIGHLIGHT_KEY, cancelClientBooking, cancelClientPayment, createClientBookingPaymentPreference, getClientBookings, permanentlyDeleteArchivedBooking, reportClientPayment, restoreArchivedBooking, updateClientBooking, updateClientPaymentMethod, type Store } from "@/lib/cloud-sync";
+import {
+  canArchiveBooking,
+  canDeleteBooking,
+  getBookingArchiveLabel,
+  type Booking,
+} from "@/lib/booking-store";
+import {
+  getAvailableSlotCapacities,
+  isProfessionalAvailableOnDate,
+  type Professional,
+} from "@/lib/professional-store";
+import {
+  archiveBooking,
+  BOOKING_HIGHLIGHT_KEY,
+  cancelClientBooking,
+  cancelClientPayment,
+  createClientBookingPaymentPreference,
+  getClientBookings,
+  permanentlyDeleteArchivedBooking,
+  permanentlyDeleteArchivedBookings,
+  reportClientPayment,
+  restoreArchivedBooking,
+  updateClientBooking,
+  updateClientPaymentMethod,
+  type Store,
+} from "@/lib/cloud-sync";
 import { toast } from "sonner";
 import { LoadingScreen } from "@/components/loading-screen";
 
@@ -29,7 +74,9 @@ function MyBookingsPage() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [professionals, setProfessionals] = useState<Professional[]>([]);
   const [stores, setStores] = useState<Pick<Store, "code" | "name" | "settings">[]>([]);
-  const [occupiedSlots, setOccupiedSlots] = useState<Pick<Booking, "id" | "storeCode" | "barberId" | "date" | "time" | "duration" | "status">[]>([]);
+  const [occupiedSlots, setOccupiedSlots] = useState<
+    Pick<Booking, "id" | "storeCode" | "barberId" | "date" | "time" | "duration" | "status">[]
+  >([]);
   const [loadingBookings, setLoadingBookings] = useState(true);
   const [busyBookingId, setBusyBookingId] = useState<string | null>(null);
   const [payingBookingId, setPayingBookingId] = useState<string | null>(null);
@@ -37,7 +84,6 @@ function MyBookingsPage() {
   const [cancelingBookingId, setCancelingBookingId] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState(Date.now());
   const [editingBooking, setEditingBooking] = useState<Booking | null>(null);
-  const [preparingEditBookingId, setPreparingEditBookingId] = useState<string | null>(null);
   const [editedProfessionalId, setEditedProfessionalId] = useState("");
   const [editedServiceIds, setEditedServiceIds] = useState<string[]>([]);
   const [editedDate, setEditedDate] = useState("");
@@ -48,13 +94,18 @@ function MyBookingsPage() {
   const [bookingSearch, setBookingSearch] = useState("");
   const [archiveSearch, setArchiveSearch] = useState("");
   const [restoringBookingId, setRestoringBookingId] = useState<string | null>(null);
-  const [permanentlyDeletingBookingId, setPermanentlyDeletingBookingId] = useState<string | null>(null);
+  const [permanentlyDeletingBookingId, setPermanentlyDeletingBookingId] = useState<string | null>(
+    null,
+  );
   const [deletingAllArchivedBookings, setDeletingAllArchivedBookings] = useState(false);
   const [showTransferDetails, setShowTransferDetails] = useState(false);
   const [changingPaymentBooking, setChangingPaymentBooking] = useState<Booking | null>(null);
-  const [newPaymentMethod, setNewPaymentMethod] = useState<NonNullable<Booking["customer"]["paymentMethod"]>>("efectivo");
+  const [newPaymentMethod, setNewPaymentMethod] =
+    useState<NonNullable<Booking["customer"]["paymentMethod"]>>("efectivo");
   const [refundDestination, setRefundDestination] = useState("");
   const [refundDestinationType, setRefundDestinationType] = useState<"cbu" | "alias">("cbu");
+  const lastBookingsReloadAt = useRef(0);
+  const bookingsReloadInFlight = useRef<Promise<void> | null>(null);
   const suppressPaymentClick = useRef(false);
   const [highlightedBookingId, setHighlightedBookingId] = useState("");
   const highlightTimeout = useRef<number | null>(null);
@@ -62,57 +113,88 @@ function MyBookingsPage() {
   const editableProfessionals = editingBooking
     ? professionals.filter((item) => item.storeCode === editingBooking.storeCode)
     : [];
-  const editingProfessional = editableProfessionals.find((item) => item.id === editedProfessionalId);
-  const editingServices = editedServiceIds.map((id) => editingProfessional?.services.find((service) => service.id === id)).filter((service) => service !== undefined);
+  const editingProfessional = editableProfessionals.find(
+    (item) => item.id === editedProfessionalId,
+  );
+  const editingServices = editedServiceIds
+    .map((id) => editingProfessional?.services.find((service) => service.id === id))
+    .filter((service) => service !== undefined);
   const editingDuration = editingServices.reduce((total, service) => total + service.duration, 0);
   const editingTotalPrice = editingServices.reduce((total, service) => total + service.price, 0);
   const availableEditSlots = useMemo(() => {
-    if (!editingProfessional || editingServices.length !== editedServiceIds.length || !editingDuration || !editedDate) return [];
+    if (
+      !editingProfessional ||
+      editingServices.length !== editedServiceIds.length ||
+      !editingDuration ||
+      !editedDate
+    )
+      return [];
     const date = parseISO(`${editedDate}T12:00:00`);
     if (Number.isNaN(date.getTime())) return [];
     const today = format(new Date(), "yyyy-MM-dd");
     if (editedDate < today) return [];
-    return getAvailableSlotCapacities(editingProfessional, date, editingDuration, occupiedSlots, editingBooking?.id ?? "", editingBooking?.storeCode);
-  }, [editedDate, editedDuration, editedServiceIds, editingBooking, editingProfessional, editingServices, occupiedSlots]);
+    return getAvailableSlotCapacities(
+      editingProfessional,
+      date,
+      editingDuration,
+      occupiedSlots,
+      editingBooking?.id ?? "",
+      editingBooking?.storeCode,
+    );
+  }, [
+    editedDate,
+    editingDuration,
+    editedServiceIds,
+    editingBooking,
+    editingProfessional,
+    editingServices,
+    occupiedSlots,
+  ]);
 
   useEffect(() => {
-    if (!editingBooking || preparingEditBookingId === editingBooking.id || !editedDate || !editingServices.length || !editedTime) return;
+    if (!editingBooking || !editedDate || !editingServices.length || !editedTime) return;
     if (!availableEditSlots.some((slot) => slot.time === editedTime)) setEditedTime("");
-  }, [availableEditSlots, editedDate, editedTime, editingBooking, editingServices.length, preparingEditBookingId]);
+  }, [availableEditSlots, editedDate, editedTime, editingBooking, editingServices.length]);
 
-  const reload = useCallback(async () => {
-    try {
-      const result = await getClientBookings();
-      setBookings(result.bookings);
-      setProfessionals(result.professionals);
-      setOccupiedSlots(result.occupiedSlots);
-      setStores(result.stores);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "No se pudieron cargar tus turnos.");
-    } finally {
-      setLoadingBookings(false);
-    }
+  const reload = useCallback((force = false) => {
+    if (bookingsReloadInFlight.current) return bookingsReloadInFlight.current;
+    if (!force && Date.now() - lastBookingsReloadAt.current < 30_000) return Promise.resolve();
+    const request = (async () => {
+      try {
+        const result = await getClientBookings();
+        setBookings(result.bookings);
+        setProfessionals(result.professionals);
+        setOccupiedSlots(result.occupiedSlots);
+        setStores(result.stores);
+        lastBookingsReloadAt.current = Date.now();
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "No se pudieron cargar tus turnos.");
+      } finally {
+        setLoadingBookings(false);
+        bookingsReloadInFlight.current = null;
+      }
+    })();
+    bookingsReloadInFlight.current = request;
+    return request;
   }, []);
 
-  async function openEditDialog(booking: Booking) {
+  function openEditDialog(booking: Booking) {
     setEditingBooking(booking);
     setEditedProfessionalId(booking.barberId);
     setEditedServiceIds(booking.serviceIds.length ? booking.serviceIds : [""]);
     setEditedDate(booking.date);
     setEditedTime(booking.time);
-    setPreparingEditBookingId(booking.id);
-    try {
-      await reload();
-    } finally {
-      setPreparingEditBookingId(null);
-    }
+    if (Date.now() - lastBookingsReloadAt.current >= 30_000) void reload();
   }
 
   useEffect(() => {
     if (!isAuthenticated || role !== "client") return;
     void reload();
-    window.addEventListener("focus", reload);
-    return () => window.removeEventListener("focus", reload);
+    const onFocus = () => {
+      void reload();
+    };
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
   }, [isAuthenticated, reload, role]);
 
   useEffect(() => {
@@ -132,7 +214,13 @@ function MyBookingsPage() {
         setArchiveSearch("");
         setArchiveDialogOpen(true);
       }
-      window.setTimeout(() => document.getElementById(`${isArchived ? "archived-" : ""}booking-${bookingId}`)?.scrollIntoView({ behavior: "smooth", block: "center" }), isArchived ? 100 : 0);
+      window.setTimeout(
+        () =>
+          document
+            .getElementById(`${isArchived ? "archived-" : ""}booking-${bookingId}`)
+            ?.scrollIntoView({ behavior: "smooth", block: "center" }),
+        isArchived ? 100 : 0,
+      );
       if (highlightTimeout.current !== null) window.clearTimeout(highlightTimeout.current);
       highlightTimeout.current = window.setTimeout(() => setHighlightedBookingId(""), 4000);
     };
@@ -146,7 +234,9 @@ function MyBookingsPage() {
     setBusyBookingId(booking.id);
     try {
       const result = await reportClientPayment(booking.id);
-      setBookings((current) => current.map((item) => item.id === booking.id ? result.booking : item));
+      setBookings((current) =>
+        current.map((item) => (item.id === booking.id ? result.booking : item)),
+      );
       setPaymentBooking(null);
       toast.success("Aviso enviado. El profesional verificará el pago.");
     } catch (error) {
@@ -166,7 +256,8 @@ function MyBookingsPage() {
   }
 
   async function payBooking(booking: Booking) {
-    if (suppressPaymentClick.current || busyBookingId || booking.paymentStatus === "approved") return;
+    if (suppressPaymentClick.current || busyBookingId || booking.paymentStatus === "approved")
+      return;
     if (booking.customer.paymentMethod === "efectivo") return;
     if (booking.customer.paymentMethod === "transferencia") {
       setShowTransferDetails(true);
@@ -195,33 +286,58 @@ function MyBookingsPage() {
   async function cancelPayment(booking: Booking) {
     if (busyBookingId || booking.paymentCancellationStatus) return;
     const policy = cancellationPolicyFor(booking);
-    if (policy?.noRefunds || policy?.allowRefunds === false || (policy?.refundPercent ?? 100) <= 0) {
+    if (
+      policy?.noRefunds ||
+      policy?.allowRefunds === false ||
+      (policy?.refundPercent ?? 100) <= 0
+    ) {
       toast.error("La política de esta sucursal no permite devolver pagos.");
       return;
     }
     const appointmentAt = Date.parse(`${booking.date}T${booking.time}:00-03:00`);
     const windowMinutes = policy?.cancellationWindowMinutes ?? 30;
     if (booking.paymentStatus !== "approved") {
-      toast.error("Solo podés solicitar la devolución cuando el profesional haya confirmado el pago.");
+      toast.error(
+        "Solo podés solicitar la devolución cuando el profesional haya confirmado el pago.",
+      );
       return;
     }
-    if ((booking.customer.paymentMethod === "efectivo" || booking.customer.paymentMethod === "transferencia")
-      && !isValidRefundDestination(refundDestinationType, refundDestination)) {
-      toast.error(refundDestinationType === "cbu" ? "Ingresá un CBU válido de 22 dígitos." : "Ingresá un alias válido de 6 a 30 caracteres.");
+    if (
+      (booking.customer.paymentMethod === "efectivo" ||
+        booking.customer.paymentMethod === "transferencia") &&
+      !isValidRefundDestination(refundDestinationType, refundDestination)
+    ) {
+      toast.error(
+        refundDestinationType === "cbu"
+          ? "Ingresá un CBU válido de 22 dígitos."
+          : "Ingresá un alias válido de 6 a 30 caracteres.",
+      );
       return;
     }
     if (!Number.isFinite(appointmentAt) || appointmentAt - Date.now() < windowMinutes * 60 * 1000) {
-      toast.error(`Solo podés solicitar la cancelación con al menos ${windowMinutes} minutos de anticipación.`);
+      toast.error(
+        `Solo podés solicitar la cancelación con al menos ${windowMinutes} minutos de anticipación.`,
+      );
       return;
     }
     setBusyBookingId(booking.id);
     try {
-      const needsDestination = booking.customer.paymentMethod === "efectivo" || booking.customer.paymentMethod === "transferencia";
-      const result = await cancelClientPayment(booking.id, needsDestination ? refundDestinationType : undefined, needsDestination ? refundDestination.trim() : undefined);
-      setBookings((current) => current.map((item) => item.id === booking.id ? result.booking : item));
+      const needsDestination =
+        booking.customer.paymentMethod === "efectivo" ||
+        booking.customer.paymentMethod === "transferencia";
+      const result = await cancelClientPayment(
+        booking.id,
+        needsDestination ? refundDestinationType : undefined,
+        needsDestination ? refundDestination.trim() : undefined,
+      );
+      setBookings((current) =>
+        current.map((item) => (item.id === booking.id ? result.booking : item)),
+      );
       setPaymentBooking(null);
       setRefundDestination("");
-      toast.success("Solicitud de devolución enviada. El turno se canceló y el horario quedó disponible; el profesional confirmará la devolución.");
+      toast.success(
+        "Solicitud de devolución enviada. El turno se canceló y el horario quedó disponible; el profesional confirmará la devolución.",
+      );
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "No se pudo cancelar el pago.");
     } finally {
@@ -230,16 +346,26 @@ function MyBookingsPage() {
   }
 
   function isValidRefundDestination(type: "cbu" | "alias", value: string) {
-    return type === "cbu" ? /^\d{22}$/.test(value.replace(/\s/g, "")) : /^[\p{L}\d._-]{6,30}$/u.test(value.trim());
+    return type === "cbu"
+      ? /^\d{22}$/.test(value.replace(/\s/g, ""))
+      : /^[\p{L}\d._-]{6,30}$/u.test(value.trim());
   }
 
   async function savePaymentMethod() {
-    if (!changingPaymentBooking || busyBookingId || changingPaymentBooking.paymentReportedAt || changingPaymentBooking.paymentStatus === "approved") return;
+    if (
+      !changingPaymentBooking ||
+      busyBookingId ||
+      changingPaymentBooking.paymentReportedAt ||
+      changingPaymentBooking.paymentStatus === "approved"
+    )
+      return;
     suppressPaymentClick.current = true;
     setBusyBookingId(changingPaymentBooking.id);
     try {
       const result = await updateClientPaymentMethod(changingPaymentBooking.id, newPaymentMethod);
-      setBookings((current) => current.map((item) => item.id === changingPaymentBooking.id ? result.booking : item));
+      setBookings((current) =>
+        current.map((item) => (item.id === changingPaymentBooking.id ? result.booking : item)),
+      );
       setPaymentBooking(result.booking);
       setChangingPaymentBooking(null);
       setShowTransferDetails(false);
@@ -248,13 +374,20 @@ function MyBookingsPage() {
       toast.error(error instanceof Error ? error.message : "No se pudo cambiar el método de pago.");
     } finally {
       setBusyBookingId(null);
-      window.setTimeout(() => { suppressPaymentClick.current = false; }, 600);
+      window.setTimeout(() => {
+        suppressPaymentClick.current = false;
+      }, 600);
     }
   }
 
   async function saveBookingTime() {
     if (!editingBooking || busyBookingId) return;
-    if (!editingProfessional || !editedServiceIds.length || editingServices.length !== editedServiceIds.length || new Set(editedServiceIds).size !== editedServiceIds.length) {
+    if (
+      !editingProfessional ||
+      !editedServiceIds.length ||
+      editingServices.length !== editedServiceIds.length ||
+      new Set(editedServiceIds).size !== editedServiceIds.length
+    ) {
       toast.error("Elegí un profesional y un servicio disponibles.");
       return;
     }
@@ -270,12 +403,14 @@ function MyBookingsPage() {
         date: editedDate,
         time: editedTime,
       });
-      setBookings((current) => current.map((item) => item.id === editingBooking.id ? result.booking : item));
+      setBookings((current) =>
+        current.map((item) => (item.id === editingBooking.id ? result.booking : item)),
+      );
       setEditingBooking(null);
       toast.success("Turno modificado.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "No se pudo modificar el turno.");
-      await reload();
+      await reload(true);
     } finally {
       setBusyBookingId(null);
     }
@@ -287,7 +422,9 @@ function MyBookingsPage() {
     setCancelingBookingId(booking.id);
     try {
       const result = await cancelClientBooking(booking.id);
-      setBookings((current) => current.map((item) => item.id === booking.id ? result.booking : item));
+      setBookings((current) =>
+        current.map((item) => (item.id === booking.id ? result.booking : item)),
+      );
       toast.success("Turno cancelado. El profesional podrá verlo en su agenda.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "No se pudo cancelar el turno.");
@@ -300,14 +437,18 @@ function MyBookingsPage() {
   async function archiveTurn(booking: Booking) {
     if (busyBookingId || getBookingArchiveLabel(booking, currentTime, "client")) return;
     if (!canArchiveBooking(booking)) {
-      toast.error("Solo se puede borrar un turno pagado, asistido, cancelado o con la devolución realizada.");
+      toast.error(
+        "Solo se puede borrar un turno pagado, asistido, cancelado o con la devolución realizada.",
+      );
       return;
     }
     setBusyBookingId(booking.id);
     setDeletingBookingId(booking.id);
     try {
       const result = await archiveBooking(booking.id);
-      setBookings((current) => current.map((item) => item.id === booking.id ? result.booking : item));
+      setBookings((current) =>
+        current.map((item) => (item.id === booking.id ? result.booking : item)),
+      );
       toast.success("Turno archivado. Podés consultarlo en Turnos borrados/antiguos.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "No se pudo archivar el turno.");
@@ -322,7 +463,9 @@ function MyBookingsPage() {
     setRestoringBookingId(booking.id);
     try {
       const result = await restoreArchivedBooking(booking.id);
-      setBookings((current) => current.map((item) => item.id === booking.id ? result.booking : item));
+      setBookings((current) =>
+        current.map((item) => (item.id === booking.id ? result.booking : item)),
+      );
       toast.success("Turno restaurado en tu lista principal.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "No se pudo restaurar el turno.");
@@ -334,7 +477,9 @@ function MyBookingsPage() {
   async function permanentlyDeleteTurn(booking: Booking) {
     if (permanentlyDeletingBookingId || deletingAllArchivedBookings) return;
     if (!canDeleteBooking(booking)) {
-      toast.error("Solo se puede borrar un turno pagado, asistido, cancelado o con la devolución realizada.");
+      toast.error(
+        "Solo se puede borrar un turno pagado, asistido, cancelado o con la devolución realizada.",
+      );
       return;
     }
     setPermanentlyDeletingBookingId(booking.id);
@@ -343,58 +488,92 @@ function MyBookingsPage() {
       setBookings((current) => current.filter((item) => item.id !== booking.id));
       toast.success("Turno eliminado definitivamente.");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "No se pudo borrar definitivamente el turno.");
+      toast.error(
+        error instanceof Error ? error.message : "No se pudo borrar definitivamente el turno.",
+      );
     } finally {
       setPermanentlyDeletingBookingId(null);
     }
   }
 
   async function permanentlyDeleteAllArchivedTurns() {
-    if (permanentlyDeletingBookingId || deletingAllArchivedBookings || !archivedBookings.length) return;
+    if (permanentlyDeletingBookingId || deletingAllArchivedBookings || !archivedBookings.length)
+      return;
     const deletableBookings = archivedBookings.filter(canDeleteBooking);
     if (!deletableBookings.length) {
-      toast.error("No hay turnos pagados, asistidos, cancelados o con la devolución realizada para borrar.");
+      toast.error(
+        "No hay turnos pagados, asistidos, cancelados o con la devolución realizada para borrar.",
+      );
       return;
     }
     setDeletingAllArchivedBookings(true);
-    const deletedIds: string[] = [];
+    let deletedCount = 0;
     let failedCount = archivedBookings.length - deletableBookings.length;
     try {
-      for (let offset = 0; offset < deletableBookings.length; offset += 8) {
-        const batch = deletableBookings.slice(offset, offset + 8);
-        const results = await Promise.allSettled(batch.map((booking) => permanentlyDeleteArchivedBooking(booking.id)));
-        results.forEach((result, index) => {
-          if (result.status === "fulfilled") deletedIds.push(batch[index].id);
-          else failedCount += 1;
-        });
-      }
-      if (deletedIds.length) setBookings((current) => current.filter((booking) => !deletedIds.includes(booking.id)));
+      const result = await permanentlyDeleteArchivedBookings(
+        deletableBookings.map((booking) => booking.id),
+      );
+      deletedCount = result.bookings.length;
+      failedCount += result.failedCount;
+      const deletedIds = new Set(result.bookings.map((booking) => booking.id));
+      if (deletedIds.size)
+        setBookings((current) => current.filter((booking) => !deletedIds.has(booking.id)));
       if (failedCount) {
-        toast.error(`Se eliminaron ${deletedIds.length} turnos; ${failedCount} no cumplen los requisitos para borrarse.`);
+        toast.error(
+          `Se eliminaron ${deletedCount} turnos; ${failedCount} no cumplen los requisitos para borrarse.`,
+        );
       } else {
-        toast.success(`Se eliminaron ${deletedIds.length} turnos definitivamente.`);
+        toast.success(`Se eliminaron ${deletedCount} turnos definitivamente.`);
       }
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "No se pudieron borrar los turnos seleccionados.",
+      );
     } finally {
       setDeletingAllArchivedBookings(false);
     }
   }
 
   function cancellationPolicyFor(booking: Booking) {
-    return booking.cancellationPolicyAtBooking ?? stores.find((store) => store.code === booking.storeCode)?.settings;
+    return (
+      booking.cancellationPolicyAtBooking ??
+      stores.find((store) => store.code === booking.storeCode)?.settings
+    );
   }
 
   const archivedBookings = bookings
-    .filter((booking) => !booking.clientPermanentlyDeletedAt && getBookingArchiveLabel(booking, currentTime, "client"))
-    .sort((a, b) => (b.clientArchivedAt ?? `${b.date}T${b.time}`).localeCompare(a.clientArchivedAt ?? `${a.date}T${a.time}`));
-  const visibleBookings = bookings.filter((booking) => !booking.clientPermanentlyDeletedAt && !getBookingArchiveLabel(booking, currentTime, "client"));
-  const normalizeSearch = (value: string) => value.trim().toLocaleLowerCase("es-AR").normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    .filter(
+      (booking) =>
+        !booking.clientPermanentlyDeletedAt &&
+        getBookingArchiveLabel(booking, currentTime, "client"),
+    )
+    .sort((a, b) =>
+      (b.clientArchivedAt ?? `${b.date}T${b.time}`).localeCompare(
+        a.clientArchivedAt ?? `${a.date}T${a.time}`,
+      ),
+    );
+  const visibleBookings = bookings.filter(
+    (booking) =>
+      !booking.clientPermanentlyDeletedAt &&
+      !getBookingArchiveLabel(booking, currentTime, "client"),
+  );
+  const normalizeSearch = (value: string) =>
+    value
+      .trim()
+      .toLocaleLowerCase("es-AR")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "");
   const filterBookings = (list: Booking[], query: string) => {
     const terms = normalizeSearch(query).split(/\s+/).filter(Boolean);
     if (!terms.length) return list;
     return list.filter((booking) => {
-      const professional = professionals.find((item) => item.id === booking.barberId && item.storeCode === booking.storeCode)
-        ?? professionals.find((item) => item.id === booking.barberId);
-      const serviceNames = booking.serviceIds.map((id) => professional?.services.find((service) => service.id === id)?.name ?? "").join(" ");
+      const professional =
+        professionals.find(
+          (item) => item.id === booking.barberId && item.storeCode === booking.storeCode,
+        ) ?? professionals.find((item) => item.id === booking.barberId);
+      const serviceNames = booking.serviceIds
+        .map((id) => professional?.services.find((service) => service.id === id)?.name ?? "")
+        .join(" ");
       const appointmentDate = parseISO(`${booking.date}T${booking.time}`);
       const searchable = [
         booking.customer.fullName,
@@ -409,7 +588,9 @@ function MyBookingsPage() {
         booking.customer.paymentMethod,
         booking.status,
         booking.id,
-      ].filter(Boolean).join(" ");
+      ]
+        .filter(Boolean)
+        .join(" ");
       const normalized = normalizeSearch(searchable);
       return terms.every((term) => normalized.includes(term));
     });
@@ -418,7 +599,13 @@ function MyBookingsPage() {
   const filteredArchivedBookings = filterBookings(archivedBookings, archiveSearch);
 
   if (isLoading) return <LoadingScreen message="Buscando tus turnos" />;
-  if (!isAuthenticated || role !== "client") return <><SiteHeader /><AuthRequired role="client" title="Mis turnos" /></>;
+  if (!isAuthenticated || role !== "client")
+    return (
+      <>
+        <SiteHeader />
+        <AuthRequired role="client" title="Mis turnos" />
+      </>
+    );
 
   return (
     <div className="min-h-screen bg-gradient-dark">
@@ -431,178 +618,624 @@ function MyBookingsPage() {
               <h1 className="mt-1 font-display text-2xl font-semibold">Mis turnos</h1>
             </div>
             <div className="flex shrink-0 flex-nowrap gap-2">
-              <Button type="button" variant="outline" className="h-9 min-w-0 whitespace-nowrap px-2 text-[11px] sm:px-4 sm:text-sm" onClick={() => setArchiveDialogOpen(true)}>Turnos borrados/antiguos</Button>
-              <Link to="/reserva" className="inline-flex h-9 shrink-0 items-center rounded-md bg-gold px-3 text-xs font-medium text-primary-foreground transition-colors hover:bg-gold-soft sm:h-10 sm:px-4 sm:text-sm">Nuevo turno</Link>
+              <Button
+                type="button"
+                variant="outline"
+                className="h-9 min-w-0 whitespace-nowrap px-2 text-[11px] sm:px-4 sm:text-sm"
+                onClick={() => setArchiveDialogOpen(true)}
+              >
+                Turnos borrados/antiguos
+              </Button>
+              <Link
+                to="/reserva"
+                className="inline-flex h-9 shrink-0 items-center rounded-md bg-gold px-3 text-xs font-medium text-primary-foreground transition-colors hover:bg-gold-soft sm:h-10 sm:px-4 sm:text-sm"
+              >
+                Nuevo turno
+              </Link>
             </div>
           </div>
           <label className="relative mb-4 block">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input value={bookingSearch} onChange={(event) => setBookingSearch(event.target.value)} placeholder="Buscar turno..." className="pl-9" aria-label="Buscar mis turnos" />
+            <Input
+              value={bookingSearch}
+              onChange={(event) => setBookingSearch(event.target.value)}
+              placeholder="Buscar turno..."
+              className="pl-9"
+              aria-label="Buscar mis turnos"
+            />
           </label>
           {loadingBookings ? (
             <p className="text-sm text-muted-foreground">Cargando tus turnos…</p>
           ) : !filteredVisibleBookings.length ? (
-            <p className="text-sm text-muted-foreground">{visibleBookings.length ? "No encontramos turnos con esa búsqueda." : "Todavía no hay turnos asociados a esta cuenta."}</p>
+            <p className="text-sm text-muted-foreground">
+              {visibleBookings.length
+                ? "No encontramos turnos con esa búsqueda."
+                : "Todavía no hay turnos asociados a esta cuenta."}
+            </p>
           ) : (
             <div className="space-y-2">
-            {filteredVisibleBookings.map((booking) => {
-              const professional = professionals.find((item) => item.id === booking.barberId && item.storeCode === booking.storeCode)
-                ?? professionals.find((item) => item.id === booking.barberId);
-              const serviceNames = booking.serviceIds.map((id) => professional?.services.find((service) => service.id === id)?.name).filter(Boolean).join(", ");
-              const appointmentDate = parseISO(`${booking.date}T${booking.time}`);
-              const statusLabel = booking.status === "completed" ? "Asistió" : booking.status === "no-show" ? "No asistió" : booking.status === "cancelled" ? booking.cancelledBy === "professional" ? "Cancelado por el profesional" : "Cancelado por el cliente" : "Reservado";
-              const statusClass = booking.status === "completed" ? "border-emerald-300 text-emerald-400" : booking.status === "cancelled" || booking.status === "no-show" ? "border-red-500/30 bg-red-500/10 text-red-300" : "border-gold/40 text-gold";
-              const paymentMethodLabel = booking.customer.paymentMethod === "efectivo"
-                ? "Efectivo"
-                : booking.customer.paymentMethod === "transferencia"
-                  ? "Transferencia bancaria"
-                  : booking.customer.paymentMethod === "tarjeta o mercado pago"
-                    ? "Tarjeta o Mercado Pago"
-                    : "No especificado";
-              const policy = cancellationPolicyFor(booking);
-              const isActiveBooking = booking.status === "confirmed" || booking.status === "pending-payment";
-              const hasPaymentReport = Boolean(booking.paymentReportedAt) || booking.paymentStatus === "approved";
-              const cancellationTooLate = !Number.isFinite(Date.parse(`${booking.date}T${booking.time}:00-03:00`))
-                || Date.parse(`${booking.date}T${booking.time}:00-03:00`) - currentTime < (policy?.cancellationWindowMinutes ?? 30) * 60 * 1000;
-              const canCancel = isActiveBooking && !hasPaymentReport && !cancellationTooLate && [
-                "efectivo",
-                "transferencia",
-                "tarjeta o mercado pago",
-              ].includes(booking.customer.paymentMethod ?? "");
-              const canRequestPaymentCancellation = isActiveBooking && booking.paymentStatus === "approved" && !policy?.noRefunds && policy?.allowRefunds !== false
-                && (policy?.refundPercent ?? 100) > 0 && !cancellationTooLate
-                && ["efectivo", "transferencia", "tarjeta o mercado pago"].includes(booking.customer.paymentMethod ?? "");
-              const canArchive = !getBookingArchiveLabel(booking, currentTime, "client");
-              return (
-                <article key={booking.id} id={`booking-${booking.id}`} className={`flex flex-col items-center gap-3 rounded-xl border p-4 text-center transition-colors duration-300 xl:grid xl:grid-cols-[4rem_minmax(12rem,1fr)_auto_minmax(14rem,0.8fr)_minmax(22rem,1.3fr)] xl:items-center xl:gap-4 xl:text-left ${highlightedBookingId === booking.id ? "border-gold bg-gold/20 ring-2 ring-gold/70" : "border-gold/30 bg-card"}`}>
-                  <div className="flex w-full items-center justify-center gap-2 xl:contents">
-                    <div className="flex w-16 shrink-0 flex-col items-center rounded-lg bg-gold/10 px-1.5 py-2 text-gold">
-                      <span className="text-[10px] uppercase tracking-widest">{format(appointmentDate, "EEE", { locale: es })}</span>
-                      <span className="font-display text-2xl font-semibold">{format(appointmentDate, "d")}</span>
-                      <span className="text-[10px]">{booking.time}</span>
+              {filteredVisibleBookings.map((booking) => {
+                const professional =
+                  professionals.find(
+                    (item) => item.id === booking.barberId && item.storeCode === booking.storeCode,
+                  ) ?? professionals.find((item) => item.id === booking.barberId);
+                const serviceNames = booking.serviceIds
+                  .map((id) => professional?.services.find((service) => service.id === id)?.name)
+                  .filter(Boolean)
+                  .join(", ");
+                const appointmentDate = parseISO(`${booking.date}T${booking.time}`);
+                const statusLabel =
+                  booking.status === "completed"
+                    ? "Asistió"
+                    : booking.status === "no-show"
+                      ? "No asistió"
+                      : booking.status === "cancelled"
+                        ? booking.cancelledBy === "professional"
+                          ? "Cancelado por el profesional"
+                          : "Cancelado por el cliente"
+                        : "Reservado";
+                const statusClass =
+                  booking.status === "completed"
+                    ? "border-emerald-300 text-emerald-400"
+                    : booking.status === "cancelled" || booking.status === "no-show"
+                      ? "border-red-500/30 bg-red-500/10 text-red-300"
+                      : "border-gold/40 text-gold";
+                const paymentMethodLabel =
+                  booking.customer.paymentMethod === "efectivo"
+                    ? "Efectivo"
+                    : booking.customer.paymentMethod === "transferencia"
+                      ? "Transferencia bancaria"
+                      : booking.customer.paymentMethod === "tarjeta o mercado pago"
+                        ? "Tarjeta o Mercado Pago"
+                        : "No especificado";
+                const policy = cancellationPolicyFor(booking);
+                const isActiveBooking =
+                  booking.status === "confirmed" || booking.status === "pending-payment";
+                const hasPaymentReport =
+                  Boolean(booking.paymentReportedAt) || booking.paymentStatus === "approved";
+                const cancellationTooLate =
+                  !Number.isFinite(Date.parse(`${booking.date}T${booking.time}:00-03:00`)) ||
+                  Date.parse(`${booking.date}T${booking.time}:00-03:00`) - currentTime <
+                    (policy?.cancellationWindowMinutes ?? 30) * 60 * 1000;
+                const canCancel =
+                  isActiveBooking &&
+                  !hasPaymentReport &&
+                  !cancellationTooLate &&
+                  ["efectivo", "transferencia", "tarjeta o mercado pago"].includes(
+                    booking.customer.paymentMethod ?? "",
+                  );
+                const canRequestPaymentCancellation =
+                  isActiveBooking &&
+                  booking.paymentStatus === "approved" &&
+                  !policy?.noRefunds &&
+                  policy?.allowRefunds !== false &&
+                  (policy?.refundPercent ?? 100) > 0 &&
+                  !cancellationTooLate &&
+                  ["efectivo", "transferencia", "tarjeta o mercado pago"].includes(
+                    booking.customer.paymentMethod ?? "",
+                  );
+                const canArchive = !getBookingArchiveLabel(booking, currentTime, "client");
+                return (
+                  <article
+                    key={booking.id}
+                    id={`booking-${booking.id}`}
+                    className={`flex flex-col items-center gap-3 rounded-xl border p-4 text-center transition-colors duration-300 xl:grid xl:grid-cols-[4rem_minmax(12rem,1fr)_auto_minmax(14rem,0.8fr)_minmax(22rem,1.3fr)] xl:items-center xl:gap-4 xl:text-left ${highlightedBookingId === booking.id ? "border-gold bg-gold/20 ring-2 ring-gold/70" : "border-gold/30 bg-card"}`}
+                  >
+                    <div className="flex w-full items-center justify-center gap-2 xl:contents">
+                      <div className="flex w-16 shrink-0 flex-col items-center rounded-lg bg-gold/10 px-1.5 py-2 text-gold">
+                        <span className="text-[10px] uppercase tracking-widest">
+                          {format(appointmentDate, "EEE", { locale: es })}
+                        </span>
+                        <span className="font-display text-2xl font-semibold">
+                          {format(appointmentDate, "d")}
+                        </span>
+                        <span className="text-[10px]">{booking.time}</span>
+                      </div>
+                      <div className="min-w-0 flex-1 text-center xl:text-left">
+                        <div className="font-medium">{professional?.name ?? "Profesional"}</div>
+                        <div className="text-sm text-muted-foreground">
+                          {serviceNames || "Servicio"} · {booking.duration} min
+                        </div>
+                      </div>
+                      <div className="shrink-0 font-display text-base font-semibold text-gold xl:col-start-3 xl:rounded-lg xl:border xl:border-gold/20 xl:bg-gold/5 xl:px-3 xl:py-2 xl:text-center xl:text-lg">
+                        ${booking.totalPrice.toLocaleString("es-AR")}
+                      </div>
                     </div>
-                    <div className="min-w-0 flex-1 text-center xl:text-left">
-                      <div className="font-medium">{professional?.name ?? "Profesional"}</div>
-                      <div className="text-sm text-muted-foreground">{serviceNames || "Servicio"} · {booking.duration} min</div>
+                    <div className="flex w-full flex-col items-center gap-1 text-xs text-muted-foreground xl:col-start-4 xl:items-start xl:justify-self-start">
+                      {booking.status !== "cancelled" &&
+                        booking.status !== "completed" &&
+                        booking.status !== "no-show" && (
+                          <Badge variant="outline" className={statusClass}>
+                            {statusLabel}
+                          </Badge>
+                        )}
+                      <Badge variant="outline" className="border-gold/30 text-gold">
+                        Pago · {paymentMethodLabel}
+                      </Badge>
+                      {(booking.status === "pending-payment" ||
+                        booking.paymentStatus === "pending" ||
+                        (isActiveBooking &&
+                          booking.customer.paymentMethod === "efectivo" &&
+                          booking.paymentStatus !== "approved")) && (
+                        <Badge variant="outline" className="border-amber-300 text-amber-300">
+                          Pago pendiente
+                        </Badge>
+                      )}
+                      {booking.paymentReportedAt && booking.paymentStatus !== "approved" && (
+                        <Badge variant="outline" className="border-amber-300 text-amber-300">
+                          Informaste el pago · El profesional lo revisará
+                        </Badge>
+                      )}
+                      {booking.paymentStatus === "approved" && (
+                        <Badge variant="outline" className="border-emerald-300 text-emerald-400">
+                          Pago confirmado
+                        </Badge>
+                      )}
+                      {booking.paymentCancellationStatus === "requested" && (
+                        <Badge variant="outline" className="border-amber-300 text-amber-300">
+                          Devolución solicitada
+                        </Badge>
+                      )}
+                      {booking.paymentCancellationStatus === "refunded" && (
+                        <Badge variant="outline" className="border-emerald-300 text-emerald-400">
+                          Pago devuelto
+                        </Badge>
+                      )}
+                      {booking.paymentCancellationStatus === "cancelled" && (
+                        <Badge variant="outline" className="border-red-300 text-red-300">
+                          Pago cancelado
+                        </Badge>
+                      )}
+                      {(booking.status === "completed" || booking.status === "no-show") && (
+                        <Badge variant="outline" className={statusClass}>
+                          {statusLabel}
+                        </Badge>
+                      )}
+                      {booking.status === "cancelled" && (
+                        <Badge variant="outline" className={statusClass}>
+                          {statusLabel}
+                        </Badge>
+                      )}
                     </div>
-                    <div className="shrink-0 font-display text-base font-semibold text-gold xl:col-start-3 xl:rounded-lg xl:border xl:border-gold/20 xl:bg-gold/5 xl:px-3 xl:py-2 xl:text-center xl:text-lg">${booking.totalPrice.toLocaleString("es-AR")}</div>
-                  </div>
-                  <div className="flex w-full flex-col items-center gap-1 text-xs text-muted-foreground xl:col-start-4 xl:items-start xl:justify-self-start">
-                      {booking.status !== "cancelled" && booking.status !== "completed" && booking.status !== "no-show" && <Badge variant="outline" className={statusClass}>{statusLabel}</Badge>}
-                      <Badge variant="outline" className="border-gold/30 text-gold">Pago · {paymentMethodLabel}</Badge>
-                      {(booking.status === "pending-payment" || booking.paymentStatus === "pending" || (isActiveBooking && booking.customer.paymentMethod === "efectivo" && booking.paymentStatus !== "approved")) && <Badge variant="outline" className="border-amber-300 text-amber-300">Pago pendiente</Badge>}
-                      {booking.paymentReportedAt && booking.paymentStatus !== "approved" && <Badge variant="outline" className="border-amber-300 text-amber-300">Informaste el pago · El profesional lo revisará</Badge>}
-                      {booking.paymentStatus === "approved" && <Badge variant="outline" className="border-emerald-300 text-emerald-400">Pago confirmado</Badge>}
-                      {booking.paymentCancellationStatus === "requested" && <Badge variant="outline" className="border-amber-300 text-amber-300">Devolución solicitada</Badge>}
-                      {booking.paymentCancellationStatus === "refunded" && <Badge variant="outline" className="border-emerald-300 text-emerald-400">Pago devuelto</Badge>}
-                      {booking.paymentCancellationStatus === "cancelled" && <Badge variant="outline" className="border-red-300 text-red-300">Pago cancelado</Badge>}
-                      {(booking.status === "completed" || booking.status === "no-show") && <Badge variant="outline" className={statusClass}>{statusLabel}</Badge>}
-                      {booking.status === "cancelled" && <Badge variant="outline" className={statusClass}>{statusLabel}</Badge>}
-                  </div>
-                  {(isActiveBooking || (canArchive && canArchiveBooking(booking))) && <div className="grid w-full grid-cols-2 gap-2 xl:col-start-5 xl:grid-cols-3">
-                    {isActiveBooking && !hasPaymentReport && booking.paymentStatus !== "approved" && <Button size="sm" disabled={busyBookingId !== null} className="min-w-0 whitespace-normal px-2 text-center leading-tight bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-60" onClick={() => { setPaymentBooking(booking); setShowTransferDetails(false); }}>Indicar pago</Button>}
-                    {canRequestPaymentCancellation && !booking.paymentCancellationStatus && <Button size="sm" className="min-w-0 whitespace-normal px-2 text-center leading-tight bg-gold text-primary-foreground hover:bg-gold-soft" disabled={busyBookingId !== null} onClick={() => { setRefundDestination(""); setRefundDestinationType("cbu"); setPaymentBooking(booking); setShowTransferDetails(false); }}>Solicitar devolución</Button>}
-                    {isActiveBooking && booking.paymentStatus !== "approved" && !hasPaymentReport && !booking.paymentCancellationStatus && <Button size="sm" variant="outline" className="min-w-0 whitespace-normal px-2 text-center leading-tight" disabled={busyBookingId !== null || preparingEditBookingId !== null} onClick={() => void openEditDialog(booking)}>{preparingEditBookingId === booking.id ? <><LoaderCircle className="mr-2 h-4 w-4 animate-spin text-gold" />Preparando...</> : "Modificar turno"}</Button>}
-                    {canCancel && <Button size="sm" variant="destructive" className={`min-w-0 whitespace-normal px-2 text-center leading-tight ${cancelingBookingId === booking.id ? "opacity-60" : ""}`} disabled={busyBookingId !== null} onClick={() => void cancelBooking(booking)}>{cancelingBookingId === booking.id ? "Cancelando turno..." : "Cancelar turno"}</Button>}
-                    {canArchive && canArchiveBooking(booking) && <Button size="sm" variant="destructive" className={`min-w-0 whitespace-normal px-2 text-center leading-tight ${deletingBookingId === booking.id ? "opacity-60" : ""}`} disabled={busyBookingId !== null} onClick={() => void archiveTurn(booking)}>{deletingBookingId === booking.id ? "Borrando turno..." : "Borrar turno"}</Button>}
-                  </div>}
-                </article>
-              );
-            })}
-          </div>
-        )}
+                    {(isActiveBooking || (canArchive && canArchiveBooking(booking))) && (
+                      <div className="grid w-full grid-cols-2 gap-2 xl:col-start-5 xl:grid-cols-3">
+                        {isActiveBooking &&
+                          !hasPaymentReport &&
+                          booking.paymentStatus !== "approved" && (
+                            <Button
+                              size="sm"
+                              disabled={busyBookingId !== null}
+                              className="min-w-0 whitespace-normal px-2 text-center leading-tight bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-60"
+                              onClick={() => {
+                                setPaymentBooking(booking);
+                                setShowTransferDetails(false);
+                              }}
+                            >
+                              Indicar pago
+                            </Button>
+                          )}
+                        {canRequestPaymentCancellation && !booking.paymentCancellationStatus && (
+                          <Button
+                            size="sm"
+                            className="min-w-0 whitespace-normal px-2 text-center leading-tight bg-gold text-primary-foreground hover:bg-gold-soft"
+                            disabled={busyBookingId !== null}
+                            onClick={() => {
+                              setRefundDestination("");
+                              setRefundDestinationType("cbu");
+                              setPaymentBooking(booking);
+                              setShowTransferDetails(false);
+                            }}
+                          >
+                            Solicitar devolución
+                          </Button>
+                        )}
+                        {isActiveBooking &&
+                          booking.paymentStatus !== "approved" &&
+                          !hasPaymentReport &&
+                          !booking.paymentCancellationStatus && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="min-w-0 whitespace-normal px-2 text-center leading-tight"
+                              disabled={busyBookingId !== null}
+                              onClick={() => openEditDialog(booking)}
+                            >
+                              Modificar turno
+                            </Button>
+                          )}
+                        {canCancel && (
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            className={`min-w-0 whitespace-normal px-2 text-center leading-tight ${cancelingBookingId === booking.id ? "opacity-60" : ""}`}
+                            disabled={busyBookingId !== null}
+                            onClick={() => void cancelBooking(booking)}
+                          >
+                            {cancelingBookingId === booking.id
+                              ? "Cancelando turno..."
+                              : "Cancelar turno"}
+                          </Button>
+                        )}
+                        {canArchive && canArchiveBooking(booking) && (
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            className={`min-w-0 whitespace-normal px-2 text-center leading-tight ${deletingBookingId === booking.id ? "opacity-60" : ""}`}
+                            disabled={busyBookingId !== null}
+                            onClick={() => void archiveTurn(booking)}
+                          >
+                            {deletingBookingId === booking.id
+                              ? "Borrando turno..."
+                              : "Borrar turno"}
+                          </Button>
+                        )}
+                      </div>
+                    )}
+                  </article>
+                );
+              })}
+            </div>
+          )}
         </section>
       </main>
-      <Dialog open={editingBooking !== null} onOpenChange={(open) => { if (!open && !busyBookingId) setEditingBooking(null); }}>
+      <Dialog
+        open={editingBooking !== null}
+        onOpenChange={(open) => {
+          if (!open && !busyBookingId) setEditingBooking(null);
+        }}
+      >
         <DialogContent className="gold-scrollbar max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Modificar turno</DialogTitle>
-            <DialogDescription>{preparingEditBookingId === editingBooking?.id ? "Preparando horarios disponibles…" : "Elegí profesional, servicio, fecha y horario. Revisaremos la disponibilidad antes de guardar."}</DialogDescription>
+            <DialogDescription>
+              Elegí profesional, servicio, fecha y horario. Revisaremos la disponibilidad antes de
+              guardar.
+            </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-3">
             <label className="space-y-2 text-sm text-muted-foreground">
-              <span className="flex items-center gap-2"><UserRound className="h-4 w-4 text-gold" />Profesional</span>
-                <Select value={editedProfessionalId} onValueChange={(nextProfessionalId) => {
-                const nextProfessional = editableProfessionals.find((item) => item.id === nextProfessionalId);
-                setEditedProfessionalId(nextProfessionalId);
-                setEditedServiceIds(nextProfessional?.services[0] ? [nextProfessional.services[0].id] : []);
-                setEditedDate("");
-                setEditedTime("");
-              }}><SelectTrigger className="w-full"><SelectValue placeholder="Seleccionar profesional" /></SelectTrigger><SelectContent className="gold-scrollbar max-h-60">{editableProfessionals.map((professional) => <SelectItem key={professional.id} value={professional.id}>{professional.name}{professional.specialty ? ` · ${professional.specialty}` : ""}</SelectItem>)}</SelectContent></Select>
+              <span className="flex items-center gap-2">
+                <UserRound className="h-4 w-4 text-gold" />
+                Profesional
+              </span>
+              <Select
+                value={editedProfessionalId}
+                onValueChange={(nextProfessionalId) => {
+                  const nextProfessional = editableProfessionals.find(
+                    (item) => item.id === nextProfessionalId,
+                  );
+                  setEditedProfessionalId(nextProfessionalId);
+                  setEditedServiceIds(
+                    nextProfessional?.services[0] ? [nextProfessional.services[0].id] : [],
+                  );
+                  setEditedDate("");
+                  setEditedTime("");
+                }}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Seleccionar profesional" />
+                </SelectTrigger>
+                <SelectContent className="gold-scrollbar max-h-60">
+                  {editableProfessionals.map((professional) => (
+                    <SelectItem key={professional.id} value={professional.id}>
+                      {professional.name}
+                      {professional.specialty ? ` · ${professional.specialty}` : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </label>
             <div className="space-y-2 text-sm text-muted-foreground">
-              <span className="flex items-center gap-2"><Scissors className="h-4 w-4 text-gold" />Servicios</span>
-              {editedServiceIds.map((serviceId, index) => <div key={`${index}-${serviceId}`} className="flex items-center gap-2">
-                <Select value={serviceId} onValueChange={(value) => { setEditedServiceIds((current) => current.map((id, itemIndex) => itemIndex === index ? value : id)); setEditedTime(""); }} disabled={!editingProfessional}><SelectTrigger aria-label={`Servicio ${index + 1}`} className="min-w-0 flex-1"><SelectValue placeholder="Seleccionar servicio" /></SelectTrigger><SelectContent className="gold-scrollbar max-h-60">{(editingProfessional?.services ?? []).filter((service) => service.id === serviceId || !editedServiceIds.includes(service.id)).map((service) => <SelectItem key={service.id} value={service.id}>{service.name} · {service.duration} min · ${service.price.toLocaleString("es-AR")}</SelectItem>)}</SelectContent></Select>
-                {editedServiceIds.length > 1 && <Button type="button" size="icon" variant="outline" aria-label={`Quitar servicio ${index + 1}`} onClick={() => { setEditedServiceIds((current) => current.filter((_, itemIndex) => itemIndex !== index)); setEditedTime(""); }}><Trash2 className="h-4 w-4" /></Button>}
-              </div>)}
-              <Button type="button" size="sm" variant="outline" disabled={!editingProfessional || editedServiceIds.length >= (editingProfessional?.services.length ?? 0)} onClick={() => { const nextService = editingProfessional?.services.find((service) => !editedServiceIds.includes(service.id)); if (nextService) setEditedServiceIds((current) => [...current, nextService.id]); setEditedTime(""); }}><Plus className="mr-1 h-4 w-4" />Agregar servicio</Button>
-              {editingServices.length > 0 && <p className="text-xs">Duración total: {editingDuration} min · Total: <span className="font-semibold text-gold">${editingTotalPrice.toLocaleString("es-AR")}</span></p>}
+              <span className="flex items-center gap-2">
+                <Scissors className="h-4 w-4 text-gold" />
+                Servicios
+              </span>
+              {editedServiceIds.map((serviceId, index) => (
+                <div key={`${index}-${serviceId}`} className="flex items-center gap-2">
+                  <Select
+                    value={serviceId}
+                    onValueChange={(value) => {
+                      setEditedServiceIds((current) =>
+                        current.map((id, itemIndex) => (itemIndex === index ? value : id)),
+                      );
+                      setEditedTime("");
+                    }}
+                    disabled={!editingProfessional}
+                  >
+                    <SelectTrigger aria-label={`Servicio ${index + 1}`} className="min-w-0 flex-1">
+                      <SelectValue placeholder="Seleccionar servicio" />
+                    </SelectTrigger>
+                    <SelectContent className="gold-scrollbar max-h-60">
+                      {(editingProfessional?.services ?? [])
+                        .filter(
+                          (service) =>
+                            service.id === serviceId || !editedServiceIds.includes(service.id),
+                        )
+                        .map((service) => (
+                          <SelectItem key={service.id} value={service.id}>
+                            {service.name} · {service.duration} min · $
+                            {service.price.toLocaleString("es-AR")}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                  {editedServiceIds.length > 1 && (
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="outline"
+                      aria-label={`Quitar servicio ${index + 1}`}
+                      onClick={() => {
+                        setEditedServiceIds((current) =>
+                          current.filter((_, itemIndex) => itemIndex !== index),
+                        );
+                        setEditedTime("");
+                      }}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
+              ))}
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={
+                  !editingProfessional ||
+                  editedServiceIds.length >= (editingProfessional?.services.length ?? 0)
+                }
+                onClick={() => {
+                  const nextService = editingProfessional?.services.find(
+                    (service) => !editedServiceIds.includes(service.id),
+                  );
+                  if (nextService) setEditedServiceIds((current) => [...current, nextService.id]);
+                  setEditedTime("");
+                }}
+              >
+                <Plus className="mr-1 h-4 w-4" />
+                Agregar servicio
+              </Button>
+              {editingServices.length > 0 && (
+                <p className="text-xs">
+                  Duración total: {editingDuration} min · Total:{" "}
+                  <span className="font-semibold text-gold">
+                    ${editingTotalPrice.toLocaleString("es-AR")}
+                  </span>
+                </p>
+              )}
             </div>
             <div className="space-y-2 text-sm text-muted-foreground">
-              <span className="flex items-center gap-2"><CalendarDays className="h-4 w-4 text-gold" />Fecha</span>
+              <span className="flex items-center gap-2">
+                <CalendarDays className="h-4 w-4 text-gold" />
+                Fecha
+              </span>
               <Popover open={datePickerOpen} onOpenChange={setDatePickerOpen}>
-                <PopoverTrigger asChild><Button type="button" variant="outline" className="w-full justify-between font-normal" disabled={!editingProfessional || !editingServices.length}><span>{editedDate ? format(parseISO(`${editedDate}T12:00:00`), "dd/MM/yyyy", { locale: es }) : "Seleccionar fecha"}</span><CalendarDays className="h-4 w-4 text-gold" /></Button></PopoverTrigger>
-                <PopoverContent className="gold-scrollbar w-auto p-0" align="start"><Calendar mode="single" locale={es} selected={editedDate ? parseISO(`${editedDate}T12:00:00`) : undefined} onSelect={(date) => { setEditedDate(date ? format(date, "yyyy-MM-dd") : ""); setEditedTime(""); setDatePickerOpen(false); }} disabled={(date) => format(date, "yyyy-MM-dd") < format(new Date(), "yyyy-MM-dd") || !editingProfessional || !isProfessionalAvailableOnDate(editingProfessional, date)} initialFocus /></PopoverContent>
+                <PopoverTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full justify-between font-normal"
+                    disabled={!editingProfessional || !editingServices.length}
+                  >
+                    <span>
+                      {editedDate
+                        ? format(parseISO(`${editedDate}T12:00:00`), "dd/MM/yyyy", { locale: es })
+                        : "Seleccionar fecha"}
+                    </span>
+                    <CalendarDays className="h-4 w-4 text-gold" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="gold-scrollbar w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    locale={es}
+                    selected={editedDate ? parseISO(`${editedDate}T12:00:00`) : undefined}
+                    onSelect={(date) => {
+                      setEditedDate(date ? format(date, "yyyy-MM-dd") : "");
+                      setEditedTime("");
+                      setDatePickerOpen(false);
+                    }}
+                    disabled={(date) =>
+                      format(date, "yyyy-MM-dd") < format(new Date(), "yyyy-MM-dd") ||
+                      !editingProfessional ||
+                      !isProfessionalAvailableOnDate(editingProfessional, date)
+                    }
+                    initialFocus
+                  />
+                </PopoverContent>
               </Popover>
             </div>
             <label className="space-y-2 text-sm text-muted-foreground">
-              <span className="flex items-center gap-2"><Clock3 className="h-4 w-4 text-gold" />Horario</span>
-              <Select value={editedTime} onValueChange={setEditedTime} disabled={!editedDate || !editingProfessional || preparingEditBookingId === editingBooking?.id}><SelectTrigger className="w-full"><SelectValue placeholder="Seleccionar horario" /></SelectTrigger><SelectContent className="gold-scrollbar max-h-60">{availableEditSlots.map((slot) => <SelectItem key={slot.time} value={slot.time}>{slot.time} · {slot.available} {slot.available === 1 ? "turno disponible" : "turnos disponibles"}</SelectItem>)}</SelectContent></Select>
-              {preparingEditBookingId === editingBooking?.id && <span className="block text-xs text-gold">Actualizando disponibilidad…</span>}
-              {preparingEditBookingId !== editingBooking?.id && editedDate && editingServices.length > 0 && !availableEditSlots.length && <span className="block text-xs">No hay horarios disponibles para los servicios seleccionados en esa fecha.</span>}
+              <span className="flex items-center gap-2">
+                <Clock3 className="h-4 w-4 text-gold" />
+                Horario
+              </span>
+              <Select
+                value={editedTime}
+                onValueChange={setEditedTime}
+                disabled={!editedDate || !editingProfessional}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Seleccionar horario" />
+                </SelectTrigger>
+                <SelectContent className="gold-scrollbar max-h-60">
+                  {availableEditSlots.map((slot) => (
+                    <SelectItem key={slot.time} value={slot.time}>
+                      {slot.time} · {slot.available}{" "}
+                      {slot.available === 1 ? "turno disponible" : "turnos disponibles"}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {editedDate && editingServices.length > 0 && !availableEditSlots.length && (
+                <span className="block text-xs">
+                  No hay horarios disponibles para los servicios seleccionados en esa fecha.
+                </span>
+              )}
             </label>
           </div>
           <DialogFooter>
-            <Button type="button" variant="outline" disabled={busyBookingId !== null} onClick={() => setEditingBooking(null)}>Cancelar</Button>
-            <Button type="button" disabled={!editingBooking || busyBookingId !== null || preparingEditBookingId !== null} className="bg-gold text-primary-foreground hover:bg-gold-soft" onClick={() => void saveBookingTime()}>{busyBookingId === editingBooking?.id ? "Guardando..." : preparingEditBookingId === editingBooking?.id ? "Preparando..." : "Guardar cambios"}</Button>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={busyBookingId !== null}
+              onClick={() => setEditingBooking(null)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              disabled={!editingBooking || busyBookingId !== null}
+              className="bg-gold text-primary-foreground hover:bg-gold-soft"
+              onClick={() => void saveBookingTime()}
+            >
+              {busyBookingId === editingBooking?.id ? "Guardando..." : "Guardar cambios"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
       <Dialog open={archiveDialogOpen} onOpenChange={setArchiveDialogOpen}>
-        <DialogContent className="gold-scrollbar max-h-[85vh] overflow-y-auto sm:max-w-2xl" onOpenAutoFocus={(event) => event.preventDefault()}>
+        <DialogContent
+          className="gold-scrollbar max-h-[85vh] overflow-y-auto sm:max-w-2xl"
+          onOpenAutoFocus={(event) => event.preventDefault()}
+        >
           <DialogHeader>
             <DialogTitle>Turnos borrados/antiguos</DialogTitle>
-            <DialogDescription>Turnos archivados manualmente o antiguos. Podés restaurarlos o borrarlos definitivamente del listado.</DialogDescription>
+            <DialogDescription>
+              Turnos archivados manualmente o antiguos. Podés restaurarlos o borrarlos
+              definitivamente del listado.
+            </DialogDescription>
           </DialogHeader>
-          {archivedBookings.length > 0 && <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="text-xs text-muted-foreground">Borrar todos los turnos de este listado, aunque haya una búsqueda activa.</p>
-            <Button type="button" size="sm" variant="destructive" disabled={deletingAllArchivedBookings || permanentlyDeletingBookingId !== null} onClick={() => void permanentlyDeleteAllArchivedTurns()}>{deletingAllArchivedBookings ? "Borrando…" : "Borrar todos"}</Button>
-          </div>}
+          {archivedBookings.length > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="text-xs text-muted-foreground">
+                Borrar todos los turnos de este listado, aunque haya una búsqueda activa.
+              </p>
+              <Button
+                type="button"
+                size="sm"
+                variant="destructive"
+                disabled={deletingAllArchivedBookings || permanentlyDeletingBookingId !== null}
+                onClick={() => void permanentlyDeleteAllArchivedTurns()}
+              >
+                {deletingAllArchivedBookings ? "Borrando…" : "Borrar todos"}
+              </Button>
+            </div>
+          )}
           <label className="relative block">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input value={archiveSearch} onChange={(event) => setArchiveSearch(event.target.value)} placeholder="Buscar en los turnos archivados…" className="pl-9" aria-label="Buscar turnos archivados" />
+            <Input
+              value={archiveSearch}
+              onChange={(event) => setArchiveSearch(event.target.value)}
+              placeholder="Buscar en los turnos archivados…"
+              className="pl-9"
+              aria-label="Buscar turnos archivados"
+            />
           </label>
-          {!filteredArchivedBookings.length ? <p className="py-5 text-center text-sm text-muted-foreground">{archivedBookings.length ? "No encontramos turnos con esa búsqueda." : "Todavía no hay turnos archivados."}</p> : (
+          {!filteredArchivedBookings.length ? (
+            <p className="py-5 text-center text-sm text-muted-foreground">
+              {archivedBookings.length
+                ? "No encontramos turnos con esa búsqueda."
+                : "Todavía no hay turnos archivados."}
+            </p>
+          ) : (
             <div className="space-y-2">
               {filteredArchivedBookings.map((booking) => {
-                const professional = professionals.find((item) => item.id === booking.barberId && item.storeCode === booking.storeCode)
-                  ?? professionals.find((item) => item.id === booking.barberId);
-                const serviceNames = booking.serviceIds.map((id) => professional?.services.find((service) => service.id === id)?.name).filter(Boolean).join(", ");
+                const professional =
+                  professionals.find(
+                    (item) => item.id === booking.barberId && item.storeCode === booking.storeCode,
+                  ) ?? professionals.find((item) => item.id === booking.barberId);
+                const serviceNames = booking.serviceIds
+                  .map((id) => professional?.services.find((service) => service.id === id)?.name)
+                  .filter(Boolean)
+                  .join(", ");
                 const appointmentDate = parseISO(`${booking.date}T${booking.time}`);
-                const paymentMethod = booking.customer.paymentMethod === "transferencia" ? "Transferencia bancaria" : booking.customer.paymentMethod === "tarjeta o mercado pago" ? "Tarjeta o Mercado Pago" : booking.customer.paymentMethod === "efectivo" ? "Efectivo" : "No especificado";
-                return <article key={booking.id} id={`archived-booking-${booking.id}`} className={`rounded-xl border p-3 text-sm transition-colors duration-300 ${highlightedBookingId === booking.id ? "border-gold bg-gold/20 ring-2 ring-gold/70" : "border-border bg-card"}`}>
-                  <div className="flex flex-wrap items-start justify-between gap-2">
-                    <p className="font-semibold">{professional?.name ?? "Profesional"} · {serviceNames || "Servicio"}</p>
-                    <Badge variant="outline" className="border-gold/40 text-gold">{getBookingArchiveLabel(booking, currentTime, "client")}</Badge>
-                  </div>
-                  <p className="mt-1 text-muted-foreground">{format(appointmentDate, "EEEE d 'de' MMMM, yyyy", { locale: es })} · {booking.time}</p>
-                  <p className="mt-1 text-muted-foreground">Pago: {paymentMethod} · ${booking.totalPrice.toLocaleString("es-AR")}</p>
-                  <div className="mt-3 flex flex-wrap justify-end gap-2">
-                    <Button type="button" size="sm" variant="outline" disabled={restoringBookingId !== null || deletingAllArchivedBookings} onClick={() => void restoreTurn(booking)}>{restoringBookingId === booking.id ? "Restaurando…" : "Restaurar"}</Button>
-                    <Button type="button" size="sm" variant="destructive" disabled={permanentlyDeletingBookingId !== null || deletingAllArchivedBookings || !canDeleteBooking(booking)} onClick={() => void permanentlyDeleteTurn(booking)}>{permanentlyDeletingBookingId === booking.id ? "Borrando…" : "Borrar turno"}</Button>
-                  </div>
-                </article>;
+                const paymentMethod =
+                  booking.customer.paymentMethod === "transferencia"
+                    ? "Transferencia bancaria"
+                    : booking.customer.paymentMethod === "tarjeta o mercado pago"
+                      ? "Tarjeta o Mercado Pago"
+                      : booking.customer.paymentMethod === "efectivo"
+                        ? "Efectivo"
+                        : "No especificado";
+                return (
+                  <article
+                    key={booking.id}
+                    id={`archived-booking-${booking.id}`}
+                    className={`rounded-xl border p-3 text-sm transition-colors duration-300 ${highlightedBookingId === booking.id ? "border-gold bg-gold/20 ring-2 ring-gold/70" : "border-border bg-card"}`}
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <p className="font-semibold">
+                        {professional?.name ?? "Profesional"} · {serviceNames || "Servicio"}
+                      </p>
+                      <Badge variant="outline" className="border-gold/40 text-gold">
+                        {getBookingArchiveLabel(booking, currentTime, "client")}
+                      </Badge>
+                    </div>
+                    <p className="mt-1 text-muted-foreground">
+                      {format(appointmentDate, "EEEE d 'de' MMMM, yyyy", { locale: es })} ·{" "}
+                      {booking.time}
+                    </p>
+                    <p className="mt-1 text-muted-foreground">
+                      Pago: {paymentMethod} · ${booking.totalPrice.toLocaleString("es-AR")}
+                    </p>
+                    <div className="mt-3 flex flex-wrap justify-end gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={restoringBookingId !== null || deletingAllArchivedBookings}
+                        onClick={() => void restoreTurn(booking)}
+                      >
+                        {restoringBookingId === booking.id ? "Restaurando…" : "Restaurar"}
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="destructive"
+                        disabled={
+                          permanentlyDeletingBookingId !== null ||
+                          deletingAllArchivedBookings ||
+                          !canDeleteBooking(booking)
+                        }
+                        onClick={() => void permanentlyDeleteTurn(booking)}
+                      >
+                        {permanentlyDeletingBookingId === booking.id ? "Borrando…" : "Borrar turno"}
+                      </Button>
+                    </div>
+                  </article>
+                );
               })}
             </div>
           )}
-          <DialogFooter><Button type="button" variant="outline" onClick={() => setArchiveDialogOpen(false)}>Cerrar</Button></DialogFooter>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setArchiveDialogOpen(false)}>
+              Cerrar
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
-      <Dialog open={paymentBooking !== null} onOpenChange={(open) => { if (!open && !busyBookingId) { setPaymentBooking(null); setShowTransferDetails(false); } }}>
+      <Dialog
+        open={paymentBooking !== null}
+        onOpenChange={(open) => {
+          if (!open && !busyBookingId) {
+            setPaymentBooking(null);
+            setShowTransferDetails(false);
+          }
+        }}
+      >
         <DialogContent className={showTransferDetails ? "sm:max-w-lg" : "sm:max-w-2xl"}>
           <DialogHeader>
-            <DialogTitle>{showTransferDetails ? "Datos para la transferencia" : paymentBooking?.paymentCancellationStatus ? "Solicitud enviada" : paymentBooking?.paymentStatus === "approved" ? "Solicitar devolución" : "Confirmar pago"}</DialogTitle>
+            <DialogTitle>
+              {showTransferDetails
+                ? "Datos para la transferencia"
+                : paymentBooking?.paymentCancellationStatus
+                  ? "Solicitud enviada"
+                  : paymentBooking?.paymentStatus === "approved"
+                    ? "Solicitar devolución"
+                    : "Confirmar pago"}
+            </DialogTitle>
             <DialogDescription>
               {showTransferDetails
                 ? `Realizá la transferencia bancaria.`
@@ -616,7 +1249,9 @@ function MyBookingsPage() {
           {paymentBooking && showTransferDetails ? (
             <div className="space-y-2 rounded-xl border border-border bg-card p-4 text-sm">
               {(() => {
-                const settings = stores.find((store) => store.code === paymentBooking.storeCode)?.settings;
+                const settings = stores.find(
+                  (store) => store.code === paymentBooking.storeCode,
+                )?.settings;
                 const cbu = settings?.transferCbu?.trim() ?? "";
                 const alias = settings?.transferAlias?.trim() ?? "";
                 const copyableLabel = cbu ? "CBU" : alias ? "Alias" : null;
@@ -626,98 +1261,301 @@ function MyBookingsPage() {
                   { label: "CBU", value: cbu },
                   { label: "Alias", value: alias },
                 ];
-                return <>
-                  {details.map(({ label, value }) => <div key={label} className="flex items-center justify-between gap-3">
-                    <div className="min-w-0"><p className="text-xs text-muted-foreground">{label}</p><p className="break-all font-medium">{value || "No informado"}</p></div>
-                    {label === copyableLabel && value && <Button type="button" size="icon" variant="ghost" aria-label={`Copiar ${label}`} onClick={() => void copyPaymentDetail(value)}><Copy className="h-4 w-4" /></Button>}
-                  </div>)}
-                  <p className="border-t border-border pt-3 font-semibold text-gold">Total a pagar: ${paymentBooking.totalPrice.toLocaleString("es-AR")}</p>
-                </>;
+                return (
+                  <>
+                    {details.map(({ label, value }) => (
+                      <div key={label} className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-xs text-muted-foreground">{label}</p>
+                          <p className="break-all font-medium">{value || "No informado"}</p>
+                        </div>
+                        {label === copyableLabel && value && (
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="ghost"
+                            aria-label={`Copiar ${label}`}
+                            onClick={() => void copyPaymentDetail(value)}
+                          >
+                            <Copy className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </div>
+                    ))}
+                    <p className="border-t border-border pt-3 font-semibold text-gold">
+                      Total a pagar: ${paymentBooking.totalPrice.toLocaleString("es-AR")}
+                    </p>
+                  </>
+                );
               })()}
             </div>
           ) : paymentBooking && paymentBooking.paymentCancellationStatus ? (
             <div className="space-y-2 rounded-xl border border-amber-300/30 bg-amber-300/5 p-4 text-sm">
-              <p className="font-medium text-amber-200">La solicitud de devolución ya fue enviada. El turno está cancelado y el horario quedó disponible.</p>
-              {paymentBooking.refundDestination && <p>{paymentBooking.refundDestinationType === "alias" ? "Alias informado" : "CBU informado"}: <span className="font-mono text-foreground">{paymentBooking.refundDestination}</span></p>}
+              <p className="font-medium text-amber-200">
+                La solicitud de devolución ya fue enviada. El turno está cancelado y el horario
+                quedó disponible.
+              </p>
+              {paymentBooking.refundDestination && (
+                <p>
+                  {paymentBooking.refundDestinationType === "alias"
+                    ? "Alias informado"
+                    : "CBU informado"}
+                  :{" "}
+                  <span className="font-mono text-foreground">
+                    {paymentBooking.refundDestination}
+                  </span>
+                </p>
+              )}
             </div>
           ) : paymentBooking?.paymentStatus === "approved" ? (
             <div className="space-y-3 rounded-xl border border-gold/30 bg-gold/5 p-4 text-sm">
               {(() => {
                 const policy = cancellationPolicyFor(paymentBooking);
                 const percent = policy?.refundPercent ?? 100;
-                const amount = Math.round(paymentBooking.totalPrice * percent / 100);
-                return <p className="font-medium text-gold">Política de devolución: {percent}% · Importe estimado: ${amount.toLocaleString("es-AR")}.</p>;
+                const amount = Math.round((paymentBooking.totalPrice * percent) / 100);
+                return (
+                  <p className="font-medium text-gold">
+                    Política de devolución: {percent}% · Importe estimado: $
+                    {amount.toLocaleString("es-AR")}.
+                  </p>
+                );
               })()}
-              {(paymentBooking.customer.paymentMethod === "transferencia" || paymentBooking.customer.paymentMethod === "efectivo") ? <>
-                <p>Ingresá el dato donde el profesional debe devolver el dinero. Indicá si es CBU o alias. Al enviar la solicitud, el turno se cancela y el horario queda disponible.</p>
-                <label className="grid gap-2 text-muted-foreground">
-                  <span>Seleccionar CBU/Alias</span>
-                  <select value={refundDestinationType} onChange={(event) => { setRefundDestinationType(event.target.value as "cbu" | "alias"); setRefundDestination(""); }} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-foreground">
-                    <option value="cbu">CBU (22 dígitos)</option>
-                    <option value="alias">Alias</option>
-                  </select>
-                  <span>{refundDestinationType === "cbu" ? "CBU para recibir la devolución" : "Alias para recibir la devolución"}</span>
-                  <input value={refundDestination} onChange={(event) => setRefundDestination(refundDestinationType === "cbu" ? event.target.value.replace(/\D/g, "").slice(0, 22) : event.target.value.slice(0, 30))} inputMode={refundDestinationType === "cbu" ? "numeric" : "text"} autoComplete="off" placeholder={refundDestinationType === "cbu" ? "22 dígitos" : "ejemplo.alias"} className="w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-foreground" aria-label={`${refundDestinationType === "cbu" ? "CBU" : "Alias"} para la devolución`} />
-                </label>
-              </> : <p>El profesional gestionará la devolución de Mercado Pago o tarjeta. Al enviar la solicitud, el turno se cancela y el horario queda disponible; recibirás un aviso cuando confirme que hizo la devolución.</p>}
+              {paymentBooking.customer.paymentMethod === "transferencia" ||
+              paymentBooking.customer.paymentMethod === "efectivo" ? (
+                <>
+                  <p>
+                    Ingresá el dato donde el profesional debe devolver el dinero. Indicá si es CBU o
+                    alias. Al enviar la solicitud, el turno se cancela y el horario queda
+                    disponible.
+                  </p>
+                  <label className="grid gap-2 text-muted-foreground">
+                    <span>Seleccionar CBU/Alias</span>
+                    <select
+                      value={refundDestinationType}
+                      onChange={(event) => {
+                        setRefundDestinationType(event.target.value as "cbu" | "alias");
+                        setRefundDestination("");
+                      }}
+                      className="w-full rounded-lg border border-border bg-background px-3 py-2 text-foreground"
+                    >
+                      <option value="cbu">CBU (22 dígitos)</option>
+                      <option value="alias">Alias</option>
+                    </select>
+                    <span>
+                      {refundDestinationType === "cbu"
+                        ? "CBU para recibir la devolución"
+                        : "Alias para recibir la devolución"}
+                    </span>
+                    <input
+                      value={refundDestination}
+                      onChange={(event) =>
+                        setRefundDestination(
+                          refundDestinationType === "cbu"
+                            ? event.target.value.replace(/\D/g, "").slice(0, 22)
+                            : event.target.value.slice(0, 30),
+                        )
+                      }
+                      inputMode={refundDestinationType === "cbu" ? "numeric" : "text"}
+                      autoComplete="off"
+                      placeholder={refundDestinationType === "cbu" ? "22 dígitos" : "ejemplo.alias"}
+                      className="w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-foreground"
+                      aria-label={`${refundDestinationType === "cbu" ? "CBU" : "Alias"} para la devolución`}
+                    />
+                  </label>
+                </>
+              ) : (
+                <p>
+                  El profesional gestionará la devolución de Mercado Pago o tarjeta. Al enviar la
+                  solicitud, el turno se cancela y el horario queda disponible; recibirás un aviso
+                  cuando confirme que hizo la devolución.
+                </p>
+              )}
               {(() => {
-                const minutesRemaining = (Date.parse(`${paymentBooking.date}T${paymentBooking.time}:00-03:00`) - currentTime) / 60_000;
-                const windowMinutes = cancellationPolicyFor(paymentBooking)?.cancellationWindowMinutes ?? 30;
-                return minutesRemaining < windowMinutes
-                  ? <p role="alert" className="text-red-300">La solicitud solo está disponible con al menos {windowMinutes} minutos de anticipación.</p>
-                  : null;
+                const minutesRemaining =
+                  (Date.parse(`${paymentBooking.date}T${paymentBooking.time}:00-03:00`) -
+                    currentTime) /
+                  60_000;
+                const windowMinutes =
+                  cancellationPolicyFor(paymentBooking)?.cancellationWindowMinutes ?? 30;
+                return minutesRemaining < windowMinutes ? (
+                  <p role="alert" className="text-red-300">
+                    La solicitud solo está disponible con al menos {windowMinutes} minutos de
+                    anticipación.
+                  </p>
+                ) : null;
               })()}
             </div>
           ) : paymentBooking ? (
             <div className="space-y-3 rounded-xl border border-border bg-card p-4 text-sm">
-              <p>Método de pago: <span className="font-medium text-gold">{paymentBooking.customer.paymentMethod === "transferencia" ? "Transferencia bancaria" : paymentBooking.customer.paymentMethod === "tarjeta o mercado pago" ? "Tarjeta o Mercado Pago" : paymentBooking.customer.paymentMethod === "efectivo" ? "Efectivo" : "No especificado"}</span></p>
-              <p>Total a pagar: <span className="font-semibold text-gold">${paymentBooking.totalPrice.toLocaleString("es-AR")}</span></p>
-              {paymentBooking.customer.paymentMethod === "efectivo" && <p className="text-muted-foreground">El pago en efectivo se realiza en la sucursal; el pago en línea no está disponible para este método de pago.</p>}
+              <p>
+                Método de pago:{" "}
+                <span className="font-medium text-gold">
+                  {paymentBooking.customer.paymentMethod === "transferencia"
+                    ? "Transferencia bancaria"
+                    : paymentBooking.customer.paymentMethod === "tarjeta o mercado pago"
+                      ? "Tarjeta o Mercado Pago"
+                      : paymentBooking.customer.paymentMethod === "efectivo"
+                        ? "Efectivo"
+                        : "No especificado"}
+                </span>
+              </p>
+              <p>
+                Total a pagar:{" "}
+                <span className="font-semibold text-gold">
+                  ${paymentBooking.totalPrice.toLocaleString("es-AR")}
+                </span>
+              </p>
+              {paymentBooking.customer.paymentMethod === "efectivo" && (
+                <p className="text-muted-foreground">
+                  El pago en efectivo se realiza en la sucursal; el pago en línea no está disponible
+                  para este método de pago.
+                </p>
+              )}
             </div>
           ) : null}
           <DialogFooter className="flex-col-reverse gap-3 sm:flex-row sm:flex-wrap sm:justify-end sm:gap-4 sm:space-x-0">
             {showTransferDetails ? (
-              <Button type="button" variant="outline" className="w-full sm:w-auto" disabled={busyBookingId !== null} onClick={() => setShowTransferDetails(false)}>Volver</Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full sm:w-auto"
+                disabled={busyBookingId !== null}
+                onClick={() => setShowTransferDetails(false)}
+              >
+                Volver
+              </Button>
             ) : paymentBooking ? (
-              paymentBooking.paymentCancellationStatus ? <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => setPaymentBooking(null)}>Cerrar</Button>
-              : paymentBooking.paymentStatus === "approved" ? <>
-                <Button type="button" variant="outline" className="w-full sm:w-auto" disabled={busyBookingId !== null} onClick={() => setPaymentBooking(null)}>Volver</Button>
-                {((paymentBooking.customer.paymentMethod !== "transferencia" && paymentBooking.customer.paymentMethod !== "efectivo") || isValidRefundDestination(refundDestinationType, refundDestination))
-                  && Date.parse(`${paymentBooking.date}T${paymentBooking.time}:00-03:00`) - currentTime >= (cancellationPolicyFor(paymentBooking)?.cancellationWindowMinutes ?? 30) * 60 * 1000
-                  && <Button type="button" className="w-full bg-gold text-primary-foreground hover:bg-gold-soft sm:w-auto" disabled={busyBookingId !== null} onClick={() => void cancelPayment(paymentBooking)}>
-                    {busyBookingId === paymentBooking.id ? "Enviando solicitud…" : "Solicitar devolución"}
-                  </Button>}
-              </> : <>
-                <Button type="button" variant="outline" className="w-full sm:w-auto" disabled={busyBookingId !== null || paymentBooking.paymentReportedAt !== undefined} onClick={() => {
-                  setNewPaymentMethod(paymentBooking.customer.paymentMethod ?? "efectivo");
-                  setChangingPaymentBooking(paymentBooking);
-                }}>Cambiar método de pago</Button>
-                <Button type="button" variant="outline" className="w-full border-emerald-500 bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-60 sm:w-auto" disabled={busyBookingId !== null || !!paymentBooking.paymentReportedAt} onClick={() => void reportPayment(paymentBooking)}>Indicar pago realizado</Button>
-                {paymentBooking.customer.paymentMethod !== "efectivo" && <Button type="button" disabled={busyBookingId !== null} className="w-full bg-gold text-primary-foreground hover:bg-gold-soft sm:w-auto" onClick={() => void payBooking(paymentBooking)}>
-                  {payingBookingId === paymentBooking.id ? "Preparando pago…" : "Pagar"}
-                </Button>}
-              </>
+              paymentBooking.paymentCancellationStatus ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full sm:w-auto"
+                  onClick={() => setPaymentBooking(null)}
+                >
+                  Cerrar
+                </Button>
+              ) : paymentBooking.paymentStatus === "approved" ? (
+                <>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full sm:w-auto"
+                    disabled={busyBookingId !== null}
+                    onClick={() => setPaymentBooking(null)}
+                  >
+                    Volver
+                  </Button>
+                  {((paymentBooking.customer.paymentMethod !== "transferencia" &&
+                    paymentBooking.customer.paymentMethod !== "efectivo") ||
+                    isValidRefundDestination(refundDestinationType, refundDestination)) &&
+                    Date.parse(`${paymentBooking.date}T${paymentBooking.time}:00-03:00`) -
+                      currentTime >=
+                      (cancellationPolicyFor(paymentBooking)?.cancellationWindowMinutes ?? 30) *
+                        60 *
+                        1000 && (
+                      <Button
+                        type="button"
+                        className="w-full bg-gold text-primary-foreground hover:bg-gold-soft sm:w-auto"
+                        disabled={busyBookingId !== null}
+                        onClick={() => void cancelPayment(paymentBooking)}
+                      >
+                        {busyBookingId === paymentBooking.id
+                          ? "Enviando solicitud…"
+                          : "Solicitar devolución"}
+                      </Button>
+                    )}
+                </>
+              ) : (
+                <>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full sm:w-auto"
+                    disabled={
+                      busyBookingId !== null || paymentBooking.paymentReportedAt !== undefined
+                    }
+                    onClick={() => {
+                      setNewPaymentMethod(paymentBooking.customer.paymentMethod ?? "efectivo");
+                      setChangingPaymentBooking(paymentBooking);
+                    }}
+                  >
+                    Cambiar método de pago
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full border-emerald-500 bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-60 sm:w-auto"
+                    disabled={busyBookingId !== null || !!paymentBooking.paymentReportedAt}
+                    onClick={() => void reportPayment(paymentBooking)}
+                  >
+                    Indicar pago realizado
+                  </Button>
+                  {paymentBooking.customer.paymentMethod !== "efectivo" && (
+                    <Button
+                      type="button"
+                      disabled={busyBookingId !== null}
+                      className="w-full bg-gold text-primary-foreground hover:bg-gold-soft sm:w-auto"
+                      onClick={() => void payBooking(paymentBooking)}
+                    >
+                      {payingBookingId === paymentBooking.id ? "Preparando pago…" : "Pagar"}
+                    </Button>
+                  )}
+                </>
+              )
             ) : null}
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      <Dialog open={changingPaymentBooking !== null} onOpenChange={(open) => { if (!open && !busyBookingId) setChangingPaymentBooking(null); }}>
+      <Dialog
+        open={changingPaymentBooking !== null}
+        onOpenChange={(open) => {
+          if (!open && !busyBookingId) setChangingPaymentBooking(null);
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Cambiar método de pago</DialogTitle>
-            <DialogDescription>Podés cambiarlo mientras el profesional no haya confirmado el pago.</DialogDescription>
+            <DialogDescription>
+              Podés cambiarlo mientras el profesional no haya confirmado el pago.
+            </DialogDescription>
           </DialogHeader>
           <label className="grid gap-2 text-sm text-muted-foreground">
             <span>Nuevo método</span>
-            <select value={newPaymentMethod} onChange={(event) => setNewPaymentMethod(event.target.value as NonNullable<Booking["customer"]["paymentMethod"]>)} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-foreground">
+            <select
+              value={newPaymentMethod}
+              onChange={(event) =>
+                setNewPaymentMethod(
+                  event.target.value as NonNullable<Booking["customer"]["paymentMethod"]>,
+                )
+              }
+              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-foreground"
+            >
               <option value="efectivo">Efectivo</option>
               <option value="transferencia">Transferencia bancaria</option>
               <option value="tarjeta o mercado pago">Tarjeta o Mercado Pago</option>
             </select>
           </label>
           <DialogFooter>
-            <Button type="button" variant="outline" disabled={busyBookingId !== null} onClick={() => setChangingPaymentBooking(null)}>Cancelar</Button>
-            <Button type="button" disabled={!changingPaymentBooking || changingPaymentBooking.paymentStatus === "approved" || busyBookingId !== null} className="bg-gold text-primary-foreground hover:bg-gold-soft" onClick={() => void savePaymentMethod()}>{busyBookingId === changingPaymentBooking?.id ? "Guardando…" : "Guardar método"}</Button>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={busyBookingId !== null}
+              onClick={() => setChangingPaymentBooking(null)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              disabled={
+                !changingPaymentBooking ||
+                changingPaymentBooking.paymentStatus === "approved" ||
+                busyBookingId !== null
+              }
+              className="bg-gold text-primary-foreground hover:bg-gold-soft"
+              onClick={() => void savePaymentMethod()}
+            >
+              {busyBookingId === changingPaymentBooking?.id ? "Guardando…" : "Guardar método"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

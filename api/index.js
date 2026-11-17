@@ -18,7 +18,11 @@ export default async function handler(req, res) {
       res.setHeader("Allow", "GET, POST");
       return res.end("Method Not Allowed");
     }
-    const paymentId = url.searchParams.get("data.id") || url.searchParams.get("id") || req.body?.data?.id || req.body?.id;
+    const paymentId =
+      url.searchParams.get("data.id") ||
+      url.searchParams.get("id") ||
+      req.body?.data?.id ||
+      req.body?.id;
     if (!paymentId) {
       res.statusCode = 400;
       res.setHeader("Content-Type", "application/json");
@@ -28,7 +32,9 @@ export default async function handler(req, res) {
     req.body = {
       action: "mercadopago-payment-webhook",
       paymentId: String(paymentId),
-      ...(url.searchParams.get("booking_id") ? { bookingId: url.searchParams.get("booking_id") } : {}),
+      ...(url.searchParams.get("booking_id")
+        ? { bookingId: url.searchParams.get("booking_id") }
+        : {}),
     };
     return dataHandler(req, res);
   }

@@ -9,23 +9,41 @@ export default defineConfig(({ mode }) => {
 
   return {
     define: {
-      "import.meta.env.VITE_DOMAIN_USER": JSON.stringify(env.VITE_DOMAIN_USER || env.DOMAIN_USER || env.VITE_KINDE_DOMAIN || ""),
-      "import.meta.env.VITE_AUTH_USER": JSON.stringify(env.VITE_AUTH_USER || env.AUTH_USER || env.VITE_KINDE_CLIENT_ID || ""),
-      "import.meta.env.VITE_ORG_CODE": JSON.stringify(env.VITE_ORG_CODE || env.CODE_ORG || env.ORG_CODE || env.VITE_KINDE_ORG_CODE || ""),
-      "import.meta.env.VITE_AUTH_CONNECTION_ID": JSON.stringify(env.VITE_AUTH_CONNECTION_ID || env.AUTH_CONNECTION_ID || env.VITE_KINDE_CONNECTION_ID || ""),
+      "import.meta.env.VITE_DOMAIN_USER": JSON.stringify(
+        env.VITE_DOMAIN_USER || env.DOMAIN_USER || env.VITE_KINDE_DOMAIN || "",
+      ),
+      "import.meta.env.VITE_AUTH_USER": JSON.stringify(
+        env.VITE_AUTH_USER || env.AUTH_USER || env.VITE_KINDE_CLIENT_ID || "",
+      ),
+      "import.meta.env.VITE_ORG_CODE": JSON.stringify(
+        env.VITE_ORG_CODE || env.CODE_ORG || env.ORG_CODE || env.VITE_KINDE_ORG_CODE || "",
+      ),
+      "import.meta.env.VITE_AUTH_CONNECTION_ID": JSON.stringify(
+        env.VITE_AUTH_CONNECTION_ID || env.AUTH_CONNECTION_ID || env.VITE_KINDE_CONNECTION_ID || "",
+      ),
     },
     build: {
       rollupOptions: {
         onwarn(warning, defaultHandler) {
-          if (warning.code === "UNUSED_EXTERNAL_IMPORT" && warning.message.includes('@tanstack/router-core')) return;
+          if (
+            warning.code === "UNUSED_EXTERNAL_IMPORT" &&
+            warning.message.includes("@tanstack/router-core")
+          )
+            return;
           defaultHandler(warning);
         },
         output: {
           manualChunks(id) {
-            if (id.includes("/node_modules/react/") || id.includes("/node_modules/react-dom/") || id.includes("/node_modules/scheduler/")) return "react-vendor";
+            if (
+              id.includes("/node_modules/react/") ||
+              id.includes("/node_modules/react-dom/") ||
+              id.includes("/node_modules/scheduler/")
+            )
+              return "react-vendor";
             if (id.includes("/node_modules/@tanstack/")) return "tanstack-vendor";
             if (id.includes("/node_modules/@radix-ui/")) return "radix-vendor";
-            if (id.includes("/node_modules/recharts/") || id.includes("/node_modules/d3-")) return "charts-vendor";
+            if (id.includes("/node_modules/recharts/") || id.includes("/node_modules/d3-"))
+              return "charts-vendor";
             if (id.includes("/node_modules/lucide-react/")) return "icons";
             if (id.includes("/node_modules/date-fns/")) return "date-utils";
             if (id.includes("/node_modules/@kinde-oss/kinde-auth-react/")) return "authentication";

@@ -14,8 +14,10 @@ const Toaster = ({ ...props }: ToasterProps) => {
           content: "max-w-[calc(100%-2rem)] flex-none text-center [&_*]:text-center",
           title: "text-center",
           description: "w-full text-center group-[.toast]:text-muted-foreground",
-          actionButton: "justify-center text-center group-[.toast]:bg-primary group-[.toast]:text-primary-foreground",
-          cancelButton: "justify-center text-center group-[.toast]:bg-muted group-[.toast]:text-muted-foreground",
+          actionButton:
+            "justify-center text-center group-[.toast]:bg-primary group-[.toast]:text-primary-foreground",
+          cancelButton:
+            "justify-center text-center group-[.toast]:bg-muted group-[.toast]:text-muted-foreground",
         },
       }}
       {...props}

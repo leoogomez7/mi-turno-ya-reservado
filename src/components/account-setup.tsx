@@ -30,21 +30,39 @@ export function AccountSetup({ onComplete }: { onComplete: (role: AccountRole) =
       <section className="w-full max-w-lg rounded-3xl border border-gold/30 bg-card p-6 shadow-2xl sm:p-8">
         <p className="text-xs uppercase tracking-[0.2em] text-gold">Un paso más</p>
         <h1 className="mt-2 font-display text-3xl font-semibold">Configurá tu cuenta</h1>
-        <p className="mt-2 text-sm text-muted-foreground">{user?.email}. Esta elección se guarda en la base de datos.</p>
+        <p className="mt-2 text-sm text-muted-foreground">
+          {user?.email}. Esta elección se guarda en la base de datos.
+        </p>
         <label className="mt-6 block text-sm text-muted-foreground">
           Tipo de cuenta
-          <select className="mt-2 block w-full rounded-lg border border-border bg-background px-3 py-2 text-foreground" value={role} onChange={(event) => setRole(event.target.value as AccountRole)}>
+          <select
+            className="mt-2 block w-full rounded-lg border border-border bg-background px-3 py-2 text-foreground"
+            value={role}
+            onChange={(event) => setRole(event.target.value as AccountRole)}
+          >
             <option value="client">Cliente</option>
             <option value="admin">Administrador / Profesional</option>
           </select>
         </label>
         {role === "admin" && (
           <p className="mt-4 rounded-lg border border-gold/20 bg-gold/5 p-3 text-sm text-muted-foreground">
-            Cualquier usuario puede elegir este rol. Se creará una sucursal propia con un código único para compartir con tus clientes.
+            Cualquier usuario puede elegir este rol. Se creará una sucursal propia con un código
+            único para compartir con tus clientes.
           </p>
         )}
-        {error && <p role="alert" className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">{error}</p>}
-        <Button className="mt-6 w-full bg-gold text-primary-foreground hover:bg-gold-soft" disabled={saving} onClick={() => void saveRole()}>
+        {error && (
+          <p
+            role="alert"
+            className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300"
+          >
+            {error}
+          </p>
+        )}
+        <Button
+          className="mt-6 w-full bg-gold text-primary-foreground hover:bg-gold-soft"
+          disabled={saving}
+          onClick={() => void saveRole()}
+        >
           Guardar
         </Button>
       </section>

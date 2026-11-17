@@ -26,12 +26,23 @@ export function LoadingScreen({
 
         <p className="brand-loader__brand">Mi Turno Ya Reservado</p>
         <div className="brand-loader__status">
-          <span className="brand-loader__status-text">{error ? "No se pudo cargar" : "Cargando"}</span>
-          {!error && <span className="brand-loader__dots" aria-hidden="true"><i /><i /><i /></span>}
+          <span className="brand-loader__status-text">
+            {error ? "No se pudo cargar" : "Cargando"}
+          </span>
+          {!error && (
+            <span className="brand-loader__dots" aria-hidden="true">
+              <i />
+              <i />
+              <i />
+            </span>
+          )}
         </div>
         <p className="brand-loader__message">{error || message}</p>
         {error && onRetry && (
-          <Button className="mt-6 bg-gold text-primary-foreground hover:bg-gold-soft" onClick={onRetry}>
+          <Button
+            className="mt-6 bg-gold text-primary-foreground hover:bg-gold-soft"
+            onClick={onRetry}
+          >
             Reintentar
           </Button>
         )}

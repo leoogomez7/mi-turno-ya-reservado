@@ -24,9 +24,7 @@ function getScrollMetrics(): ScrollMetrics {
   const thumbHeight = scrollable
     ? Math.min(viewportHeight, Math.max(36, (viewportHeight / scrollHeight) * viewportHeight))
     : viewportHeight;
-  const thumbTop = scrollable
-    ? (window.scrollY / maxScroll) * (viewportHeight - thumbHeight)
-    : 0;
+  const thumbTop = scrollable ? (window.scrollY / maxScroll) * (viewportHeight - thumbHeight) : 0;
 
   return { viewportHeight, thumbHeight, thumbTop, scrollTop: window.scrollY, scrollable };
 }
@@ -58,7 +56,11 @@ export function OverlayScrollbar() {
     const rect = track.getBoundingClientRect();
     const maxThumbTop = Math.max(0, rect.height - metrics.thumbHeight);
     const thumbTop = Math.max(0, Math.min(maxThumbTop, pointerY - rect.top - dragOffset.current));
-    const maxScroll = Math.max(0, Math.max(document.documentElement.scrollHeight, document.body.scrollHeight) - window.innerHeight);
+    const maxScroll = Math.max(
+      0,
+      Math.max(document.documentElement.scrollHeight, document.body.scrollHeight) -
+        window.innerHeight,
+    );
     window.scrollTo({ top: maxThumbTop > 0 ? (thumbTop / maxThumbTop) * maxScroll : 0 });
   }
 
@@ -67,27 +69,42 @@ export function OverlayScrollbar() {
     event.preventDefault();
     const rect = event.currentTarget.getBoundingClientRect();
     const pointerOffset = event.clientY - rect.top;
-    const thumbContainsPointer = pointerOffset >= metrics.thumbTop && pointerOffset <= metrics.thumbTop + metrics.thumbHeight;
-    dragOffset.current = thumbContainsPointer ? pointerOffset - metrics.thumbTop : metrics.thumbHeight / 2;
+    const thumbContainsPointer =
+      pointerOffset >= metrics.thumbTop && pointerOffset <= metrics.thumbTop + metrics.thumbHeight;
+    dragOffset.current = thumbContainsPointer
+      ? pointerOffset - metrics.thumbTop
+      : metrics.thumbHeight / 2;
     if (!thumbContainsPointer) scrollToTrackPosition(event.clientY);
     event.currentTarget.setPointerCapture(event.pointerId);
   }
 
   function handlePointerMove(event: PointerEvent<HTMLDivElement>) {
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) scrollToTrackPosition(event.clientY);
+    if (event.currentTarget.hasPointerCapture(event.pointerId))
+      scrollToTrackPosition(event.clientY);
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     const page = Math.max(80, window.innerHeight * 0.9);
     const currentScroll = window.scrollY;
-    const maxScroll = Math.max(0, Math.max(document.documentElement.scrollHeight, document.body.scrollHeight) - window.innerHeight);
-    const target = event.key === "ArrowDown" ? currentScroll + 40
-      : event.key === "ArrowUp" ? currentScroll - 40
-        : event.key === "PageDown" ? currentScroll + page
-          : event.key === "PageUp" ? currentScroll - page
-            : event.key === "Home" ? 0
-              : event.key === "End" ? maxScroll
-                : null;
+    const maxScroll = Math.max(
+      0,
+      Math.max(document.documentElement.scrollHeight, document.body.scrollHeight) -
+        window.innerHeight,
+    );
+    const target =
+      event.key === "ArrowDown"
+        ? currentScroll + 40
+        : event.key === "ArrowUp"
+          ? currentScroll - 40
+          : event.key === "PageDown"
+            ? currentScroll + page
+            : event.key === "PageUp"
+              ? currentScroll - page
+              : event.key === "Home"
+                ? 0
+                : event.key === "End"
+                  ? maxScroll
+                  : null;
     if (target === null) return;
     event.preventDefault();
     window.scrollTo({ top: target, behavior: "auto" });
@@ -103,7 +120,11 @@ export function OverlayScrollbar() {
       aria-orientation="vertical"
       aria-valuemin={0}
       aria-valuemax={100}
-      aria-valuenow={Math.round((metrics.scrollTop / Math.max(1, document.documentElement.scrollHeight - metrics.viewportHeight)) * 100)}
+      aria-valuenow={Math.round(
+        (metrics.scrollTop /
+          Math.max(1, document.documentElement.scrollHeight - metrics.viewportHeight)) *
+          100,
+      )}
       tabIndex={0}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}

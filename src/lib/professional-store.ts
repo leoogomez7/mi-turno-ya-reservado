@@ -1,5 +1,10 @@
 import { format, getDay, parseISO } from "date-fns";
-import { getCloudRecords, getCurrentStoreCode, isCloudInitialized, persistCloudCollection } from "./cloud-sync";
+import {
+  getCloudRecords,
+  getCurrentStoreCode,
+  isCloudInitialized,
+  persistCloudCollection,
+} from "./cloud-sync";
 
 export interface ProfessionalService {
   id: string;
@@ -74,7 +79,9 @@ export function generateSlotsFromSchedule(scheduleDay: ProfessionalScheduleDate)
 
   const slots: string[] = [];
   while (current + 15 <= end) {
-    slots.push(`${String(Math.floor(current / 60)).padStart(2, "0")}:${String(current % 60).padStart(2, "0")}`);
+    slots.push(
+      `${String(Math.floor(current / 60)).padStart(2, "0")}:${String(current % 60).padStart(2, "0")}`,
+    );
     current += 15;
   }
   return slots;
@@ -92,7 +99,12 @@ export function getAvailableSlotCapacities(
   professional: Professional,
   date: Date,
   duration: number,
-  bookings: Array<Pick<BookingAvailabilityRecord, "id" | "storeCode" | "barberId" | "date" | "time" | "duration" | "status">>,
+  bookings: Array<
+    Pick<
+      BookingAvailabilityRecord,
+      "id" | "storeCode" | "barberId" | "date" | "time" | "duration" | "status"
+    >
+  >,
   excludedBookingId: string,
   storeCode?: string,
 ) {
@@ -100,11 +112,14 @@ export function getAvailableSlotCapacities(
   const dateSlots = getAvailableSlotsForDate(professional, date);
   const capacity = getScheduleForDate(professional, date)?.capacity ?? 1;
   const targetDate = format(date, "yyyy-MM-dd");
-  const relevantBookings = bookings.filter((booking) => booking.id !== excludedBookingId
-    && booking.date === targetDate
-    && booking.barberId === professional.id
-    && (!storeCode || booking.storeCode === storeCode)
-    && booking.status !== "cancelled");
+  const relevantBookings = bookings.filter(
+    (booking) =>
+      booking.id !== excludedBookingId &&
+      booking.date === targetDate &&
+      booking.barberId === professional.id &&
+      (!storeCode || booking.storeCode === storeCode) &&
+      booking.status !== "cancelled",
+  );
 
   return dateSlots.flatMap((time) => {
     const [hours, minutes] = time.split(":").map(Number);
@@ -166,7 +181,11 @@ export const professionalStore = {
   async add(professional: Omit<Professional, "id">) {
     const list = read();
     const existingIds = new Set(list.map((p) => p.id));
-    let id = professional.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || crypto.randomUUID();
+    let id =
+      professional.name
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "") || crypto.randomUUID();
     if (existingIds.has(id)) {
       id = crypto.randomUUID();
     }
@@ -176,7 +195,8 @@ export const professionalStore = {
   },
   async update(id: string, patch: Partial<Omit<Professional, "id">>) {
     const list = read();
-    if (!list.some((professional) => professional.id === id)) throw new Error("No encontramos ese profesional.");
+    if (!list.some((professional) => professional.id === id))
+      throw new Error("No encontramos ese profesional.");
     await write(list.map((p) => (p.id === id ? { ...p, ...patch } : p)));
   },
   async remove(id: string) {
@@ -199,4 +219,3 @@ export function getProfessionalService(professionalId: string, serviceId: string
 export function getProfessionalServiceList(professionalId: string) {
   return getProfessional(professionalId)?.services ?? [];
 }
-

@@ -14,22 +14,22 @@ No subir `.env.local` ni compartir valores privados. Para Vite, los campos públ
 
 ## Variables
 
-| Variable                     | Uso                                                                                                                   | Dónde se configura                                |
-| ---------------------------- | --------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
-| `VITE_DOMAIN_USER`         | Dominio público del tenant Kinde para el SDK web                                                                     | `.env.local` y Vercel                            |
-| `VITE_AUTH_USER`           | Client ID público de la aplicación Kinde                                                                            | `.env.local` y Vercel                            |
-| `VITE_ORG_CODE`            | Organización Kinde opcional                                                                                          | `.env.local` y Vercel                            |
-| `VITE_AUTH_CONNECTION_ID`  | Conexión de email opcional de Kinde                                                                                  | `.env.local` y Vercel                            |
-| `KINDE_ISSUER_URL`         | Emisor esperado al verificar tokens en el servidor; debe corresponder al dominio Kinde                                | Solo servidor / Vercel                             |
-| `KINDE_CLIENT_ID`          | Audiencia esperada al verificar tokens; debe coincidir con el Client ID anterior                                      | Solo servidor / Vercel                             |
-| `TURSO_DATABASE_URL`       | URL de la base Turso de turnos y profesionales                                                                        | Solo servidor / Vercel                             |
-| `TURSO_AUTH_TOKEN`         | Credencial privada de Turso                                                                                           | Solo servidor / Vercel                             |
-| Código de sucursal          | Código público único generado al registrar una sucursal administradora; Turso garantiza su unicidad                | Se guarda en Turso y se comparte con clientes      |
-| `MERCADOPAGO_ACCESS_TOKEN` | Token privado global que todavía se usa para los pagos de suscripción de la plataforma                               | Solo servidor / Vercel                             |
-| `MERCADOPAGO_CREDENTIALS_ENCRYPTION_KEY` | Secreto estable para cifrar con AES-256-GCM los Access Token individuales de cada sucursal | Solo servidor / Vercel; obligatorio para guardar credenciales por sucursal |
-| `DESCUENTO_OFF`            | Códigos adicionales válidos para aplicar 10% de descuento; varios valores se separan con coma                         | Solo servidor / Vercel                             |
-| `GRATIS2026`               | Código o códigos válidos para activar gratis el plan seleccionado; varios valores se separan con coma                | Solo servidor / Vercel                             |
-| `PUBLIC_APP_URL`           | Dirección base publicada de la aplicación, sin rutas como `/reserva`; Mercado Pago vuelve allí después del pago | Vercel; opcional local                             |
+| Variable                                 | Uso                                                                                                             | Dónde se configura                                                         |
+| ---------------------------------------- | --------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| `VITE_DOMAIN_USER`                       | Dominio público del tenant Kinde para el SDK web                                                                | `.env.local` y Vercel                                                      |
+| `VITE_AUTH_USER`                         | Client ID público de la aplicación Kinde                                                                        | `.env.local` y Vercel                                                      |
+| `VITE_ORG_CODE`                          | Organización Kinde opcional                                                                                     | `.env.local` y Vercel                                                      |
+| `VITE_AUTH_CONNECTION_ID`                | Conexión de email opcional de Kinde                                                                             | `.env.local` y Vercel                                                      |
+| `KINDE_ISSUER_URL`                       | Emisor esperado al verificar tokens en el servidor; debe corresponder al dominio Kinde                          | Solo servidor / Vercel                                                     |
+| `KINDE_CLIENT_ID`                        | Audiencia esperada al verificar tokens; debe coincidir con el Client ID anterior                                | Solo servidor / Vercel                                                     |
+| `TURSO_DATABASE_URL`                     | URL de la base Turso de turnos y profesionales                                                                  | Solo servidor / Vercel                                                     |
+| `TURSO_AUTH_TOKEN`                       | Credencial privada de Turso                                                                                     | Solo servidor / Vercel                                                     |
+| Código de sucursal                       | Código público único generado al registrar una sucursal administradora; Turso garantiza su unicidad             | Se guarda en Turso y se comparte con clientes                              |
+| `MERCADOPAGO_ACCESS_TOKEN`               | Token privado global que todavía se usa para los pagos de suscripción de la plataforma                          | Solo servidor / Vercel                                                     |
+| `MERCADOPAGO_CREDENTIALS_ENCRYPTION_KEY` | Secreto estable para cifrar con AES-256-GCM los Access Token individuales de cada sucursal                      | Solo servidor / Vercel; obligatorio para guardar credenciales por sucursal |
+| `DESCUENTO_OFF`                          | Códigos adicionales válidos para aplicar 10% de descuento; varios valores se separan con coma                   | Solo servidor / Vercel                                                     |
+| `GRATIS2026`                             | Código o códigos válidos para activar gratis el plan seleccionado; varios valores se separan con coma           | Solo servidor / Vercel                                                     |
+| `PUBLIC_APP_URL`                         | Dirección base publicada de la aplicación, sin rutas como `/reserva`; Mercado Pago vuelve allí después del pago | Vercel; opcional local                                                     |
 
 ## Roles y seguridad
 

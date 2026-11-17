@@ -1,18 +1,45 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
-import { format, isToday, isThisWeek, isThisMonth, parseISO, subMonths } from "date-fns";
+import {
+  format,
+  isToday,
+  isThisWeek,
+  isThisMonth,
+  parseISO,
+  startOfMonth,
+  subMonths,
+} from "date-fns";
 import { es } from "date-fns/locale";
-import { Calendar, CalendarDays, DollarSign, Scissors, TrendingDown, TrendingUp, Users, type LucideIcon } from "lucide-react";
+import {
+  Calendar,
+  CalendarDays,
+  DollarSign,
+  Scissors,
+  TrendingDown,
+  TrendingUp,
+  Users,
+  type LucideIcon,
+} from "lucide-react";
 
 import { SiteHeader } from "@/components/site-header";
 import { bookingStore, type Booking } from "@/lib/booking-store";
-import { professionalStore, getProfessional, getProfessionalService } from "@/lib/professional-store";
+import {
+  professionalStore,
+  getProfessional,
+  getProfessionalService,
+} from "@/lib/professional-store";
 import { AuthRequired } from "@/components/auth-required";
 import { useAppAuth } from "@/lib/auth";
 import { LoadingScreen } from "@/components/loading-screen";
 
-const ChartCard = lazy(() => import("@/components/admin-charts").then((module) => ({ default: module.ChartCard })));
-const MonthlyComparisonChart = lazy(() => import("@/components/admin-charts").then((module) => ({ default: module.MonthlyComparisonChart })));
+const ChartCard = lazy(() =>
+  import("@/components/admin-charts").then((module) => ({ default: module.ChartCard })),
+);
+const MonthlyComparisonChart = lazy(() =>
+  import("@/components/admin-charts").then((module) => ({
+    default: module.MonthlyComparisonChart,
+  })),
+);
 
 export const Route = createFileRoute("/admin")({
   head: () => ({ meta: [{ title: "Estadísticas" }] }),
@@ -23,8 +50,10 @@ export function AdminPage() {
   const { isAuthenticated, isLoading, role } = useAppAuth();
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [statsReady, setStatsReady] = useState(false);
-  const [startMonth, setStartMonth] = useState(() => format(subMonths(new Date(), 11), "yyyy-MM"));
-  const [endMonth, setEndMonth] = useState(() => format(new Date(), "yyyy-MM"));
+  const [startDate, setStartDate] = useState(() =>
+    format(startOfMonth(subMonths(new Date(), 11)), "yyyy-MM-dd"),
+  );
+  const [endDate, setEndDate] = useState(() => format(new Date(), "yyyy-MM-dd"));
 
   useEffect(() => {
     const reload = () => {
@@ -37,19 +66,46 @@ export function AdminPage() {
   }, []);
 
   const stats = useMemo(() => computeStats(bookings), [bookings]);
-  const periodStats = useMemo(() => computePeriodStats(bookings, startMonth, endMonth), [bookings, endMonth, startMonth]);
-  const validMonthRange = startMonth <= endMonth;
+  const periodBookings = useMemo(
+    () =>
+      bookings.filter(
+        (booking) =>
+          isAttendedBooking(booking) && booking.date >= startDate && booking.date <= endDate,
+      ),
+    [bookings, endDate, startDate],
+  );
+  const periodStats = useMemo(
+    () => computePeriodStats(bookings, startDate, endDate),
+    [bookings, endDate, startDate],
+  );
+  const periodChartStats = useMemo(() => computeStats(periodBookings), [periodBookings]);
+  const validDateRange = Boolean(startDate && endDate && startDate <= endDate);
 
-  if (isLoading || (isAuthenticated && role === "admin" && !statsReady)) return <LoadingScreen message="Preparando tus estadísticas" />;
-  if (!isAuthenticated || role !== "admin") return <><SiteHeader /><AuthRequired role="admin" title="Administración" /></>;
+  if (isLoading || (isAuthenticated && role === "admin" && !statsReady))
+    return <LoadingScreen message="Preparando tus estadísticas" />;
+  if (!isAuthenticated || role !== "admin")
+    return (
+      <>
+        <SiteHeader />
+        <AuthRequired role="admin" title="Administración" />
+      </>
+    );
 
   return (
     <div className="min-h-screen bg-gradient-dark">
       <SiteHeader />
       <main className="mx-auto grid w-full max-w-7xl gap-4 px-4 py-10 sm:px-6">
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <Stat icon={TrendingUp} label="Profesional con más atención" value={`${stats.topBarber.name} · ${stats.topBarber.count}`} />
-          <Stat icon={TrendingDown} label="Profesional con menos atención" value={`${stats.lowBarber.name} · ${stats.lowBarber.count}`} />
+          <Stat
+            icon={TrendingUp}
+            label="Profesional con más atención · histórico"
+            value={`${stats.topBarber.name} · ${stats.topBarber.count}`}
+          />
+          <Stat
+            icon={TrendingDown}
+            label="Profesional con menos atención · histórico"
+            value={`${stats.lowBarber.name} · ${stats.lowBarber.count}`}
+          />
           <Stat icon={Users} label="Último cliente" value={stats.lastClient} />
           <Stat icon={Calendar} label="Último profesional" value={stats.lastBarber} />
         </div>
@@ -58,51 +114,132 @@ export function AdminPage() {
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <p className="text-xs uppercase tracking-[0.2em] text-gold">Análisis del negocio</p>
-              <h2 className="mt-1 font-display text-2xl font-semibold">Resumen y evolución mensual</h2>
-              <p className="mt-1 text-sm text-muted-foreground">Compará turnos, servicios e ingresos en el período que elijas.</p>
+              <h2 className="mt-1 font-display text-2xl font-semibold">
+                Resumen y evolución mensual
+              </h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Compará turnos, servicios e ingresos en el período que elijas.
+              </p>
             </div>
             <div className="grid grid-cols-2 gap-3 sm:flex sm:items-end">
               <label className="grid gap-1 text-xs text-muted-foreground">
                 Desde
-                <input type="month" value={startMonth} max={endMonth} onChange={(event) => setStartMonth(event.target.value)} className="h-10 rounded-lg border border-border bg-background px-3 text-sm text-foreground scheme-dark" />
+                <input
+                  type="date"
+                  value={startDate}
+                  max={endDate}
+                  onChange={(event) => setStartDate(event.target.value)}
+                  className="h-10 rounded-lg border border-border bg-background px-3 text-sm text-foreground scheme-dark"
+                />
               </label>
               <label className="grid gap-1 text-xs text-muted-foreground">
                 Hasta
-                <input type="month" value={endMonth} min={startMonth} max={format(new Date(), "yyyy-MM")} onChange={(event) => setEndMonth(event.target.value)} className="h-10 rounded-lg border border-border bg-background px-3 text-sm text-foreground scheme-dark" />
+                <input
+                  type="date"
+                  value={endDate}
+                  min={startDate}
+                  max={format(new Date(), "yyyy-MM-dd")}
+                  onChange={(event) => setEndDate(event.target.value)}
+                  className="h-10 rounded-lg border border-border bg-background px-3 text-sm text-foreground scheme-dark"
+                />
               </label>
             </div>
           </div>
 
-          {validMonthRange ? (
+          {validDateRange ? (
             <>
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                <Stat icon={DollarSign} label="Dinero ingresado" value={formatCurrency(periodStats.totalRevenue)} />
-                <Stat icon={CalendarDays} label="Cantidad total de turnos" value={periodStats.totalTurns.toLocaleString("es-AR")} />
-                <Stat icon={Scissors} label="Servicios realizados" value={periodStats.totalServices.toLocaleString("es-AR")} />
-                <Stat icon={TrendingUp} label="Mes con más turnos" value={periodStats.mostBookingsMonth} />
-                <Stat icon={TrendingUp} label="Mes con más servicios" value={periodStats.mostServicesMonth} />
-                <Stat icon={TrendingUp} label="Mes con más ingresos" value={periodStats.highestRevenueMonth} />
-                <Stat icon={TrendingDown} label="Mes con menos turnos" value={periodStats.leastBookingsMonth} />
-                <Stat icon={TrendingDown} label="Mes con menos servicios" value={periodStats.leastServicesMonth} />
-                <Stat icon={TrendingDown} label="Mes con menos ingresos" value={periodStats.leastRevenueMonth} />
+                <Stat
+                  icon={DollarSign}
+                  label="Dinero ingresado"
+                  value={formatCurrency(periodStats.totalRevenue)}
+                />
+                <Stat
+                  icon={CalendarDays}
+                  label="Cantidad total de turnos"
+                  value={periodStats.totalTurns.toLocaleString("es-AR")}
+                />
+                <Stat
+                  icon={Scissors}
+                  label="Servicios realizados"
+                  value={periodStats.totalServices.toLocaleString("es-AR")}
+                />
+                <Stat
+                  icon={TrendingUp}
+                  label="Mes con más turnos"
+                  value={periodStats.mostBookingsMonth}
+                />
+                <Stat
+                  icon={TrendingUp}
+                  label="Mes con más servicios"
+                  value={periodStats.mostServicesMonth}
+                />
+                <Stat
+                  icon={TrendingUp}
+                  label="Mes con más ingresos"
+                  value={periodStats.highestRevenueMonth}
+                />
+                <Stat
+                  icon={TrendingDown}
+                  label="Mes con menos turnos"
+                  value={periodStats.leastBookingsMonth}
+                />
+                <Stat
+                  icon={TrendingDown}
+                  label="Mes con menos servicios"
+                  value={periodStats.leastServicesMonth}
+                />
+                <Stat
+                  icon={TrendingDown}
+                  label="Mes con menos ingresos"
+                  value={periodStats.leastRevenueMonth}
+                />
               </div>
               <div className="grid items-stretch gap-4 lg:grid-cols-2">
-                <Suspense fallback={<div className="h-80 animate-pulse rounded-2xl border border-gold/30 bg-background/50" />}>
-                  <MonthlyComparisonChart title="Turnos por mes" data={periodStats.monthly} dataKey="turns" color="#F59E0B" />
-                  <MonthlyComparisonChart title="Ingresos por mes" data={periodStats.monthly} dataKey="revenue" color="#34D399" currency />
+                <Suspense
+                  fallback={
+                    <div className="h-80 animate-pulse rounded-2xl border border-gold/30 bg-background/50" />
+                  }
+                >
+                  <MonthlyComparisonChart
+                    title="Turnos por mes"
+                    data={periodStats.monthly}
+                    dataKey="turns"
+                    color="#F59E0B"
+                  />
+                  <MonthlyComparisonChart
+                    title="Ingresos por mes"
+                    data={periodStats.monthly}
+                    dataKey="revenue"
+                    color="#34D399"
+                    currency
+                  />
                 </Suspense>
               </div>
             </>
           ) : (
-            <p role="alert" className="rounded-xl border border-amber-400/30 bg-amber-400/10 p-4 text-sm text-amber-200">El mes inicial no puede ser posterior al mes final.</p>
+            <p
+              role="alert"
+              className="rounded-xl border border-amber-400/30 bg-amber-400/10 p-4 text-sm text-amber-200"
+            >
+              La fecha inicial no puede ser posterior a la fecha final.
+            </p>
           )}
-          <p className="text-xs text-muted-foreground">Todos los indicadores se actualizan únicamente cuando el profesional confirma la asistencia. Los ingresos reflejan los pagos confirmados, descontando devoluciones solicitadas o realizadas.</p>
+          <p className="text-xs text-muted-foreground">
+            Todos los indicadores se actualizan únicamente cuando el profesional confirma la
+            asistencia. Los ingresos reflejan los pagos confirmados, descontando devoluciones
+            solicitadas o realizadas.
+          </p>
         </section>
 
         <div className="grid items-stretch gap-4 md:grid-cols-2">
-          <Suspense fallback={<div className="h-80 animate-pulse rounded-2xl border border-gold/30 bg-card" />}>
-            <ChartCard title="Servicios más solicitados" data={stats.servicesChart} />
-            <ChartCard title="Turnos por profesionales" data={stats.barbersChart} />
+          <Suspense
+            fallback={
+              <div className="h-80 animate-pulse rounded-2xl border border-gold/30 bg-card" />
+            }
+          >
+            <ChartCard title="Servicios más solicitados" data={periodChartStats.servicesChart} />
+            <ChartCard title="Turnos por profesionales" data={periodChartStats.barbersChart} />
           </Suspense>
         </div>
       </main>
@@ -110,7 +247,15 @@ export function AdminPage() {
   );
 }
 
-function Stat({ icon: Icon, label, value }: { icon: LucideIcon; label: string; value: string | number }) {
+function Stat({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: LucideIcon;
+  label: string;
+  value: string | number;
+}) {
   return (
     <div className="rounded-2xl border border-gold/30 bg-card p-5">
       <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-gold/15 text-gold">
@@ -135,20 +280,24 @@ function computeStats(bookings: Booking[]) {
   const serviceLookup = new Map<string, string>();
   const serviceDurationLookup = new Map<string, number>();
   const serviceProfessionalLookup = new Map<string, Set<string>>();
-  allProfessionals.forEach((prof) => prof.services.forEach((svc) => {
-    serviceLookup.set(svc.id, svc.name);
-    serviceDurationLookup.set(svc.id, svc.duration);
-  }));
+  allProfessionals.forEach((prof) =>
+    prof.services.forEach((svc) => {
+      serviceLookup.set(svc.id, svc.name);
+      serviceDurationLookup.set(svc.id, svc.duration);
+    }),
+  );
 
   const svcCount: Record<string, number> = {};
-  attended.forEach((booking) => booking.serviceIds.forEach((id) => {
-    svcCount[id] = (svcCount[id] ?? 0) + 1;
-    const professionalName = getProfessional(booking.barberId)?.name;
-    if (!professionalName) return;
-    const names = serviceProfessionalLookup.get(id) ?? new Set<string>();
-    names.add(professionalName);
-    serviceProfessionalLookup.set(id, names);
-  }));
+  attended.forEach((booking) =>
+    booking.serviceIds.forEach((id) => {
+      svcCount[id] = (svcCount[id] ?? 0) + 1;
+      const professionalName = getProfessional(booking.barberId)?.name;
+      if (!professionalName) return;
+      const names = serviceProfessionalLookup.get(id) ?? new Set<string>();
+      names.add(professionalName);
+      serviceProfessionalLookup.set(id, names);
+    }),
+  );
   const servicesChart = Object.entries(svcCount)
     .map(([id, v]) => ({
       name: serviceLookup.get(id) ?? getProfessionalService("", id)?.name ?? id,
@@ -156,32 +305,59 @@ function computeStats(bookings: Booking[]) {
       subtitle: [
         `${serviceDurationLookup.get(id) ?? getProfessionalService("", id)?.duration ?? 0} min`,
         [...(serviceProfessionalLookup.get(id) ?? [])].join(", "),
-      ].filter(Boolean).join(" · "),
+      ]
+        .filter(Boolean)
+        .join(" · "),
     }))
-    .sort((a, b) => b.value - a.value).slice(0, 6);
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 6);
 
   const barbCount: Record<string, number> = {};
-  allProfessionals.forEach((b) => { barbCount[b.id] = 0; });
-  attended.forEach((b) => { barbCount[b.barberId] = (barbCount[b.barberId] ?? 0) + 1; });
+  allProfessionals.forEach((b) => {
+    barbCount[b.id] = 0;
+  });
+  attended.forEach((b) => {
+    barbCount[b.barberId] = (barbCount[b.barberId] ?? 0) + 1;
+  });
   const barbersChart = allProfessionals.map((b) => ({
     name: b.name,
     value: barbCount[b.id] ?? 0,
     subtitle: b.specialty || "Profesional",
   }));
 
-  const sortedBarbers = allProfessionals.map((b) => ({ name: b.name, count: barbCount[b.id] ?? 0 }))
+  const sortedBarbers = allProfessionals
+    .map((b) => ({ name: b.name, count: barbCount[b.id] ?? 0 }))
     .sort((a, b) => b.count - a.count);
   const topBarber = sortedBarbers[0] ?? { name: "-", count: 0 };
   const lowBarber = sortedBarbers[sortedBarbers.length - 1] ?? { name: "-", count: 0 };
 
-  const lastBooking = [...attended].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+  const lastBooking = [...attended].sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+  )[0];
   const lastClient = lastBooking?.customer.fullName || "-";
-  const lastBarber = lastBooking ? getProfessional(lastBooking.barberId)?.name ?? "-" : "-";
+  const lastBarber = lastBooking ? (getProfessional(lastBooking.barberId)?.name ?? "-") : "-";
 
-  return { today, week, monthRevenue, uniqueClients, servicesChart, barbersChart, topBarber, lowBarber, lastClient, lastBarber };
+  return {
+    today,
+    week,
+    monthRevenue,
+    uniqueClients,
+    servicesChart,
+    barbersChart,
+    topBarber,
+    lowBarber,
+    lastClient,
+    lastBarber,
+  };
 }
 
-type MonthlyStats = { month: string; label: string; turns: number; services: number; revenue: number };
+type MonthlyStats = {
+  month: string;
+  label: string;
+  turns: number;
+  services: number;
+  revenue: number;
+};
 
 function isAttendedBooking(booking: Booking) {
   return booking.status === "completed";
@@ -189,9 +365,11 @@ function isAttendedBooking(booking: Booking) {
 
 function getNetReceivedRevenue(booking: Booking) {
   if (booking.paymentStatus !== "approved") return 0;
-  const refund = booking.paymentCancellationStatus === "requested" || booking.paymentCancellationStatus === "refunded"
-    ? booking.refundAmount ?? booking.totalPrice
-    : 0;
+  const refund =
+    booking.paymentCancellationStatus === "requested" ||
+    booking.paymentCancellationStatus === "refunded"
+      ? (booking.refundAmount ?? booking.totalPrice)
+      : 0;
   return Math.max(0, booking.totalPrice - refund);
 }
 
@@ -205,12 +383,14 @@ function formatMonth(month: string) {
   return label.charAt(0).toUpperCase() + label.slice(1);
 }
 
-function computePeriodStats(bookings: Booking[], startMonth: string, endMonth: string) {
-  if (!startMonth || !endMonth || startMonth > endMonth) {
+function computePeriodStats(bookings: Booking[], startDate: string, endDate: string) {
+  if (!startDate || !endDate || startDate > endDate) {
     return {
       totalRevenue: 0,
       totalTurns: 0,
       totalServices: 0,
+      topBarber: { name: "-", count: 0 },
+      lowBarber: { name: "-", count: 0 },
       mostBookingsMonth: "—",
       mostServicesMonth: "—",
       highestRevenueMonth: "—",
@@ -222,8 +402,8 @@ function computePeriodStats(bookings: Booking[], startMonth: string, endMonth: s
   }
 
   const monthly: MonthlyStats[] = [];
-  const cursor = new Date(Number(startMonth.slice(0, 4)), Number(startMonth.slice(5, 7)) - 1, 1);
-  const last = new Date(Number(endMonth.slice(0, 4)), Number(endMonth.slice(5, 7)) - 1, 1);
+  const cursor = new Date(Number(startDate.slice(0, 4)), Number(startDate.slice(5, 7)) - 1, 1);
+  const last = new Date(Number(endDate.slice(0, 4)), Number(endDate.slice(5, 7)) - 1, 1);
   while (cursor <= last) {
     const month = format(cursor, "yyyy-MM");
     monthly.push({ month, label: formatMonth(month), turns: 0, services: 0, revenue: 0 });
@@ -231,14 +411,28 @@ function computePeriodStats(bookings: Booking[], startMonth: string, endMonth: s
   }
 
   const statsByMonth = new Map(monthly.map((entry) => [entry.month, entry]));
+  const barberCounts = new Map(
+    professionalStore
+      .all()
+      .map((professional) => [professional.id, { name: professional.name, count: 0 }]),
+  );
   bookings.forEach((booking) => {
     if (!isAttendedBooking(booking)) return;
+    if (booking.date < startDate || booking.date > endDate) return;
     const month = statsByMonth.get(booking.date.slice(0, 7));
     if (!month) return;
     month.turns += 1;
     month.services += booking.serviceIds.length;
     month.revenue += getNetReceivedRevenue(booking);
+    const barber = barberCounts.get(booking.barberId) ?? {
+      name: getProfessional(booking.barberId)?.name ?? "Profesional eliminado",
+      count: 0,
+    };
+    barber.count += 1;
+    barberCounts.set(booking.barberId, barber);
   });
+
+  const sortedBarbers = [...barberCounts.values()].sort((a, b) => b.count - a.count);
 
   const mostBookingsMonth = formatMonthMetric(monthly, "turns", "max");
   const mostServicesMonth = formatMonthMetric(monthly, "services", "max");
@@ -251,6 +445,8 @@ function computePeriodStats(bookings: Booking[], startMonth: string, endMonth: s
     totalRevenue: monthly.reduce((total, month) => total + month.revenue, 0),
     totalTurns: monthly.reduce((total, month) => total + month.turns, 0),
     totalServices: monthly.reduce((total, month) => total + month.services, 0),
+    topBarber: sortedBarbers[0] ?? { name: "-", count: 0 },
+    lowBarber: sortedBarbers[sortedBarbers.length - 1] ?? { name: "-", count: 0 },
     mostBookingsMonth,
     mostServicesMonth,
     highestRevenueMonth,
@@ -269,9 +465,12 @@ function formatMonthMetric(
 ) {
   if (!months.some((month) => month[metric] > 0)) return "Sin datos";
   const selected = months.reduce((best, month) => {
-    const isBetter = direction === "max" ? month[metric] > best[metric] : month[metric] < best[metric];
+    const isBetter =
+      direction === "max" ? month[metric] > best[metric] : month[metric] < best[metric];
     return isBetter ? month : best;
   });
-  const value = currency ? formatCurrency(selected[metric]) : selected[metric].toLocaleString("es-AR");
+  const value = currency
+    ? formatCurrency(selected[metric])
+    : selected[metric].toLocaleString("es-AR");
   return `${selected.label} · ${value}`;
 }

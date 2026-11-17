@@ -19,9 +19,11 @@ function RootRedirect() {
 
     if (isAuthenticated && role === "admin") void navigate({ to: "/configuracion", replace: true });
     else if (isAuthenticated && role === "client") void navigate({ to: "/reserva", replace: true });
-    else if (returnPath === "/admin" || returnPath === "/estadisticas") void navigate({ to: "/estadisticas", replace: true });
+    else if (returnPath === "/admin" || returnPath === "/estadisticas")
+      void navigate({ to: "/estadisticas", replace: true });
     else if (returnPath === "/agenda") void navigate({ to: "/agenda", replace: true });
-    else if (returnPath === "/configuracion" || returnPath === "/profesionales") void navigate({ to: "/configuracion", replace: true });
+    else if (returnPath === "/configuracion" || returnPath === "/profesionales")
+      void navigate({ to: "/configuracion", replace: true });
     else if (returnPath === "/mis-turnos") void navigate({ to: "/mis-turnos", replace: true });
     else void navigate({ to: "/reserva", replace: true });
   }, [isAuthenticated, isLoading, navigate, role]);

@@ -17,7 +17,7 @@ Si no tienes conocimientos de informática o programación, ¡no te preocupes! A
 - **¿De qué se trata la página?**: Es un sistema de gestión de citas y turnos en línea donde los clientes o usuarios pueden elegir un día, una hora disponible y reservar su turno al instante.
 - **¿Para qué sirve?**: Evita las esperas por llamada o mensajes de WhatsApp para agendar una cita. Todo el calendario de disponibilidad se actualiza en tiempo real para que elijas el horario que más te convenga.
 - **¿Por qué es rápida e interactiva?**: Utiliza tecnología web de última generación que muestra la disponibilidad al momento sin necesidad de recargar la página web con cada clic.
-- **¿Cómo se ve en celulares?**: Está diseñada bajo un concepto *responsive*, por lo que solicitar o consultar un turno desde un teléfono móvil es igual de fácil y cómodo que hacerlo desde una computadora.
+- **¿Cómo se ve en celulares?**: Está diseñada bajo un concepto _responsive_, por lo que solicitar o consultar un turno desde un teléfono móvil es igual de fácil y cómodo que hacerlo desde una computadora.
 
 ---
 
@@ -38,20 +38,24 @@ Esta plataforma actúa como un portal de agendamiento inteligente que optimiza l
 El proyecto está desarrollado con una arquitectura frontend moderna, modular y de tipado seguro para garantizar una reserva de turnos ágil y sin fallos en producción.
 
 ### Frontend & UI [](https://github.com/leoogomez7/mi-turno-ya-reservado#frontend--ui)
+
 - **React.js & TypeScript**: Lógica de cliente robusta, declarativa y libre de errores en tiempo de compilación.
 - **Vite.js**: Servidor de desarrollo instantáneo y empaquetado optimizado para producción.
 - **Tailwind CSS**: Framework CSS enfocado en la velocidad de desarrollo y el diseño adaptativo.
 - **shadcn/ui & Lucide Icons**: Sistema de componentes y calendarios modulares para un diseño limpio e intuitivo.
 
 ### Entorno de Ejecución & Dependencias [](https://github.com/leoogomez7/mi-turno-ya-reservado#entorno-de-ejecuci%C3%B3n--dependencias)
+
 - **Bun**: Gestor de paquetes ultrarrápido utilizado para acelerar la instalación y compilación.
 - **Node.js & NPM**: Base estándar del ecosistema para ejecutar scripts de construcción.
 
 ### Calidad de Código [](https://github.com/leoogomez7/mi-turno-ya-reservado#calidad-de-c%C3%B3digo)
+
 - **ESLint**: Reglas avanzadas de análisis estático para garantizar buenas prácticas.
 - **Prettier**: Formateador de código automático para mantener coherencia estética.
 
 ### Infraestructura & Cloud [](https://github.com/leoogomez7/mi-turno-ya-reservado#infraestructura--cloud)
+
 - **Vercel Edge Network**: Alojamiento perimetral global que garantiza máxima velocidad y disponibilidad.
 
 ---
@@ -64,7 +68,7 @@ Se recomienda instalar **Bun** en tu entorno local para la gestión de dependenc
 # Comando de instalación de Bun (macOS/Linux/WSL)
 curl -fsSL [https://bun.sh](https://bun.sh) | bash
 
-🚀 Instalación y Uso Local 
+🚀 Instalación y Uso Local
 Clonar el repositorio:
 
 Bash
@@ -82,7 +86,7 @@ Compilar para producción:
 
 Bash
 bun run build
-📁 Estructura del Proyecto 
+📁 Estructura del Proyecto
 Plaintext
 ├── public/              # Recursos estáticos (logos, favicons, vectores)
 ├── src/                 # Código fuente de la plataforma
@@ -96,3 +100,4 @@ Plaintext
 ├── package.json         # Dependencias y scripts de ejecución
 ├── tsconfig.json        # Configuración del compilador TypeScript
 └── vite.config.ts       # Configuración del empaquetador Vite
+```

@@ -30,17 +30,23 @@ function MyDataPage() {
       .then((profile) => {
         if (!cancelled) {
           const accountEmail = user?.email?.trim().toLowerCase();
-          const bookingPhone = bookingStore.all().find((booking) => booking.customer.email.trim().toLowerCase() === accountEmail)?.customer.phone;
+          const bookingPhone = bookingStore
+            .all()
+            .find((booking) => booking.customer.email.trim().toLowerCase() === accountEmail)
+            ?.customer.phone;
           setPhone(profile.phone || bookingPhone || "");
         }
       })
       .catch((error: unknown) => {
-        if (!cancelled) toast.error(error instanceof Error ? error.message : "No se pudieron cargar tus datos.");
+        if (!cancelled)
+          toast.error(error instanceof Error ? error.message : "No se pudieron cargar tus datos.");
       })
       .finally(() => {
         if (!cancelled) setLoadingProfile(false);
       });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [isAuthenticated, role, user?.email]);
 
   async function savePhone() {
@@ -62,7 +68,13 @@ function MyDataPage() {
   }
 
   if (isLoading) return <LoadingScreen message="Cargando tus datos" />;
-  if (!isAuthenticated || role !== "client") return <><SiteHeader /><AuthRequired role="client" title="Mis datos" /></>;
+  if (!isAuthenticated || role !== "client")
+    return (
+      <>
+        <SiteHeader />
+        <AuthRequired role="client" title="Mis datos" />
+      </>
+    );
 
   const fullName = [user?.givenName, user?.familyName].filter(Boolean).join(" ");
 
@@ -76,27 +88,70 @@ function MyDataPage() {
             <h1 className="mt-1 font-display text-2xl font-semibold">Mis datos</h1>
           </div>
           <div>
-            <label className="mb-2 block text-sm text-muted-foreground" htmlFor="profile-name">Nombre y apellido</label>
+            <label className="mb-2 block text-sm text-muted-foreground" htmlFor="profile-name">
+              Nombre y apellido
+            </label>
             <div className="relative">
-              <Input id="profile-name" value={fullName || "No informado en Kinde"} readOnly aria-readonly="true" className="cursor-not-allowed bg-muted/40 pr-10 text-muted-foreground" title="El nombre se administra desde tu cuenta de Kinde." />
-              <LockKeyhole aria-hidden="true" className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                id="profile-name"
+                value={fullName || "No informado en Kinde"}
+                readOnly
+                aria-readonly="true"
+                className="cursor-not-allowed bg-muted/40 pr-10 text-muted-foreground"
+                title="El nombre se administra desde tu cuenta de Kinde."
+              />
+              <LockKeyhole
+                aria-hidden="true"
+                className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+              />
             </div>
-            <p className="mt-1 text-xs text-muted-foreground">El nombre y apellido asociado a tu cuenta no se puede modificar desde aquí.</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              El nombre y apellido asociado a tu cuenta no se puede modificar desde aquí.
+            </p>
           </div>
           <div>
-            <label className="mb-2 block text-sm text-muted-foreground" htmlFor="profile-email">Correo electrónico</label>
+            <label className="mb-2 block text-sm text-muted-foreground" htmlFor="profile-email">
+              Correo electrónico
+            </label>
             <div className="relative">
-              <Input id="profile-email" type="email" value={user?.email ?? ""} readOnly aria-readonly="true" className="cursor-not-allowed bg-muted/40 pr-10 text-muted-foreground" title="El correo electrónico no se puede modificar." />
-              <LockKeyhole aria-hidden="true" className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                id="profile-email"
+                type="email"
+                value={user?.email ?? ""}
+                readOnly
+                aria-readonly="true"
+                className="cursor-not-allowed bg-muted/40 pr-10 text-muted-foreground"
+                title="El correo electrónico no se puede modificar."
+              />
+              <LockKeyhole
+                aria-hidden="true"
+                className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+              />
             </div>
-            <p className="mt-1 text-xs text-muted-foreground">El correo electrónico asociado a tu cuenta no se puede modificar desde aquí.</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              El correo electrónico asociado a tu cuenta no se puede modificar desde aquí.
+            </p>
           </div>
           <div>
-            <label className="mb-2 block text-sm text-muted-foreground" htmlFor="profile-phone">Teléfono</label>
-            <Input id="profile-phone" type="tel" value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="Tu número de teléfono" disabled={loadingProfile || savingProfile} maxLength={40} />
+            <label className="mb-2 block text-sm text-muted-foreground" htmlFor="profile-phone">
+              Teléfono
+            </label>
+            <Input
+              id="profile-phone"
+              type="tel"
+              value={phone}
+              onChange={(event) => setPhone(event.target.value)}
+              placeholder="Tu número de teléfono"
+              disabled={loadingProfile || savingProfile}
+              maxLength={40}
+            />
           </div>
           <div className="flex justify-end">
-            <Button className="bg-gold text-primary-foreground hover:bg-gold-soft" onClick={() => void savePhone()} disabled={loadingProfile || savingProfile}>
+            <Button
+              className="bg-gold text-primary-foreground hover:bg-gold-soft"
+              onClick={() => void savePhone()}
+              disabled={loadingProfile || savingProfile}
+            >
               {savingProfile ? "Guardando..." : "Guardar datos"}
             </Button>
           </div>

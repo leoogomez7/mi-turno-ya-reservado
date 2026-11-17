@@ -9,7 +9,17 @@ import { AuthRequired } from "@/components/auth-required";
 import { Button } from "@/components/ui/button";
 import { LoadingScreen } from "@/components/loading-screen";
 import { useAppAuth } from "@/lib/auth";
-import { bootstrapCloudData, createSubscriptionCheckout, failSubscriptionPayment, getAvailableStores, getCurrentStoreCode, isCloudInitialized, redeemSubscriptionPromo, verifySubscriptionPayment, type Store } from "@/lib/cloud-sync";
+import {
+  bootstrapCloudData,
+  createSubscriptionCheckout,
+  failSubscriptionPayment,
+  getAvailableStores,
+  getCurrentStoreCode,
+  isCloudInitialized,
+  redeemSubscriptionPromo,
+  verifySubscriptionPayment,
+  type Store,
+} from "@/lib/cloud-sync";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/plan")({
@@ -29,7 +39,9 @@ const SUBSCRIPTION_PLANS = [
 function PlanPage() {
   const { isAuthenticated, isLoading, role, getIdToken, user } = useAppAuth();
   const location = useLocation();
-  const [storeInfo, setStoreInfo] = useState<Store | undefined>(() => getAvailableStores().find((store) => store.code === getCurrentStoreCode()));
+  const [storeInfo, setStoreInfo] = useState<Store | undefined>(() =>
+    getAvailableStores().find((store) => store.code === getCurrentStoreCode()),
+  );
   const [storeInfoLoaded, setStoreInfoLoaded] = useState(false);
   const [selectedPlanId, setSelectedPlanId] = useState<string>("15d");
   const [promoCode, setPromoCode] = useState("");
@@ -73,27 +85,52 @@ function PlanPage() {
           if (cancelled) return;
           if (result.approved) {
             setPendingPurchaseId("");
-            void bootstrapCloudData(user?.email ?? "", getIdToken).then(() => {
-              if (!cancelled) setStoreInfo(getAvailableStores().find((store) => store.code === getCurrentStoreCode()));
-            }).catch((error: unknown) => {
-              if (!cancelled) setPaymentNotice(error instanceof Error ? error.message : "El pago fue aprobado, pero no se pudo actualizar el plan.");
-            });
-            setPaymentNotice("Mercado Pago aprobó el pago. Actualizá el estado para ver tu plan activo.");
+            void bootstrapCloudData(user?.email ?? "", getIdToken)
+              .then(() => {
+                if (!cancelled)
+                  setStoreInfo(
+                    getAvailableStores().find((store) => store.code === getCurrentStoreCode()),
+                  );
+              })
+              .catch((error: unknown) => {
+                if (!cancelled)
+                  setPaymentNotice(
+                    error instanceof Error
+                      ? error.message
+                      : "El pago fue aprobado, pero no se pudo actualizar el plan.",
+                  );
+              });
+            setPaymentNotice(
+              "Mercado Pago aprobó el pago. Actualizá el estado para ver tu plan activo.",
+            );
           } else if (result.retryPromoAvailable) {
             setPendingPurchaseId("");
-            setPaymentNotice("El pago fue rechazado. El código de descuento sigue activo y podés aplicarlo nuevamente para reintentar el pago.");
+            setPaymentNotice(
+              "El pago fue rechazado. El código de descuento sigue activo y podés aplicarlo nuevamente para reintentar el pago.",
+            );
           } else {
-            setPaymentNotice("Mercado Pago todavía no confirmó el rechazo. El descuento permanece reservado hasta que informe el resultado.");
+            setPaymentNotice(
+              "Mercado Pago todavía no confirmó el rechazo. El descuento permanece reservado hasta que informe el resultado.",
+            );
           }
         })
         .catch((error: unknown) => {
-          if (!cancelled) setPaymentNotice(error instanceof Error ? error.message : "No se pudo verificar el rechazo del pago.");
+          if (!cancelled)
+            setPaymentNotice(
+              error instanceof Error ? error.message : "No se pudo verificar el rechazo del pago.",
+            );
         })
-        .finally(() => { if (!cancelled) setSubscriptionBusy(false); });
-      return () => { cancelled = true; };
+        .finally(() => {
+          if (!cancelled) setSubscriptionBusy(false);
+        });
+      return () => {
+        cancelled = true;
+      };
     }
     if (status !== "success") {
-      setPaymentNotice("El pago está pendiente. La sucursal se activará cuando Mercado Pago lo apruebe.");
+      setPaymentNotice(
+        "El pago está pendiente. La sucursal se activará cuando Mercado Pago lo apruebe.",
+      );
       setSubscriptionBusy(false);
       return;
     }
@@ -101,7 +138,9 @@ function PlanPage() {
       .then(async (result) => {
         if (cancelled) return;
         if (!result.approved) {
-          setPaymentNotice("Mercado Pago todavía no confirmó el pago. Podés comprobarlo nuevamente en unos instantes.");
+          setPaymentNotice(
+            "Mercado Pago todavía no confirmó el pago. Podés comprobarlo nuevamente en unos instantes.",
+          );
           return;
         }
         await bootstrapCloudData(user?.email ?? "", getIdToken);
@@ -112,18 +151,28 @@ function PlanPage() {
         toast.success("Pago aprobado; el sistema de turnos quedó activo.");
       })
       .catch((error: unknown) => {
-        if (!cancelled) setPaymentNotice(error instanceof Error ? error.message : "No se pudo verificar el pago.");
+        if (!cancelled)
+          setPaymentNotice(
+            error instanceof Error ? error.message : "No se pudo verificar el pago.",
+          );
       })
-      .finally(() => { if (!cancelled) setSubscriptionBusy(false); });
-    return () => { cancelled = true; };
+      .finally(() => {
+        if (!cancelled) setSubscriptionBusy(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [getIdToken, location.searchStr, user?.email]);
 
-  const subscriptionIsActive = Boolean(storeInfo?.subscriptionExpiresAt && Date.parse(storeInfo.subscriptionExpiresAt) > currentTime);
+  const subscriptionIsActive = Boolean(
+    storeInfo?.subscriptionExpiresAt && Date.parse(storeInfo.subscriptionExpiresAt) > currentTime,
+  );
   const subscriptionDaysRemaining = storeInfo?.subscriptionExpiresAt
     ? Math.ceil((Date.parse(storeInfo.subscriptionExpiresAt) - currentTime) / 86_400_000)
     : null;
-  const selectedPlan = SUBSCRIPTION_PLANS.find((plan) => plan.id === selectedPlanId) ?? SUBSCRIPTION_PLANS[0];
-  const payableAmount = Math.round(selectedPlan.amount * (100 - discountPercent) / 100);
+  const selectedPlan =
+    SUBSCRIPTION_PLANS.find((plan) => plan.id === selectedPlanId) ?? SUBSCRIPTION_PLANS[0];
+  const payableAmount = Math.round((selectedPlan.amount * (100 - discountPercent)) / 100);
 
   const subscriptionDataReady = Boolean(
     storeInfoLoaded && (!storeInfo || storeInfo.subscriptionExpiresAt !== undefined),
@@ -132,7 +181,13 @@ function PlanPage() {
   if (isLoading || (isAuthenticated && role === "admin" && !subscriptionDataReady)) {
     return <LoadingScreen message="Preparando tu plan" />;
   }
-  if (!isAuthenticated || role !== "admin") return <><SiteHeader /><AuthRequired role="admin" title="Plan" /></>;
+  if (!isAuthenticated || role !== "admin")
+    return (
+      <>
+        <SiteHeader />
+        <AuthRequired role="admin" title="Plan" />
+      </>
+    );
 
   async function startSubscriptionCheckout() {
     const paymentTab = window.open("about:blank", "_blank");
@@ -144,11 +199,16 @@ function PlanPage() {
     setSubscriptionBusy(true);
     setPaymentNotice("");
     try {
-      const checkout = await createSubscriptionCheckout(selectedPlanId, appliedPromoCode || undefined);
+      const checkout = await createSubscriptionCheckout(
+        selectedPlanId,
+        appliedPromoCode || undefined,
+      );
       paymentTab.location.href = checkout.checkoutUrl;
     } catch (error) {
       paymentTab.close();
-      setPaymentNotice(error instanceof Error ? error.message : "No se pudo iniciar el pago del plan.");
+      setPaymentNotice(
+        error instanceof Error ? error.message : "No se pudo iniciar el pago del plan.",
+      );
     } finally {
       setSubscriptionBusy(false);
     }
@@ -172,7 +232,9 @@ function PlanPage() {
       setPromoCode("");
       setAppliedPromoCode("");
       setDiscountPercent(0);
-      setPaymentNotice(`Cupón aplicado: ${result.planLabel} gratis, hasta ${format(new Date(result.expiresAt), "d 'de' MMMM yyyy", { locale: es })}.`);
+      setPaymentNotice(
+        `Cupón aplicado: ${result.planLabel} gratis, hasta ${format(new Date(result.expiresAt), "d 'de' MMMM yyyy", { locale: es })}.`,
+      );
       toast.success("Cupón aplicado y plan activado.");
     } catch (error) {
       setPaymentNotice(error instanceof Error ? error.message : "No se pudo aplicar el cupón.");
@@ -194,9 +256,13 @@ function PlanPage() {
         toast.success("Pago aprobado; el sistema de turnos quedó activo.");
       } else if (result.retryPromoAvailable) {
         setPendingPurchaseId("");
-        setPaymentNotice("El pago fue rechazado. El código de descuento sigue activo y podés aplicarlo nuevamente para reintentar el pago.");
+        setPaymentNotice(
+          "El pago fue rechazado. El código de descuento sigue activo y podés aplicarlo nuevamente para reintentar el pago.",
+        );
       } else {
-        setPaymentNotice("Mercado Pago todavía no confirmó el pago. Esperá un momento e intentá verificar otra vez.");
+        setPaymentNotice(
+          "Mercado Pago todavía no confirmó el pago. Esperá un momento e intentá verificar otra vez.",
+        );
       }
     } catch (error) {
       setPaymentNotice(error instanceof Error ? error.message : "No se pudo verificar el pago.");
@@ -212,14 +278,28 @@ function PlanPage() {
         <aside className="mb-5 flex flex-col gap-3 rounded-2xl border border-gold/40 bg-gold/10 p-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-sm font-semibold text-gold">Beneficio de bienvenida</p>
-            <p className="mt-1 text-sm">Usá <span className="rounded bg-background px-1.5 py-0.5 font-mono font-semibold text-gold">promo10nuevo</span> para obtener un 10% de descuento en cualquier plan.</p>
-            <p className="mt-1 text-xs text-muted-foreground">Válido por única vez por cuenta. Aplicá el código antes de contratar.</p>
+            <p className="mt-1 text-sm">
+              Usá{" "}
+              <span className="rounded bg-background px-1.5 py-0.5 font-mono font-semibold text-gold">
+                promo10nuevo
+              </span>{" "}
+              para obtener un 10% de descuento en cualquier plan.
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Válido por única vez por cuenta. Aplicá el código antes de contratar.
+            </p>
           </div>
-          <Button type="button" variant="outline" disabled={!storeInfo || subscriptionBusy || discountPercent > 0} onClick={() => {
-            setPromoCode("promo10nuevo");
-            setAppliedPromoCode("");
-            setDiscountPercent(0);
-          }} className="shrink-0">
+          <Button
+            type="button"
+            variant="outline"
+            disabled={!storeInfo || subscriptionBusy || discountPercent > 0}
+            onClick={() => {
+              setPromoCode("promo10nuevo");
+              setAppliedPromoCode("");
+              setDiscountPercent(0);
+            }}
+            className="shrink-0"
+          >
             Usar código
           </Button>
         </aside>
@@ -238,12 +318,18 @@ function PlanPage() {
                     Plan inactivo
                   </span>
                 )}
-                {subscriptionIsActive && subscriptionDaysRemaining !== null && subscriptionDaysRemaining > 0 && subscriptionDaysRemaining <= 4 && (
-                  <span role="status" className="inline-flex items-center gap-1.5 font-sans text-sm font-semibold text-red-400">
-                    <AlertTriangle aria-hidden="true" className="h-4 w-4" />
-                    Plan por vencer
-                  </span>
-                )}
+                {subscriptionIsActive &&
+                  subscriptionDaysRemaining !== null &&
+                  subscriptionDaysRemaining > 0 &&
+                  subscriptionDaysRemaining <= 4 && (
+                    <span
+                      role="status"
+                      className="inline-flex items-center gap-1.5 font-sans text-sm font-semibold text-red-400"
+                    >
+                      <AlertTriangle aria-hidden="true" className="h-4 w-4" />
+                      Plan por vencer
+                    </span>
+                  )}
               </h2>
               <p className="mt-1 text-sm text-muted-foreground">
                 {subscriptionIsActive && storeInfo?.subscriptionExpiresAt
@@ -251,40 +337,102 @@ function PlanPage() {
                   : "La sucursal no aparece en las búsquedas y no acepta reservas hasta activar un plan."}
               </p>
               {storeInfo?.subscriptionPlanType === "trial" && subscriptionIsActive && (
-                <p className="mt-2 text-sm font-medium text-gold">Estás usando tu prueba gratuita. Vence {subscriptionDaysRemaining === 1 ? "dentro de 1 día" : `dentro de ${subscriptionDaysRemaining} días`}. Compra un plan antes de que termine tu prueba gratuita.</p>
-              )}
-              {storeInfo?.subscriptionExpiresAt && subscriptionDaysRemaining !== null && subscriptionDaysRemaining <= 0 && (
-                <p role="alert" className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">
-                  Tu plan venció el {format(new Date(storeInfo.subscriptionExpiresAt), "d 'de' MMMM yyyy", { locale: es })}. La sucursal dejó de aparecer en las búsquedas y no puede recibir reservas hasta que pagues un nuevo plan.
+                <p className="mt-2 text-sm font-medium text-gold">
+                  Estás usando tu prueba gratuita. Vence{" "}
+                  {subscriptionDaysRemaining === 1
+                    ? "dentro de 1 día"
+                    : `dentro de ${subscriptionDaysRemaining} días`}
+                  . Compra un plan antes de que termine tu prueba gratuita.
                 </p>
               )}
+              {storeInfo?.subscriptionExpiresAt &&
+                subscriptionDaysRemaining !== null &&
+                subscriptionDaysRemaining <= 0 && (
+                  <p
+                    role="alert"
+                    className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300"
+                  >
+                    Tu plan venció el{" "}
+                    {format(new Date(storeInfo.subscriptionExpiresAt), "d 'de' MMMM yyyy", {
+                      locale: es,
+                    })}
+                    . La sucursal dejó de aparecer en las búsquedas y no puede recibir reservas
+                    hasta que pagues un nuevo plan.
+                  </p>
+                )}
             </div>
           </div>
           <div className="mt-5 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {SUBSCRIPTION_PLANS.map((plan) => (
-              <button key={plan.id} type="button" onClick={() => setSelectedPlanId(plan.id)} className={`rounded-xl border p-3 text-left transition ${selectedPlanId === plan.id ? "border-gold bg-gold/10" : "border-border bg-background hover:border-gold/50"}`}>
+              <button
+                key={plan.id}
+                type="button"
+                onClick={() => setSelectedPlanId(plan.id)}
+                className={`rounded-xl border p-3 text-left transition ${selectedPlanId === plan.id ? "border-gold bg-gold/10" : "border-border bg-background hover:border-gold/50"}`}
+              >
                 <span className="block font-semibold">{plan.label}</span>
                 {discountPercent > 0 ? (
                   <span className="flex items-baseline gap-2 text-sm">
-                    <span className="text-muted-foreground line-through">${plan.amount.toLocaleString("es-AR")}</span>
-                    <span className="font-semibold text-gold">${Math.round(plan.amount * (100 - discountPercent) / 100).toLocaleString("es-AR")}</span>
+                    <span className="text-muted-foreground line-through">
+                      ${plan.amount.toLocaleString("es-AR")}
+                    </span>
+                    <span className="font-semibold text-gold">
+                      $
+                      {Math.round((plan.amount * (100 - discountPercent)) / 100).toLocaleString(
+                        "es-AR",
+                      )}
+                    </span>
                   </span>
-                ) : <span className="text-sm text-muted-foreground">${plan.amount.toLocaleString("es-AR")}</span>}
+                ) : (
+                  <span className="text-sm text-muted-foreground">
+                    ${plan.amount.toLocaleString("es-AR")}
+                  </span>
+                )}
               </button>
             ))}
           </div>
           <div className="mt-4 flex flex-col items-stretch gap-2 sm:flex-row sm:items-center">
-            <Button disabled={subscriptionBusy || !storeInfo} onClick={() => void startSubscriptionCheckout()} className="h-10 whitespace-nowrap bg-gold text-primary-foreground hover:bg-gold-soft">
-              {subscriptionBusy ? "Procesando…" : `Pagar $${payableAmount.toLocaleString("es-AR")} con Mercado Pago`}
+            <Button
+              disabled={subscriptionBusy || !storeInfo}
+              onClick={() => void startSubscriptionCheckout()}
+              className="h-10 whitespace-nowrap bg-gold text-primary-foreground hover:bg-gold-soft"
+            >
+              {subscriptionBusy
+                ? "Procesando…"
+                : `Pagar $${payableAmount.toLocaleString("es-AR")} con Mercado Pago`}
             </Button>
-            <input className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm sm:w-44" disabled={!storeInfo} value={promoCode} onChange={(event) => { setPromoCode(event.target.value); setAppliedPromoCode(""); setDiscountPercent(0); }} placeholder="Código promocional" aria-label="Código promocional" />
-            <Button type="button" variant="outline" disabled={subscriptionBusy || !storeInfo || !promoCode.trim()} onClick={() => void applyPromoCode()} className="h-10 whitespace-nowrap">
+            <input
+              className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm sm:w-44"
+              disabled={!storeInfo}
+              value={promoCode}
+              onChange={(event) => {
+                setPromoCode(event.target.value);
+                setAppliedPromoCode("");
+                setDiscountPercent(0);
+              }}
+              placeholder="Código promocional"
+              aria-label="Código promocional"
+            />
+            <Button
+              type="button"
+              variant="outline"
+              disabled={subscriptionBusy || !storeInfo || !promoCode.trim()}
+              onClick={() => void applyPromoCode()}
+              className="h-10 whitespace-nowrap"
+            >
               Aplicar descuento
             </Button>
           </div>
           {!storeInfo && (
             <p className="mt-3 text-sm text-muted-foreground">
-              Para contratar o aplicar un código, primero creá tu sucursal en <Link to="/configuracion" className="font-medium text-gold underline underline-offset-4">Configuración</Link>.
+              Para contratar o aplicar un código, primero creá tu sucursal en{" "}
+              <Link
+                to="/configuracion"
+                className="font-medium text-gold underline underline-offset-4"
+              >
+                Configuración
+              </Link>
+              .
             </p>
           )}
           {paymentNotice && (
@@ -293,7 +441,18 @@ function PlanPage() {
               className={`mt-3 rounded-lg border p-3 text-sm ${paymentNotice.startsWith("Cupón aplicado:") || paymentNotice.startsWith("Código aplicado:") ? "border-emerald-400/50 bg-emerald-400/10 text-emerald-300" : paymentNotice === "El código promocional no es válido." ? "border-red-500/40 bg-red-500/10 text-red-300" : "border-border bg-background"}`}
             >
               <p>{paymentNotice}</p>
-              {pendingPurchaseId && <Button type="button" variant="outline" size="sm" className="mt-2" disabled={subscriptionBusy} onClick={() => void retrySubscriptionVerification()}>Verificar pago</Button>}
+              {pendingPurchaseId && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="mt-2"
+                  disabled={subscriptionBusy}
+                  onClick={() => void retrySubscriptionVerification()}
+                >
+                  Verificar pago
+                </Button>
+              )}
             </div>
           )}
         </section>

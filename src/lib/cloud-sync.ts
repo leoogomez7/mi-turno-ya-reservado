@@ -21,8 +21,14 @@ export type StoreSettings = {
   refundPercent: number;
   cancellationWindowMinutes: number;
 };
-export type StoreContactSettings = Pick<StoreSettings, "street" | "height" | "city" | "province" | "postalCode" | "whatsapp" | "instagram">;
-export type StoreCancellationPolicy = Pick<StoreSettings, "noRefunds" | "allowRefunds" | "refundPercent" | "cancellationWindowMinutes">;
+export type StoreContactSettings = Pick<
+  StoreSettings,
+  "street" | "height" | "city" | "province" | "postalCode" | "whatsapp" | "instagram"
+>;
+export type StoreCancellationPolicy = Pick<
+  StoreSettings,
+  "noRefunds" | "allowRefunds" | "refundPercent" | "cancellationWindowMinutes"
+>;
 export type StoreMercadoPagoCredentials = {
   publicKeyConfigured: boolean;
   accessTokenConfigured: boolean;
@@ -42,7 +48,10 @@ export const BOOKING_HIGHLIGHT_KEY = "mi-turno-ya:highlight-booking";
 export type ClientBookings = {
   bookings: Booking[];
   professionals: Professional[];
-  occupiedSlots: Pick<Booking, "id" | "storeCode" | "barberId" | "date" | "time" | "duration" | "status">[];
+  occupiedSlots: Pick<
+    Booking,
+    "id" | "storeCode" | "barberId" | "date" | "time" | "duration" | "status"
+  >[];
   stores: Pick<Store, "code" | "name" | "settings">[];
 };
 export type Store = {
@@ -82,7 +91,11 @@ function setSnapshot(next: CloudSnapshot) {
   dispatchCloudReady();
 }
 
-async function request<T>(method: "GET" | "PUT" | "POST", body?: unknown, requestedStoreCode?: string): Promise<T> {
+async function request<T>(
+  method: "GET" | "PUT" | "POST",
+  body?: unknown,
+  requestedStoreCode?: string,
+): Promise<T> {
   const token = await tokenGetter?.();
   if (!token && method === "PUT") throw new Error("No se obtuvo una sesión válida de Kinde.");
   const requestStoreCode = requestedStoreCode?.trim().toUpperCase() || storeCode;
@@ -96,34 +109,57 @@ async function request<T>(method: "GET" | "PUT" | "POST", body?: unknown, reques
     ...(body ? { body: JSON.stringify(body) } : {}),
     cache: "no-store",
   });
-  const result = await response.json() as T & { error?: string };
+  const result = (await response.json()) as T & { error?: string };
   if (!response.ok) throw new Error(result.error || "No se pudo sincronizar con la base de datos.");
   return result;
 }
 
-async function writeRecords(collection: "bookings" | "professionals", records: Array<Booking | Professional>, deleteIds: string[] = [], requestedStoreCode?: string) {
+async function writeRecords(
+  collection: "bookings" | "professionals",
+  records: Array<Booking | Professional>,
+  deleteIds: string[] = [],
+  requestedStoreCode?: string,
+) {
   const targetStoreCode = requestedStoreCode?.trim().toUpperCase() || undefined;
   for (let offset = 0; offset < records.length; offset += 100) {
-    await request("PUT", {
-      collection,
-      records: records.slice(offset, offset + 100),
-      ...(offset === 0 && deleteIds.length ? { deleteIds } : {}),
-    }, targetStoreCode);
+    await request(
+      "PUT",
+      {
+        collection,
+        records: records.slice(offset, offset + 100),
+        ...(offset === 0 && deleteIds.length ? { deleteIds } : {}),
+      },
+      targetStoreCode,
+    );
   }
   if (records.length === 0 && deleteIds.length) {
     for (let offset = 0; offset < deleteIds.length; offset += 100) {
-      await request("PUT", { collection, records: [], deleteIds: deleteIds.slice(offset, offset + 100) }, targetStoreCode);
+      await request(
+        "PUT",
+        { collection, records: [], deleteIds: deleteIds.slice(offset, offset + 100) },
+        targetStoreCode,
+      );
     }
   }
 }
 
-export async function bootstrapCloudData(account: string, getToken: () => Promise<string | undefined>, requestedStore?: string) {
+export async function bootstrapCloudData(
+  account: string,
+  getToken: () => Promise<string | undefined>,
+  requestedStore?: string,
+) {
   activeAccount = account.trim().toLowerCase();
   tokenGetter = activeAccount === "guest" ? undefined : getToken;
   storeCode = requestedStore?.trim().toUpperCase() || "";
 
-  const result = await request<{ data: CloudSnapshot; role: "admin" | "client" | "guest" | "unassigned"; storeCode: string | null; stores: Store[] }>("GET");
-  if (!result.data || !Array.isArray(result.stores)) throw new Error("Se devolvió una respuesta incompleta.");
+  const result = await request<{
+    data: CloudSnapshot;
+    role: "admin" | "client" | "guest" | "unassigned";
+    storeCode: string | null;
+    stores: Store[];
+  }>("GET");
+  if (!result.data || !Array.isArray(result.stores))
+    throw new Error("Se devolvió una respuesta incompleta.");
   const loadedStoreCode = storeCode || result.storeCode || "";
   storeCode = loadedStoreCode;
   availableStores = result.stores;
@@ -138,7 +174,8 @@ export async function refreshCloudData() {
   const revisionAtRequest = snapshotRevision;
   const refreshPromise = (async () => {
     const result = await request<{ data: CloudSnapshot; stores: Store[] }>("GET");
-    if (!result.data || !Array.isArray(result.stores)) throw new Error("Se devolvió una respuesta incompleta.");
+    if (!result.data || !Array.isArray(result.stores))
+      throw new Error("Se devolvió una respuesta incompleta.");
     if (revisionAtRequest !== snapshotRevision || activeCloudWrites > 0) return;
     availableStores = result.stores;
     setSnapshot(result.data);
@@ -177,8 +214,13 @@ export function isCloudInitialized() {
   return initialized;
 }
 
-export async function persistCloudCollection(collection: "bookings" | "professionals", records: Array<Booking | Professional>, requestedStoreCode?: string) {
-  if (!activeAccount || !initialized) throw new Error("La base todavía no está cargada. Reintentá en unos segundos.");
+export async function persistCloudCollection(
+  collection: "bookings" | "professionals",
+  records: Array<Booking | Professional>,
+  requestedStoreCode?: string,
+) {
+  if (!activeAccount || !initialized)
+    throw new Error("La base todavía no está cargada. Reintentá en unos segundos.");
   const writeRevision = ++snapshotRevision;
   activeCloudWrites += 1;
   try {
@@ -187,9 +229,18 @@ export async function persistCloudCollection(collection: "bookings" | "professio
       if (activeAccount === "guest" && collection === "bookings") {
         const booking = records[records.length - 1] as Booking | undefined;
         if (!booking) return;
-        await request("POST", { action: "guest-booking", booking: { ...booking, storeCode: targetStoreCode } }, targetStoreCode);
-        const result = await request<{ data: CloudSnapshot; stores: Store[] }>("GET", undefined, targetStoreCode);
-        if (!result.data || !Array.isArray(result.stores)) throw new Error("Se devolvió una respuesta incompleta.");
+        await request(
+          "POST",
+          { action: "guest-booking", booking: { ...booking, storeCode: targetStoreCode } },
+          targetStoreCode,
+        );
+        const result = await request<{ data: CloudSnapshot; stores: Store[] }>(
+          "GET",
+          undefined,
+          targetStoreCode,
+        );
+        if (!result.data || !Array.isArray(result.stores))
+          throw new Error("Se devolvió una respuesta incompleta.");
         if (writeRevision !== snapshotRevision) return;
         availableStores = result.stores;
         setSnapshot(result.data);
@@ -201,13 +252,24 @@ export async function persistCloudCollection(collection: "bookings" | "professio
     const nextIds = new Set(records.map((record) => record.id));
     const deleteIds = [...oldIds].filter((id) => !nextIds.has(id));
     const recordsCopy = records
-      .filter((record) => collection !== "bookings" || activeRole === "admin" || (record as Booking).customer?.email?.trim().toLowerCase() === activeAccount)
+      .filter(
+        (record) =>
+          collection !== "bookings" ||
+          activeRole === "admin" ||
+          (record as Booking).customer?.email?.trim().toLowerCase() === activeAccount,
+      )
       .map((record) => ({ ...record, storeCode: targetStoreCode }));
     const accountAtWrite = activeAccount;
     await writeRecords(collection, recordsCopy, deleteIds, targetStoreCode);
-    if (activeAccount !== accountAtWrite) throw new Error("Cambió la cuenta activa; vuelve a cargar los datos.");
-    const result = await request<{ data: CloudSnapshot; stores: Store[] }>("GET", undefined, targetStoreCode);
-    if (!result.data || !Array.isArray(result.stores)) throw new Error("Se devolvió una respuesta incompleta.");
+    if (activeAccount !== accountAtWrite)
+      throw new Error("Cambió la cuenta activa; vuelve a cargar los datos.");
+    const result = await request<{ data: CloudSnapshot; stores: Store[] }>(
+      "GET",
+      undefined,
+      targetStoreCode,
+    );
+    if (!result.data || !Array.isArray(result.stores))
+      throw new Error("Se devolvió una respuesta incompleta.");
     if (writeRevision !== snapshotRevision) return;
     availableStores = result.stores;
     setSnapshot(result.data);
@@ -225,9 +287,14 @@ export function getAvailableStores() {
   return availableStores;
 }
 
-export async function selectStore(code: string, account: string, getToken?: () => Promise<string | undefined>) {
+export async function selectStore(
+  code: string,
+  account: string,
+  getToken?: () => Promise<string | undefined>,
+) {
   const nextCode = code.trim().toUpperCase();
-  if (!availableStores.some((store) => store.code === nextCode)) throw new Error("No encontramos esa sucursal.");
+  if (!availableStores.some((store) => store.code === nextCode))
+    throw new Error("No encontramos esa sucursal.");
   storeCode = nextCode;
   await bootstrapCloudData(account, getToken ?? (async () => undefined), nextCode);
 }
@@ -235,8 +302,16 @@ export async function selectStore(code: string, account: string, getToken?: () =
 export async function createStore(name: string, code: string) {
   if (!tokenGetter) throw new Error("Iniciá sesión como administrador para guardar una sucursal.");
   const previousCode = storeCode;
-  const response = await request<{ store: Store; previousCode: string }>("POST", { action: "create-store", store: { name, code: code.trim().toUpperCase() } });
-  availableStores = [...availableStores.filter((store) => store.code !== response.previousCode && store.code !== response.store.code), response.store].sort((a, b) => a.name.localeCompare(b.name, "es"));
+  const response = await request<{ store: Store; previousCode: string }>("POST", {
+    action: "create-store",
+    store: { name, code: code.trim().toUpperCase() },
+  });
+  availableStores = [
+    ...availableStores.filter(
+      (store) => store.code !== response.previousCode && store.code !== response.store.code,
+    ),
+    response.store,
+  ].sort((a, b) => a.name.localeCompare(b.name, "es"));
   storeCode = response.store.code;
   if (previousCode && previousCode !== storeCode) {
     snapshot = {
@@ -252,7 +327,8 @@ export async function createStore(name: string, code: string) {
 }
 
 export async function saveAccountRole(role: AccountRole) {
-  if (!tokenGetter || !activeAccount) throw new Error("Iniciá sesión antes de configurar tu cuenta.");
+  if (!tokenGetter || !activeAccount)
+    throw new Error("Iniciá sesión antes de configurar tu cuenta.");
   const saved = await request<{ role: AccountRole; storeCode: string | null }>("POST", {
     action: "set-account-role",
     role,
@@ -263,25 +339,43 @@ export async function saveAccountRole(role: AccountRole) {
 }
 
 export async function updateStoreSettings(settings: StoreSettings) {
-  if (!tokenGetter) throw new Error("Iniciá sesión como administrador para editar los datos de la sucursal.");
-  const response = await request<{ code: string; settings: StoreSettings }>("POST", { action: "update-store-settings", settings });
-  availableStores = availableStores.map((store) => store.code === response.code ? { ...store, settings: response.settings } : store);
+  if (!tokenGetter)
+    throw new Error("Iniciá sesión como administrador para editar los datos de la sucursal.");
+  const response = await request<{ code: string; settings: StoreSettings }>("POST", {
+    action: "update-store-settings",
+    settings,
+  });
+  availableStores = availableStores.map((store) =>
+    store.code === response.code ? { ...store, settings: response.settings } : store,
+  );
   window.dispatchEvent(new Event("mi-turno-ya:store-changed"));
   return response.settings;
 }
 
 export async function updateStoreLogo(logo: string) {
-  if (!tokenGetter) throw new Error("Iniciá sesión como administrador para editar el logo de la sucursal.");
-  const response = await request<{ code: string; logo: string }>("POST", { action: "update-store-logo", logo });
-  availableStores = availableStores.map((store) => store.code === response.code ? { ...store, logo: response.logo } : store);
+  if (!tokenGetter)
+    throw new Error("Iniciá sesión como administrador para editar el logo de la sucursal.");
+  const response = await request<{ code: string; logo: string }>("POST", {
+    action: "update-store-logo",
+    logo,
+  });
+  availableStores = availableStores.map((store) =>
+    store.code === response.code ? { ...store, logo: response.logo } : store,
+  );
   window.dispatchEvent(new Event("mi-turno-ya:store-changed"));
   return response.logo;
 }
 
 export async function updateStoreContact(contact: StoreContactSettings) {
-  if (!tokenGetter) throw new Error("Iniciá sesión como administrador para editar los datos de contacto.");
-  const response = await request<{ code: string; settings: StoreSettings }>("POST", { action: "update-store-contact", contact });
-  availableStores = availableStores.map((store) => store.code === response.code ? { ...store, settings: response.settings } : store);
+  if (!tokenGetter)
+    throw new Error("Iniciá sesión como administrador para editar los datos de contacto.");
+  const response = await request<{ code: string; settings: StoreSettings }>("POST", {
+    action: "update-store-contact",
+    contact,
+  });
+  availableStores = availableStores.map((store) =>
+    store.code === response.code ? { ...store, settings: response.settings } : store,
+  );
   window.dispatchEvent(new Event("mi-turno-ya:store-changed"));
   return response.settings;
 }
@@ -299,15 +393,25 @@ export async function getClientBookings() {
 }
 
 export async function getNotifications() {
-  return request<{ notifications: BookingNotification[]; newForPrompt: BookingNotification[] }>("POST", { action: "get-notifications" });
+  return request<{ notifications: BookingNotification[]; newForPrompt: BookingNotification[] }>(
+    "POST",
+    { action: "get-notifications" },
+  );
 }
 
 export async function notificationBookingExists(notificationId: string) {
-  return request<{ exists: boolean }>("POST", { action: "check-notification-booking", notificationId });
+  return request<{ exists: boolean }>("POST", {
+    action: "check-notification-booking",
+    notificationId,
+  });
 }
 
 export async function setNotificationRead(notificationId: string, read: boolean) {
-  return request<{ ok: boolean }>("POST", { action: "set-notification-read", notificationId, read });
+  return request<{ ok: boolean }>("POST", {
+    action: "set-notification-read",
+    notificationId,
+    read,
+  });
 }
 
 export async function deleteNotification(notificationId: string) {
@@ -326,32 +430,71 @@ export async function reportClientPayment(bookingId: string) {
   return request<{ booking: Booking }>("POST", { action: "report-client-payment", bookingId });
 }
 
-export async function cancelClientPayment(bookingId: string, refundDestinationType?: "cbu" | "alias", refundDestination?: string) {
-  return request<{ booking: Booking; cancellationStatus: "requested" }>("POST", { action: "cancel-client-payment", bookingId, refundDestinationType, refundDestination });
+export async function cancelClientPayment(
+  bookingId: string,
+  refundDestinationType?: "cbu" | "alias",
+  refundDestination?: string,
+) {
+  return request<{ booking: Booking; cancellationStatus: "requested" }>("POST", {
+    action: "cancel-client-payment",
+    bookingId,
+    refundDestinationType,
+    refundDestination,
+  });
 }
 
 export async function confirmBookingRefund(bookingId: string) {
-  const result = await request<{ booking: Booking }>("POST", { action: "admin-confirm-booking-refund", bookingId });
-  setSnapshot({ ...snapshot, bookings: snapshot.bookings.map((item) => item.id === bookingId ? result.booking : item) });
+  const result = await request<{ booking: Booking }>("POST", {
+    action: "admin-confirm-booking-refund",
+    bookingId,
+  });
+  setSnapshot({
+    ...snapshot,
+    bookings: snapshot.bookings.map((item) => (item.id === bookingId ? result.booking : item)),
+  });
   return result;
 }
 
 export async function updateAdminBooking(bookingId: string, patch: Partial<Booking>) {
-  const result = await request<{ booking: Booking }>("POST", { action: "admin-update-booking", bookingId, patch });
-  setSnapshot({ ...snapshot, bookings: snapshot.bookings.map((item) => item.id === bookingId ? result.booking : item) });
+  const result = await request<{ booking: Booking }>("POST", {
+    action: "admin-update-booking",
+    bookingId,
+    patch,
+  });
+  setSnapshot({
+    ...snapshot,
+    bookings: snapshot.bookings.map((item) => (item.id === bookingId ? result.booking : item)),
+  });
   return result;
 }
 
-export async function updateClientPaymentMethod(bookingId: string, paymentMethod: NonNullable<Booking["customer"]["paymentMethod"]>) {
-  return request<{ booking: Booking }>("POST", { action: "update-client-payment-method", bookingId, paymentMethod });
+export async function updateClientPaymentMethod(
+  bookingId: string,
+  paymentMethod: NonNullable<Booking["customer"]["paymentMethod"]>,
+) {
+  return request<{ booking: Booking }>("POST", {
+    action: "update-client-payment-method",
+    bookingId,
+    paymentMethod,
+  });
 }
 
 export async function createClientBookingPaymentPreference(bookingId: string) {
-  return request<{ initPoint: string }>("POST", { action: "create-client-booking-payment-preference", bookingId });
+  return request<{ initPoint: string }>("POST", {
+    action: "create-client-booking-payment-preference",
+    bookingId,
+  });
 }
 
-export async function updateClientBooking(bookingId: string, changes: { barberId: string; serviceIds: string[]; date: string; time: string }) {
-  return request<{ booking: Booking }>("POST", { action: "update-client-booking", bookingId, ...changes });
+export async function updateClientBooking(
+  bookingId: string,
+  changes: { barberId: string; serviceIds: string[]; date: string; time: string },
+) {
+  return request<{ booking: Booking }>("POST", {
+    action: "update-client-booking",
+    bookingId,
+    ...changes,
+  });
 }
 
 export async function cancelClientBooking(bookingId: string) {
@@ -359,20 +502,51 @@ export async function cancelClientBooking(bookingId: string) {
 }
 
 export async function archiveBooking(bookingId: string) {
-  const result = await request<{ booking: Booking }>("POST", { action: "archive-booking", bookingId });
-  setSnapshot({ ...snapshot, bookings: snapshot.bookings.map((item) => item.id === bookingId ? result.booking : item) });
+  const result = await request<{ booking: Booking }>("POST", {
+    action: "archive-booking",
+    bookingId,
+  });
+  setSnapshot({
+    ...snapshot,
+    bookings: snapshot.bookings.map((item) => (item.id === bookingId ? result.booking : item)),
+  });
   return result;
 }
 
 export async function restoreArchivedBooking(bookingId: string) {
-  const result = await request<{ booking: Booking }>("POST", { action: "restore-archived-booking", bookingId });
-  setSnapshot({ ...snapshot, bookings: snapshot.bookings.map((item) => item.id === bookingId ? result.booking : item) });
+  const result = await request<{ booking: Booking }>("POST", {
+    action: "restore-archived-booking",
+    bookingId,
+  });
+  setSnapshot({
+    ...snapshot,
+    bookings: snapshot.bookings.map((item) => (item.id === bookingId ? result.booking : item)),
+  });
   return result;
 }
 
 export async function permanentlyDeleteArchivedBooking(bookingId: string) {
-  const result = await request<{ ok: boolean; booking: Booking }>("POST", { action: "permanently-delete-archived-booking", bookingId });
-  setSnapshot({ ...snapshot, bookings: snapshot.bookings.map((item) => item.id === bookingId ? result.booking : item) });
+  const result = await request<{ ok: boolean; booking: Booking }>("POST", {
+    action: "permanently-delete-archived-booking",
+    bookingId,
+  });
+  setSnapshot({
+    ...snapshot,
+    bookings: snapshot.bookings.map((item) => (item.id === bookingId ? result.booking : item)),
+  });
+  return result;
+}
+
+export async function permanentlyDeleteArchivedBookings(bookingIds: string[]) {
+  const result = await request<{ bookings: Booking[]; failedCount: number }>("POST", {
+    action: "permanently-delete-archived-bookings",
+    bookingIds,
+  });
+  const updatedById = new Map(result.bookings.map((booking) => [booking.id, booking]));
+  setSnapshot({
+    ...snapshot,
+    bookings: snapshot.bookings.map((booking) => updatedById.get(booking.id) ?? booking),
+  });
   return result;
 }
 
@@ -387,38 +561,68 @@ export async function saveStoreMercadoPagoCredentials(publicKey: string, accessT
     accessToken,
   });
   const currentStoreCode = getCurrentStoreCode();
-  availableStores = availableStores.map((store) => store.code === currentStoreCode
-    ? { ...store, mercadoPagoConfigured: saved.publicKeyConfigured && saved.accessTokenConfigured }
-    : store);
+  availableStores = availableStores.map((store) =>
+    store.code === currentStoreCode
+      ? {
+          ...store,
+          mercadoPagoConfigured: saved.publicKeyConfigured && saved.accessTokenConfigured,
+        }
+      : store,
+  );
   window.dispatchEvent(new Event("mi-turno-ya:store-changed"));
   return saved;
 }
 
 export async function createSubscriptionCheckout(planId: string, promoCode?: string) {
   if (!tokenGetter) throw new Error("Iniciá sesión como administrador para contratar un plan.");
-  return request<{ checkoutUrl: string; purchaseId: string }>("POST", { action: "create-subscription-checkout", planId, promoCode });
+  return request<{ checkoutUrl: string; purchaseId: string }>("POST", {
+    action: "create-subscription-checkout",
+    planId,
+    promoCode,
+  });
 }
 
 export async function redeemSubscriptionPromo(code: string, planId: string) {
   if (!tokenGetter) throw new Error("Iniciá sesión como administrador para canjear una promoción.");
-  return request<{ expiresAt?: string; planLabel: string; discountPercent: number }>("POST", { action: "redeem-subscription-promo", code, planId });
+  return request<{ expiresAt?: string; planLabel: string; discountPercent: number }>("POST", {
+    action: "redeem-subscription-promo",
+    code,
+    planId,
+  });
 }
 
 export async function verifySubscriptionPayment(purchaseId: string) {
   if (!tokenGetter) throw new Error("Iniciá sesión como administrador para verificar el pago.");
-  return request<{ approved: boolean; expiresAt?: string | null }>("POST", { action: "verify-subscription-payment", purchaseId });
+  return request<{ approved: boolean; expiresAt?: string | null }>("POST", {
+    action: "verify-subscription-payment",
+    purchaseId,
+  });
 }
 
 export async function failSubscriptionPayment(purchaseId: string) {
   if (!tokenGetter) throw new Error("Iniciá sesión como administrador para revisar el pago.");
-  return request<{ approved: boolean; retryPromoAvailable: boolean }>("POST", { action: "fail-subscription-payment", purchaseId });
+  return request<{ approved: boolean; retryPromoAvailable: boolean }>("POST", {
+    action: "fail-subscription-payment",
+    purchaseId,
+  });
 }
 
-export async function cancelPendingBooking(bookingId: string, cancellationToken: string, requestedStoreCode?: string) {
-  return request<{ ok: boolean }>("POST", { action: "cancel-pending-booking", bookingId, cancellationToken }, requestedStoreCode);
+export async function cancelPendingBooking(
+  bookingId: string,
+  cancellationToken: string,
+  requestedStoreCode?: string,
+) {
+  return request<{ ok: boolean }>(
+    "POST",
+    { action: "cancel-pending-booking", bookingId, cancellationToken },
+    requestedStoreCode,
+  );
 }
 
-export async function loadReservationStore(storeCode: string, getToken?: () => Promise<string | undefined>) {
+export async function loadReservationStore(
+  storeCode: string,
+  getToken?: () => Promise<string | undefined>,
+) {
   const token = await getToken?.();
   const response = await fetch("/api/data", {
     headers: {
@@ -427,24 +631,35 @@ export async function loadReservationStore(storeCode: string, getToken?: () => P
     },
     cache: "no-store",
   });
-  const result = await response.json() as {
+  const result = (await response.json()) as {
     data?: CloudSnapshot;
     stores?: Store[];
     error?: string;
   };
   if (!response.ok) throw new Error(result.error || "No se pudo cargar la sucursal elegida.");
-  if (!result.data || !Array.isArray(result.data.professionals) || !Array.isArray(result.data.bookings) || !Array.isArray(result.stores)) {
+  if (
+    !result.data ||
+    !Array.isArray(result.data.professionals) ||
+    !Array.isArray(result.data.bookings) ||
+    !Array.isArray(result.stores)
+  ) {
     throw new Error("No se recibieron los datos de la sucursal elegida.");
   }
   return { data: result.data, stores: result.stores };
 }
 
-export async function createPublicBooking(storeCode: string, booking: Omit<Booking, "id" | "createdAt">) {
+export async function createPublicBooking(
+  storeCode: string,
+  booking: Omit<Booking, "id" | "createdAt">,
+) {
   const normalizedStoreCode = storeCode.trim().toUpperCase();
   const createdBooking: Booking = {
     ...booking,
     id: crypto.randomUUID(),
-    ...(booking.status === "pending-payment" || booking.customer.paymentMethod === "tarjeta o mercado pago" ? { cancellationToken: crypto.randomUUID() } : {}),
+    ...(booking.status === "pending-payment" ||
+    booking.customer.paymentMethod === "tarjeta o mercado pago"
+      ? { cancellationToken: crypto.randomUUID() }
+      : {}),
     storeCode: normalizedStoreCode,
     createdAt: new Date().toISOString(),
   };
@@ -457,15 +672,21 @@ export async function createPublicBooking(storeCode: string, booking: Omit<Booki
     body: JSON.stringify({ action: "guest-booking", booking: createdBooking }),
     cache: "no-store",
   });
-  const result = await response.json() as { error?: string };
+  const result = (await response.json()) as { error?: string };
   if (!response.ok) throw new Error(result.error || "No se pudo guardar el turno.");
   return createdBooking;
 }
 
 export async function updateStoreCancellationPolicy(policy: StoreCancellationPolicy) {
-  if (!tokenGetter) throw new Error("Iniciá sesión como administrador para editar las políticas de cancelación.");
-  const response = await request<{ code: string; settings: StoreSettings }>("POST", { action: "update-store-cancellation-policy", policy });
-  availableStores = availableStores.map((store) => store.code === response.code ? { ...store, settings: response.settings } : store);
+  if (!tokenGetter)
+    throw new Error("Iniciá sesión como administrador para editar las políticas de cancelación.");
+  const response = await request<{ code: string; settings: StoreSettings }>("POST", {
+    action: "update-store-cancellation-policy",
+    policy,
+  });
+  availableStores = availableStores.map((store) =>
+    store.code === response.code ? { ...store, settings: response.settings } : store,
+  );
   window.dispatchEvent(new Event("mi-turno-ya:store-changed"));
   return response.settings;
 }

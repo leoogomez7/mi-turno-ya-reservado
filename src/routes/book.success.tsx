@@ -1,6 +1,15 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Check, Calendar, Clock, Mail, MapPin, Scissors, User } from "lucide-react";
+import {
+  Check,
+  Calendar,
+  Clock,
+  Mail,
+  MapPin,
+  Scissors,
+  User,
+  type LucideIcon,
+} from "lucide-react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 
@@ -40,7 +49,9 @@ function SuccessPage() {
         <SiteHeader />
         <main className="mx-auto max-w-xl px-6 py-20 text-center">
           <p className="text-muted-foreground">No encontramos tu reserva.</p>
-          <Button asChild className="mt-6"><Link to="/reserva">Reservar un turno</Link></Button>
+          <Button asChild className="mt-6">
+            <Link to="/reserva">Reservar un turno</Link>
+          </Button>
         </main>
       </div>
     );
@@ -50,14 +61,23 @@ function SuccessPage() {
   const store = stores.find((item) => item.code === booking.storeCode);
   const storeAddress = store?.settings.address ?? "";
   const date = new Date(booking.date + "T" + booking.time);
-  const services = booking.serviceIds.map((sid) => getProfessionalServiceList(booking.barberId).find((service) => service.id === sid)?.name).filter(Boolean).join(", ");
+  const services = booking.serviceIds
+    .map(
+      (sid) =>
+        getProfessionalServiceList(booking.barberId).find((service) => service.id === sid)?.name,
+    )
+    .filter(Boolean)
+    .join(", ");
 
   function downloadIcs() {
     if (!booking) return;
     const dt = (d: Date) => format(d, "yyyyMMdd'T'HHmmss");
     const end = new Date(date.getTime() + booking.duration * 60000);
     const ics = [
-      "BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Profesional//ES", "BEGIN:VEVENT",
+      "BEGIN:VCALENDAR",
+      "VERSION:2.0",
+      "PRODID:-//Profesional//ES",
+      "BEGIN:VEVENT",
       `UID:${booking.id}@profesional`,
       `DTSTAMP:${dt(new Date())}`,
       `DTSTART:${dt(date)}`,
@@ -65,10 +85,14 @@ function SuccessPage() {
       `SUMMARY:Turno - ${store?.name ?? ""}`,
       `DESCRIPTION:${services} con ${barber?.name ?? ""}`,
       `LOCATION:${storeAddress}`,
-      "END:VEVENT", "END:VCALENDAR",
+      "END:VEVENT",
+      "END:VCALENDAR",
     ].join("\r\n");
     const url = URL.createObjectURL(new Blob([ics], { type: "text/calendar" }));
-    const a = document.createElement("a"); a.href = url; a.download = "turno.ics"; a.click();
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "turno.ics";
+    a.click();
   }
 
   return (
@@ -81,7 +105,9 @@ function SuccessPage() {
           </div>
           <h1 className="font-display text-4xl font-semibold md:text-5xl">¡Turno confirmado!</h1>
           <p className="mt-3 text-muted-foreground">
-            Te enviamos un correo a <span className="text-foreground">{booking.customer.email}</span> con todos los detalles.
+            Te enviamos un correo a{" "}
+            <span className="text-foreground">{booking.customer.email}</span> con todos los
+            detalles.
           </p>
         </div>
 
@@ -90,13 +116,20 @@ function SuccessPage() {
             <Row icon={User} label="Cliente" value={booking.customer.fullName} />
             <Row icon={Scissors} label="Profesional" value={barber?.name ?? "-"} />
             <Row icon={Scissors} label="Servicios" value={services} />
-            <Row icon={Calendar} label="Fecha" value={format(date, "EEEE d 'de' MMMM, yyyy", { locale: es })} />
+            <Row
+              icon={Calendar}
+              label="Fecha"
+              value={format(date, "EEEE d 'de' MMMM, yyyy", { locale: es })}
+            />
             <Row icon={Clock} label="Hora" value={`${booking.time} (${booking.duration} min)`} />
             <Row icon={MapPin} label="Lugar" value={storeAddress || "Dirección no configurada"} />
           </div>
 
           <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-            <Button onClick={downloadIcs} className="flex-1 bg-gold text-primary-foreground hover:bg-gold-soft">
+            <Button
+              onClick={downloadIcs}
+              className="flex-1 bg-gold text-primary-foreground hover:bg-gold-soft"
+            >
               <Calendar className="mr-2 h-4 w-4" /> Agregar al calendario
             </Button>
             <Button asChild variant="outline" className="flex-1">
@@ -113,7 +146,7 @@ function SuccessPage() {
   );
 }
 
-function Row({ icon: Icon, label, value }: { icon: any; label: string; value: string }) {
+function Row({ icon: Icon, label, value }: { icon: LucideIcon; label: string; value: string }) {
   return (
     <div className="flex items-start justify-between gap-4 border-b border-border/60 py-3 last:border-0">
       <span className="flex items-center gap-2 text-xs uppercase tracking-wider text-muted-foreground">
