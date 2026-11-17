@@ -56,6 +56,14 @@ export const Route = createFileRoute("/admin")({
   component: AdminPage,
 });
 
+const STATS_RANGE_STORAGE_KEY = "mi-turno-ya-reservado:admin-stats-range";
+
+type SavedStatsRange = {
+  startDate: string;
+  endDate: string;
+  historySelected: boolean;
+};
+
 export function AdminPage() {
   const { isAuthenticated, isLoading, role } = useAppAuth();
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -70,6 +78,15 @@ export function AdminPage() {
   const [historySelected, setHistorySelected] = useState(false);
 
   useEffect(() => {
+    const savedRange = readSavedStatsRange();
+    if (savedRange) {
+      setStartDate(savedRange.startDate);
+      setEndDate(savedRange.endDate);
+      setDraftStartDate(savedRange.startDate);
+      setDraftEndDate(savedRange.endDate);
+      setHistorySelected(savedRange.historySelected);
+    }
+
     const reload = () => {
       setBookings(bookingStore.all());
       setStatsReady(true);
@@ -140,6 +157,11 @@ export function AdminPage() {
   }
 
   function applyDateRange() {
+    saveStatsRange({
+      startDate: draftStartDate,
+      endDate: draftEndDate,
+      historySelected: false,
+    });
     setStartDate(draftStartDate);
     setEndDate(draftEndDate);
     setHistorySelected(false);
@@ -147,6 +169,7 @@ export function AdminPage() {
   }
 
   function selectHistory() {
+    saveStatsRange({ startDate, endDate, historySelected: true });
     setHistorySelected(true);
     setRangeDialogOpen(false);
   }
@@ -390,6 +413,41 @@ export function AdminPage() {
       </main>
     </div>
   );
+}
+
+function readSavedStatsRange(): SavedStatsRange | null {
+  try {
+    const stored = window.localStorage.getItem(STATS_RANGE_STORAGE_KEY);
+    if (!stored) return null;
+
+    const parsed: unknown = JSON.parse(stored);
+    if (!parsed || typeof parsed !== "object") return null;
+
+    const range = parsed as Record<string, unknown>;
+    const { startDate, endDate, historySelected } = range;
+    if (
+      typeof startDate !== "string" ||
+      typeof endDate !== "string" ||
+      typeof historySelected !== "boolean" ||
+      Number.isNaN(parseISO(startDate).getTime()) ||
+      Number.isNaN(parseISO(endDate).getTime()) ||
+      startDate > endDate
+    ) {
+      return null;
+    }
+
+    return { startDate, endDate, historySelected };
+  } catch {
+    return null;
+  }
+}
+
+function saveStatsRange(range: SavedStatsRange) {
+  try {
+    window.localStorage.setItem(STATS_RANGE_STORAGE_KEY, JSON.stringify(range));
+  } catch {
+    // Keep the selected range usable even when browser storage is unavailable.
+  }
 }
 
 function Stat({
