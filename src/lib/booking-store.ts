@@ -64,15 +64,17 @@ export function hasPendingRefund(booking: Booking) {
 }
 
 export function canDeleteBooking(booking: Booking) {
-  if (
-    hasPendingRefund(booking) ||
-    booking.paymentStatus === "pending" ||
-    booking.status === "pending-payment" ||
-    (Boolean(booking.paymentReportedAt) && booking.paymentStatus !== "approved")
-  )
-    return false;
+  if (hasPendingRefund(booking)) return false;
+  if (Boolean(booking.paymentReportedAt) && booking.paymentStatus !== "approved") return false;
+
+  if (booking.status === "cancelled") {
+    // Los cancelados sin pago confirmado se pueden borrar; si se pagó, primero hay que
+    // confirmar la devolución para conservar el registro del dinero recibido.
+    return booking.paymentStatus !== "approved" || booking.paymentCancellationStatus === "refunded";
+  }
+
+  if (booking.paymentStatus === "pending" || booking.status === "pending-payment") return false;
   return (
-    booking.status === "cancelled" ||
     booking.status === "completed" ||
     booking.paymentStatus === "approved" ||
     booking.paymentCancellationStatus === "refunded"

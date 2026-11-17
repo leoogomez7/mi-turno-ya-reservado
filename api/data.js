@@ -82,15 +82,15 @@ function hasPendingRefund(booking) {
 }
 
 function canDeleteBooking(booking) {
-  if (
-    hasPendingRefund(booking) ||
-    booking.paymentStatus === "pending" ||
-    booking.status === "pending-payment" ||
-    (Boolean(booking.paymentReportedAt) && booking.paymentStatus !== "approved")
-  )
-    return false;
+  if (hasPendingRefund(booking)) return false;
+  if (Boolean(booking.paymentReportedAt) && booking.paymentStatus !== "approved") return false;
+
+  if (booking.status === "cancelled") {
+    return booking.paymentStatus !== "approved" || booking.paymentCancellationStatus === "refunded";
+  }
+
+  if (booking.paymentStatus === "pending" || booking.status === "pending-payment") return false;
   return (
-    booking.status === "cancelled" ||
     booking.status === "completed" ||
     booking.paymentStatus === "approved" ||
     booking.paymentCancellationStatus === "refunded"
@@ -1359,6 +1359,8 @@ async function validateBookingAvailability(db, booking, storeCode, bookingId = "
   }
   if (typeof booking.time !== "string" || !/^([01]\d|2[0-3]):[0-5]\d$/.test(booking.time))
     return "La hora del turno no es válida.";
+  if (Date.parse(`${booking.date}T${booking.time}:00-03:00`) <= Date.now())
+    return "Ese horario ya pasó y está fuera de horario. Elegí otro horario.";
   if (
     !Array.isArray(booking.serviceIds) ||
     booking.serviceIds.length === 0 ||
@@ -3480,6 +3482,11 @@ export default async function handler(request, response) {
       ["pending-payment", "confirmed"].includes(booking.status);
     if (!validBooking)
       return response.status(400).json({ error: "Los datos de la reserva no son válidos." });
+    if (Date.parse(`${booking.date}T${booking.time}:00-03:00`) <= Date.now()) {
+      return response.status(400).json({
+        error: "Ese horario ya pasó y está fuera de horario. Elegí otro horario.",
+      });
+    }
     let transaction;
     try {
       const storeCode = normalizeStoreCode(request.headers["x-store-code"]);

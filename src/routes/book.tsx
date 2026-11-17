@@ -105,6 +105,10 @@ type ReservationResult = {
 const PENDING_PAYMENT_SESSION_KEY = "mi-turno-ya:pending-payment-booking";
 const SELECTED_STORE_SESSION_KEY = "mi-turno-ya:selected-booking-store";
 
+function getReservationSlotTimestamp(date: Date, time: string) {
+  return Date.parse(`${format(date, "yyyy-MM-dd")}T${time}:00-03:00`);
+}
+
 export function BookPage() {
   const auth = useAppAuth();
   const { isAuthenticated, role, user } = auth;
@@ -145,6 +149,19 @@ export function BookPage() {
   const [serviceIds, setServiceIds] = useState<string[]>([]);
   const [date, setDate] = useState<Date | null>(null);
   const [time, setTime] = useState("");
+  const [currentTime, setCurrentTime] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (step !== 3 && step !== 4) return;
+    const refreshTime = () => setCurrentTime(Date.now());
+    refreshTime();
+    const intervalId = window.setInterval(refreshTime, 1000);
+    window.addEventListener("focus", refreshTime);
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", refreshTime);
+    };
+  }, [step]);
 
   useEffect(() => {
     if (role !== "client") {
@@ -434,6 +451,9 @@ export function BookPage() {
     (total, service) => total + (selectedServiceIds.includes(service.id) ? service.price : 0),
     0,
   );
+  const selectedSlotTimestamp = date && time ? getReservationSlotTimestamp(date, time) : NaN;
+  const selectedSlotIsPast =
+    Number.isFinite(selectedSlotTimestamp) && selectedSlotTimestamp <= currentTime;
 
   function selectProfessional(nextBarberId: string) {
     if (nextBarberId === barberId) return;
@@ -500,9 +520,9 @@ Observaciones: ${customer.notes || "Ninguna"}`;
     if (step === 1) return !!barberId;
     if (step === 2)
       return selectedServiceIds.length > 0 && selectedServiceIds.length === serviceIds.length;
-    if (step === 3) return !!date && !!time;
+    if (step === 3) return !!date && !!time && !selectedSlotIsPast;
     return true;
-  }, [step, customer, barberId, serviceIds, selectedServiceIds, date, time]);
+  }, [step, customer, barberId, serviceIds, selectedServiceIds, date, time, selectedSlotIsPast]);
 
   async function confirm() {
     if (confirmingBooking) return;
@@ -519,6 +539,10 @@ Observaciones: ${customer.notes || "Ninguna"}`;
     }
     if (!date || !time) {
       toast.error("Seleccioná fecha y horario antes de confirmar.");
+      return;
+    }
+    if (getReservationSlotTimestamp(date, time) <= Date.now()) {
+      toast.error("Ese horario ya pasó y está fuera de horario. Volvé a elegir otro.");
       return;
     }
     if (
@@ -748,7 +772,9 @@ Observaciones: ${customer.notes || "Ninguna"}`;
       } else if (step === 2) {
         message = "Seleccioná al menos un servicio para continuar.";
       } else if (step === 3) {
-        message = "Elegí fecha y horario para continuar.";
+        message = selectedSlotIsPast
+          ? "Ese horario ya pasó y está fuera de horario. Elegí otro horario."
+          : "Elegí fecha y horario para continuar.";
       }
 
       setStepError(message);
@@ -968,6 +994,7 @@ Observaciones: ${customer.notes || "Ninguna"}`;
               setTime={setTime}
               barberId={barberId}
               duration={duration}
+              currentTime={currentTime}
             />
           )}
           {step === 4 &&
@@ -996,6 +1023,15 @@ Observaciones: ${customer.notes || "Ninguna"}`;
         {stepError && (
           <div className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
             {stepError}
+          </div>
+        )}
+        {step === 4 && selectedSlotIsPast && (
+          <div
+            role="alert"
+            className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300"
+          >
+            El horario {time} ya pasó y está fuera de horario. Volvé al paso de horarios y elegí
+            otro.
           </div>
         )}
         {paymentError && (
@@ -1028,7 +1064,7 @@ Observaciones: ${customer.notes || "Ninguna"}`;
           ) : (
             <Button
               type="button"
-              disabled={confirmingBooking || storeLoading || !cloudDataReady}
+              disabled={confirmingBooking || storeLoading || !cloudDataReady || selectedSlotIsPast}
               onClick={() => void confirm()}
               className="h-12 bg-gold px-8 text-base font-semibold text-primary-foreground shadow-gold hover:bg-gold-soft"
             >
@@ -1573,6 +1609,7 @@ function StepDateTime({
   duration,
   professional,
   bookings,
+  currentTime,
 }: {
   date: Date | null;
   setDate: (d: Date) => void;
@@ -1582,6 +1619,7 @@ function StepDateTime({
   duration: number;
   professional?: Professional;
   bookings: Booking[];
+  currentTime: number;
 }) {
   const today = startOfToday();
   const scheduledDates = professional?.scheduleDates
@@ -1623,6 +1661,11 @@ function StepDateTime({
     return true;
   }
 
+  function isSlotPast(slot: string) {
+    if (!date) return false;
+    return getReservationSlotTimestamp(date, slot) <= currentTime;
+  }
+
   const hasDurationFit = slots.some(fitsSelectedDuration);
 
   function remainingForSlot(slot: string): number {
@@ -1654,8 +1697,12 @@ function StepDateTime({
   }
 
   function isSlotAvailable(slot: string): boolean {
-    return fitsSelectedDuration(slot) && remainingForSlot(slot) > 0;
+    return !isSlotPast(slot) && fitsSelectedDuration(slot) && remainingForSlot(slot) > 0;
   }
+
+  useEffect(() => {
+    if (date && time && getReservationSlotTimestamp(date, time) <= currentTime) setTime("");
+  }, [currentTime, date, setTime, time]);
 
   return (
     <div>
@@ -1722,6 +1769,7 @@ function StepDateTime({
         <div className="grid grid-cols-3 gap-2 sm:grid-cols-5 md:grid-cols-6">
           {slots.map((s) => {
             const durationFits = fitsSelectedDuration(s);
+            const slotPast = isSlotPast(s);
             const avail = isSlotAvailable(s);
             const remaining = remainingForSlot(s);
             const selected = time === s;
@@ -1741,11 +1789,13 @@ function StepDateTime({
               >
                 <span>{s}</span>
                 <span className="text-[10px] font-normal opacity-75">
-                  {!durationFits
-                    ? "Se sobrepasa el turno"
-                    : avail
-                      ? `${remaining} disponible${remaining === 1 ? "" : "s"}`
-                      : "Completo"}
+                  {slotPast
+                    ? "Fuera de horario"
+                    : !durationFits
+                      ? "Se sobrepasa el turno"
+                      : avail
+                        ? `${remaining} disponible${remaining === 1 ? "" : "s"}`
+                        : "Completo"}
                 </span>
               </button>
             );
