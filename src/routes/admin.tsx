@@ -403,14 +403,17 @@ function Stat({
   value: string | number;
 }) {
   return (
-    <div className="h-46.5 min-w-0 overflow-hidden rounded-2xl border border-gold/30 bg-card p-5">
+    <div className="h-38 min-w-0 overflow-hidden rounded-2xl border border-gold/30 bg-card p-5">
       <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-gold/15 text-gold">
         <Icon className="h-5 w-5" />
       </div>
       <div className="truncate font-display text-3xl font-semibold" title={String(value)}>
         {value}
       </div>
-      <div className="mt-1 overflow-hidden text-xs uppercase tracking-wider text-muted-foreground">
+      <div
+        className="mt-1 truncate text-xs uppercase tracking-wider text-muted-foreground"
+        title={label}
+      >
         {label}
       </div>
     </div>
