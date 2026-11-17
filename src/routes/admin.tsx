@@ -279,11 +279,6 @@ export function AdminPage() {
               value={periodStats.lastClient}
             />
             <Stat
-              icon={Calendar}
-              label="Último profesional"
-              value={periodStats.lastBarber}
-            />
-            <Stat
               icon={Scissors}
               label="Profesional con más servicios realizados"
               value={`${periodStats.topServiceBarber.name} · ${periodStats.topServiceBarber.count}`}
@@ -292,6 +287,11 @@ export function AdminPage() {
               icon={Scissors}
               label="Profesional con menos servicios realizados"
               value={`${periodStats.lowServiceBarber.name} · ${periodStats.lowServiceBarber.count}`}
+            />
+            <Stat
+              icon={Calendar}
+              label="Último profesional"
+              value={periodStats.lastBarber}
             />
           </div>
 
