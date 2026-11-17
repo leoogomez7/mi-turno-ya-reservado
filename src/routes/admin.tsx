@@ -177,7 +177,6 @@ export function AdminPage() {
               </p>
             </div>
             <div className="flex flex-col items-start gap-1 lg:items-end">
-              <span className="text-xs text-muted-foreground">Período</span>
               <Button
                 type="button"
                 variant="outline"
