@@ -74,6 +74,31 @@ export function AdminPage() {
       ),
     [bookings, endDate, startDate],
   );
+  const pendingPeriodBookings = useMemo(
+    () =>
+      bookings.filter(
+        (booking) =>
+          isPendingAttendanceBooking(booking) &&
+          booking.date >= startDate &&
+          booking.date <= endDate,
+      ),
+    [bookings, endDate, startDate],
+  );
+  const futureRevenue = useMemo(
+    () =>
+      pendingPeriodBookings
+        .filter(
+          (booking) =>
+            booking.paymentCancellationStatus !== "requested" &&
+            booking.paymentCancellationStatus !== "refunded",
+        )
+        .reduce((total, booking) => total + booking.totalPrice, 0),
+    [pendingPeriodBookings],
+  );
+  const futureServiceCount = pendingPeriodBookings.reduce(
+    (total, booking) => total + booking.serviceIds.length,
+    0,
+  );
   const periodStats = useMemo(
     () => computePeriodStats(bookings, startDate, endDate),
     [bookings, endDate, startDate],
@@ -138,7 +163,6 @@ export function AdminPage() {
                   type="date"
                   value={endDate}
                   min={startDate}
-                  max={format(new Date(), "yyyy-MM-dd")}
                   onChange={(event) => setEndDate(event.target.value)}
                   className="h-10 rounded-lg border border-border bg-background px-3 text-sm text-foreground scheme-dark [&::-webkit-calendar-picker-indicator]:invert"
                 />
@@ -164,6 +188,25 @@ export function AdminPage() {
                   label="Servicios realizados"
                   value={periodStats.totalServices.toLocaleString("es-AR")}
                 />
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                <Stat
+                  icon={DollarSign}
+                  label="Dinero a ingresar a futuro"
+                  value={formatCurrency(futureRevenue)}
+                />
+                <Stat
+                  icon={CalendarDays}
+                  label="Turnos pendientes de asistencia"
+                  value={pendingPeriodBookings.length.toLocaleString("es-AR")}
+                />
+                <Stat
+                  icon={Scissors}
+                  label="Servicios pendientes de realizar"
+                  value={futureServiceCount.toLocaleString("es-AR")}
+                />
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 <Stat
                   icon={TrendingUp}
                   label="Mes con más turnos"
@@ -361,6 +404,14 @@ type MonthlyStats = {
 
 function isAttendedBooking(booking: Booking) {
   return booking.status === "completed";
+}
+
+function isPendingAttendanceBooking(booking: Booking) {
+  return (
+    booking.status !== "completed" &&
+    booking.status !== "cancelled" &&
+    booking.status !== "no-show"
+  );
 }
 
 function getNetReceivedRevenue(booking: Booking) {
