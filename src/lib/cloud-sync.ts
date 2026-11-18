@@ -317,8 +317,17 @@ export async function selectStore(
   const nextCode = code.trim().toUpperCase();
   if (!availableStores.some((store) => store.code === nextCode))
     throw new Error("No encontramos esa sucursal.");
+  const accountKey = account.trim().toLowerCase();
+  if (activeAccount !== accountKey)
+    throw new Error("La sesión cambió. Recargá los datos antes de elegir una sucursal.");
+  const sessionAtRequest = cloudSessionRevision;
+  const result = await loadReservationStore(nextCode, getToken ?? tokenGetter);
+  if (sessionAtRequest !== cloudSessionRevision || activeAccount !== accountKey)
+    throw new Error("La sesión cambió mientras se cargaba la sucursal.");
   storeCode = nextCode;
-  await bootstrapCloudData(account, getToken ?? (async () => undefined), nextCode);
+  availableStores = result.stores;
+  setSnapshot(result.data);
+  return result;
 }
 
 export async function createStore(name: string, code: string) {

@@ -1,5 +1,5 @@
 import { createFileRoute, Link, redirect, useLocation, useNavigate } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Check,
   ChevronLeft,
@@ -104,6 +104,7 @@ type ReservationResult = {
 
 const PENDING_PAYMENT_SESSION_KEY = "mi-turno-ya:pending-payment-booking";
 const SELECTED_STORE_SESSION_KEY = "mi-turno-ya:selected-booking-store";
+const RESERVATION_DRAFT_SESSION_KEY = "mi-turno-ya:reservation-draft";
 
 function getReservationSlotTimestamp(date: Date, time: string) {
   return Date.parse(`${format(date, "yyyy-MM-dd")}T${time}:00-03:00`);
@@ -140,10 +141,12 @@ export function BookPage() {
   const [storeSearch, setStoreSearch] = useState("");
   const [storeLoading, setStoreLoading] = useState(false);
   const [storeSelectionPending, setStoreSelectionPending] = useState(false);
+  const loadedReservationStoreCode = useRef(isCloudInitialized() ? getCurrentStoreCode() : "");
   const navigate = useNavigate();
   const paymentReturn = new URLSearchParams(location.searchStr).get("payment");
 
   const [customer, setCustomer] = useState<Customer>(EMPTY_CUSTOMER);
+  const [reservationDraftHydrated, setReservationDraftHydrated] = useState(false);
   const [clientProfileLoaded, setClientProfileLoaded] = useState(false);
   const [profileReloadKey, setProfileReloadKey] = useState(0);
   const [barberId, setBarberId] = useState("");
@@ -232,6 +235,59 @@ export function BookPage() {
   }, []);
 
   useEffect(() => {
+    try {
+      const savedDraft = window.sessionStorage.getItem(RESERVATION_DRAFT_SESSION_KEY);
+      if (savedDraft) {
+        const draft = JSON.parse(savedDraft) as {
+          customer?: Partial<Customer>;
+          barberId?: string;
+          serviceIds?: string[];
+          date?: string | null;
+          time?: string;
+        };
+        if (draft.customer && typeof draft.customer === "object") {
+          const paymentMethod = ["efectivo", "transferencia", "tarjeta o mercado pago"].includes(
+            String(draft.customer.paymentMethod),
+          )
+            ? draft.customer.paymentMethod
+            : undefined;
+          setCustomer({
+            ...EMPTY_CUSTOMER,
+            ...draft.customer,
+            paymentMethod,
+          });
+        }
+        if (typeof draft.barberId === "string") setBarberId(draft.barberId);
+        if (Array.isArray(draft.serviceIds))
+          setServiceIds(draft.serviceIds.filter((id): id is string => typeof id === "string"));
+        if (typeof draft.date === "string") {
+          const restoredDate = parseISO(draft.date);
+          if (!Number.isNaN(restoredDate.getTime())) setDate(restoredDate);
+        }
+        if (typeof draft.time === "string") setTime(draft.time);
+      }
+    } catch {
+      window.sessionStorage.removeItem(RESERVATION_DRAFT_SESSION_KEY);
+    } finally {
+      setReservationDraftHydrated(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!reservationDraftHydrated) return;
+    window.sessionStorage.setItem(
+      RESERVATION_DRAFT_SESSION_KEY,
+      JSON.stringify({
+        customer,
+        barberId,
+        serviceIds,
+        date: date ? format(date, "yyyy-MM-dd") : null,
+        time,
+      }),
+    );
+  }, [barberId, customer, date, reservationDraftHydrated, serviceIds, time]);
+
+  useEffect(() => {
     if (!storeSelectionHydrated) return;
     if (selectedStoreCode) {
       window.sessionStorage.setItem(SELECTED_STORE_SESSION_KEY, selectedStoreCode);
@@ -274,11 +330,13 @@ export function BookPage() {
 
   useEffect(() => {
     if (!cloudDataReady || !selectedStoreCode) return;
+    if (loadedReservationStoreCode.current === selectedStoreCode) return;
     let cancelled = false;
     setStoreLoading(true);
     void loadReservationStore(selectedStoreCode, isAuthenticated ? auth.getIdToken : undefined)
       .then(({ data, stores: loadedStores }) => {
         if (cancelled) return;
+        loadedReservationStoreCode.current = selectedStoreCode;
         setReservationProfessionals(data.professionals);
         setReservationBookings(data.bookings);
         setStores(loadedStores);
@@ -321,12 +379,14 @@ export function BookPage() {
     void (async () => {
       let resultKind: ReservationResult["kind"] =
         paymentReturn === "success" ? "payment-failure" : "payment-pending";
-      let returnedBooking: {
-        date?: string;
-        time?: string;
-        totalPrice?: number;
-        storeCode?: string;
-      } | undefined;
+      let returnedBooking:
+        | {
+            date?: string;
+            time?: string;
+            totalPrice?: number;
+            storeCode?: string;
+          }
+        | undefined;
       if (bookingId) {
         try {
           const response = await fetch("/api/data", {
@@ -416,7 +476,11 @@ export function BookPage() {
     setStoreSelectionPending(true);
     try {
       if (store.code !== getCurrentStoreCode()) {
-        await selectStore(store.code, user?.email ?? "guest", auth.getIdToken);
+        const loadedStore = await selectStore(store.code, user?.email ?? "guest", auth.getIdToken);
+        loadedReservationStoreCode.current = store.code;
+        setReservationProfessionals(loadedStore.data.professionals);
+        setReservationBookings(loadedStore.data.bookings);
+        setStores(loadedStore.stores);
       }
       setSelectedStoreCode(store.code);
       setBarberId("");
@@ -468,6 +532,8 @@ export function BookPage() {
   const selectedSlotTimestamp = date && time ? getReservationSlotTimestamp(date, time) : NaN;
   const selectedSlotIsPast =
     Number.isFinite(selectedSlotTimestamp) && selectedSlotTimestamp <= currentTime;
+  const reservationDataLoading =
+    Boolean(selectedStoreCode) && (!storeSelectionHydrated || storeLoading);
 
   function selectProfessional(nextBarberId: string) {
     if (nextBarberId === barberId) return;
@@ -591,6 +657,7 @@ Observaciones: ${customer.notes || "Ninguna"}`;
             totalPrice: price,
             paymentMethod: "transferencia",
           });
+          window.sessionStorage.removeItem(RESERVATION_DRAFT_SESSION_KEY);
         } catch (error) {
           toast.error(error instanceof Error ? error.message : "No se pudo guardar el turno.");
         }
@@ -631,6 +698,7 @@ Observaciones: ${customer.notes || "Ninguna"}`;
             time,
             paymentMethod: customer.paymentMethod,
           });
+          window.sessionStorage.removeItem(RESERVATION_DRAFT_SESSION_KEY);
         } catch (error) {
           setReservationResult(null);
           if (pendingBooking) {
@@ -660,6 +728,7 @@ Observaciones: ${customer.notes || "Ninguna"}`;
           status: "confirmed",
         });
         setReservationResult({ kind: "confirmed", date: format(date, "yyyy-MM-dd"), time });
+        window.sessionStorage.removeItem(RESERVATION_DRAFT_SESSION_KEY);
         toast.success("¡Turno confirmado!");
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "No se pudo guardar el turno.");
@@ -803,6 +872,7 @@ Observaciones: ${customer.notes || "Ninguna"}`;
     setReservationResult(null);
     setPaymentDialog(null);
     setPaymentError(null);
+    window.sessionStorage.removeItem(RESERVATION_DRAFT_SESSION_KEY);
     window.localStorage.removeItem(PENDING_PAYMENT_SESSION_KEY);
     setCustomer(EMPTY_CUSTOMER);
     setClientProfileLoaded(role !== "client");
@@ -1005,6 +1075,7 @@ Observaciones: ${customer.notes || "Ninguna"}`;
               professionals={reservationProfessionals}
               value={barberId}
               onChange={selectProfessional}
+              loading={reservationDataLoading}
             />
           )}
           {step === 2 && (
@@ -1013,6 +1084,7 @@ Observaciones: ${customer.notes || "Ninguna"}`;
               professional={selectedProfessional}
               value={selectedServiceIds}
               onChange={selectServices}
+              loading={reservationDataLoading}
             />
           )}
           {step === 3 && (
@@ -1088,6 +1160,7 @@ Observaciones: ${customer.notes || "Ninguna"}`;
             <Button
               type="button"
               onClick={handleContinue}
+              disabled={reservationDataLoading && (step === 1 || step === 2)}
               className="bg-gold text-primary-foreground hover:bg-gold-soft"
             >
               Continuar <ChevronRight className="ml-1 h-4 w-4" />
@@ -1491,15 +1564,24 @@ function StepBarber({
   professionals,
   value,
   onChange,
+  loading,
 }: {
   professionals: Professional[];
   value: string;
   onChange: (v: string) => void;
+  loading: boolean;
 }) {
   return (
     <div>
       <SectionTitle icon={Briefcase} title="Paso 2" subtitle="Elegí tu profesional" />
-      {professionals.length === 0 ? (
+      {loading ? (
+        <div
+          role="status"
+          className="rounded-2xl border border-border bg-card p-6 text-sm text-muted-foreground"
+        >
+          Cargando profesionales…
+        </div>
+      ) : professionals.length === 0 ? (
         <div className="rounded-2xl border border-border bg-card p-6 text-sm text-muted-foreground">
           No hay profesionales cargados.
         </div>
@@ -1549,10 +1631,12 @@ function StepServices({
   value,
   onChange,
   professional,
+  loading,
 }: {
   value: string[];
   onChange: (v: string[]) => void;
   professional?: Professional;
+  loading: boolean;
 }) {
   const professionalServices = professional?.services ?? [];
   const toggle = (id: string) =>
@@ -1574,7 +1658,14 @@ function StepServices({
       </p>
 
       <div className="grid gap-2 sm:grid-cols-2">
-        {professionalServices.length === 0 ? (
+        {loading ? (
+          <div
+            role="status"
+            className="rounded-2xl border border-border bg-muted p-6 text-sm text-muted-foreground"
+          >
+            Cargando servicios…
+          </div>
+        ) : professionalServices.length === 0 ? (
           <div className="rounded-2xl border border-border bg-muted p-6 text-sm text-muted-foreground">
             Seleccioná un profesional para ver sus servicios disponibles.
           </div>

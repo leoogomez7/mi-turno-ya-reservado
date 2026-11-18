@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -106,6 +107,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 function KindeSession({ children }: { children: ReactNode }) {
   const { isAuthenticated, isLoading, user, login, register, logout, getIdToken } = useKindeAuth();
+  const getIdTokenRef = useRef(getIdToken);
+  getIdTokenRef.current = getIdToken;
+  const getIdTokenStable = useCallback(() => getIdTokenRef.current(), []);
   const [role, setRole] = useState<AccountRole | null>(null);
   const setVerifiedRole = useCallback(
     (verifiedRole: AccountRole | null) => setRole(verifiedRole),
@@ -143,7 +147,7 @@ function KindeSession({ children }: { children: ReactNode }) {
       user: user ?? null,
       role,
       setVerifiedRole,
-      getIdToken,
+      getIdToken: getIdTokenStable,
       login: (_requestedRole = "client", email) => startAuth(login, "client", email),
       register: (_requestedRole = "client", email) => startAuth(register, "client", email),
       logout: async () => {
@@ -152,7 +156,7 @@ function KindeSession({ children }: { children: ReactNode }) {
       },
     };
   }, [
-    getIdToken,
+    getIdTokenStable,
     isAuthenticated,
     isLoading,
     login,
