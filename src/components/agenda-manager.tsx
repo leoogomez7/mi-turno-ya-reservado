@@ -575,9 +575,9 @@ export function AgendaManager() {
                     id={`booking-${booking.id}`}
                     className={`flex flex-col items-stretch gap-3 rounded-xl border p-4 text-center transition-colors duration-300 xl:grid xl:grid-cols-[4.5rem_minmax(12rem,1fr)_auto_minmax(14rem,0.8fr)_minmax(22rem,1.3fr)] xl:items-center xl:gap-4 xl:text-left ${highlightedBookingId === booking.id ? "border-gold bg-gold/20 ring-2 ring-gold/70" : "border-gold/30 bg-card"}`}
                   >
-                    <div className="flex w-full flex-col gap-3 xl:contents">
-                      <div className="grid w-full grid-cols-[auto_minmax(0,1fr)_minmax(0,1fr)] items-center gap-2 xl:contents">
-                        <div className="flex w-18 shrink-0 flex-col items-center rounded-lg bg-gold/10 px-1.5 py-2 text-gold xl:col-start-1 xl:row-start-1">
+                    <div className="flex w-full flex-col gap-3 xl:hidden">
+                      <div className="grid w-full grid-cols-[auto_minmax(0,1fr)] items-center gap-3">
+                        <div className="flex w-18 shrink-0 flex-col items-center rounded-lg bg-gold/10 px-1.5 py-2 text-gold">
                           <span className="text-[10px] uppercase tracking-widest">
                             {format(date, "EEE", { locale: es })}
                           </span>
@@ -586,30 +586,62 @@ export function AgendaManager() {
                           </span>
                           <span className="text-[10px]">{booking.time}</span>
                         </div>
-                        <div className="col-span-2 grid min-w-0 grid-cols-2 gap-2 text-center xl:col-span-1 xl:col-start-2 xl:row-start-1 xl:block xl:text-left">
-                          <div className="min-w-0">
-                            <div className="font-medium">
-                              {professional?.name ?? "Profesional"}
-                              {professional?.specialty ? ` · ${professional.specialty}` : ""}
-                            </div>
-                            <div className="text-sm text-muted-foreground">
-                              {services || "Servicio"} · {booking.duration} min
-                            </div>
+                        <div className="min-w-0 text-center">
+                          <div className="font-medium">
+                            {professional?.name ?? "Profesional"}
+                            {professional?.specialty ? ` · ${professional.specialty}` : ""}
                           </div>
-                          <div className="min-w-0 text-xs text-muted-foreground">
-                            <span className="block wrap-break-word font-medium text-foreground">
-                              {booking.customer.fullName}
-                            </span>
-                            {booking.customer.phone && (
-                              <span className="block break-all">{booking.customer.phone}</span>
-                            )}
-                            {booking.customer.email && (
-                              <span className="block break-all">{booking.customer.email}</span>
-                            )}
+                          <div className="text-sm text-muted-foreground">
+                            {services || "Servicio"} · {booking.duration} min
                           </div>
                         </div>
                       </div>
-                      <div className="w-full text-center font-display text-base font-semibold text-gold xl:col-start-3 xl:row-start-1 xl:w-auto xl:justify-self-start xl:rounded-lg xl:border xl:border-gold/20 xl:bg-gold/5 xl:px-3 xl:py-2 xl:text-center xl:text-lg">
+                      <div className="min-w-0 text-center text-xs text-muted-foreground">
+                        <span className="block wrap-break-word font-medium text-foreground">
+                          {booking.customer.fullName}
+                        </span>
+                        {booking.customer.phone && (
+                          <span className="block break-all">{booking.customer.phone}</span>
+                        )}
+                        {booking.customer.email && (
+                          <span className="block break-all">{booking.customer.email}</span>
+                        )}
+                      </div>
+                      <div className="w-full text-center font-display text-base font-semibold text-gold">
+                        ${booking.totalPrice.toLocaleString("es-AR")}
+                      </div>
+                    </div>
+                    <div className="hidden xl:contents">
+                      <div className="flex w-18 shrink-0 flex-col items-center rounded-lg bg-gold/10 px-1.5 py-2 text-gold xl:col-start-1 xl:row-start-1">
+                        <span className="text-[10px] uppercase tracking-widest">
+                          {format(date, "EEE", { locale: es })}
+                        </span>
+                        <span className="font-display text-xl font-semibold">
+                          {format(date, "dd/MM")}
+                        </span>
+                        <span className="text-[10px]">{booking.time}</span>
+                      </div>
+                      <div className="min-w-0 xl:col-start-2 xl:row-start-1">
+                        <div className="font-medium">
+                          {professional?.name ?? "Profesional"}
+                          {professional?.specialty ? ` · ${professional.specialty}` : ""}
+                        </div>
+                        <div className="text-sm text-muted-foreground">
+                          {services || "Servicio"} · {booking.duration} min
+                        </div>
+                        <div className="mt-1 text-xs text-muted-foreground">
+                          <span className="block wrap-break-word font-medium text-foreground">
+                            {booking.customer.fullName}
+                          </span>
+                          {booking.customer.phone && (
+                            <span className="block break-all">{booking.customer.phone}</span>
+                          )}
+                          {booking.customer.email && (
+                            <span className="block break-all">{booking.customer.email}</span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="shrink-0 font-display text-base font-semibold text-gold xl:col-start-3 xl:row-start-1 xl:justify-self-start xl:rounded-lg xl:border xl:border-gold/20 xl:bg-gold/5 xl:px-3 xl:py-2 xl:text-center xl:text-lg">
                         ${booking.totalPrice.toLocaleString("es-AR")}
                       </div>
                     </div>
