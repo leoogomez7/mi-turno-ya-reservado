@@ -139,6 +139,7 @@ export function BookPage() {
   const [storePickerOpen, setStorePickerOpen] = useState(false);
   const [storeSearch, setStoreSearch] = useState("");
   const [storeLoading, setStoreLoading] = useState(false);
+  const [storeSelectionPending, setStoreSelectionPending] = useState(false);
   const navigate = useNavigate();
   const paymentReturn = new URLSearchParams(location.searchStr).get("payment");
 
@@ -399,6 +400,7 @@ export function BookPage() {
 
   async function chooseStore(store: Store) {
     setStoreLoading(true);
+    setStoreSelectionPending(true);
     try {
       if (role !== "admin" && store.code !== getCurrentStoreCode()) {
         await selectStore(store.code, user?.email ?? "guest", auth.getIdToken);
@@ -415,6 +417,7 @@ export function BookPage() {
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "No se pudo cambiar de sucursal.");
     } finally {
+      setStoreSelectionPending(false);
       setStoreLoading(false);
     }
   }
@@ -937,7 +940,7 @@ Observaciones: ${customer.notes || "Ninguna"}`;
                     </div>
                   )}
                 </div>
-                {storeLoading && (
+                {storeSelectionPending && (
                   <p
                     role="status"
                     aria-live="polite"
