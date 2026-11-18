@@ -162,7 +162,6 @@ export async function bootstrapCloudData(
   initialized = false;
   snapshotRevision += 1;
   cloudRefreshInFlight = null;
-  window.dispatchEvent(new Event("mi-turno-ya:store-changed"));
 
   const result = await request<{
     data: CloudSnapshot;
