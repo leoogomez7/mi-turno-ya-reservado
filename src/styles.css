@@ -200,6 +200,16 @@
     display: none;
     width: 0;
   }
+
+  .gold-scrollbar.mobile-dialog-scrollbar-hidden {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .gold-scrollbar.mobile-dialog-scrollbar-hidden::-webkit-scrollbar {
+    display: none;
+    width: 0;
+  }
 }
 
 input[type="time"]::-webkit-calendar-picker-indicator {
