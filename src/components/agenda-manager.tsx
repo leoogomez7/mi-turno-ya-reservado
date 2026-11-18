@@ -1155,7 +1155,7 @@ export function AgendaManager() {
                         setEditedTime("");
                       }}
                     >
-                      <SelectTrigger className="mt-2 bg-white text-slate-900">
+                      <SelectTrigger className="mt-2 bg-background text-white data-placeholder:text-white">
                         <SelectValue placeholder="Seleccionar profesional" />
                       </SelectTrigger>
                       <SelectContent className="gold-scrollbar max-h-60">
@@ -1261,7 +1261,7 @@ export function AgendaManager() {
                         <Button
                           type="button"
                           variant="outline"
-                          className="w-full justify-between bg-white font-normal text-slate-900 hover:bg-white hover:text-slate-900 disabled:opacity-100 disabled:text-slate-400"
+                          className="w-full justify-between font-normal text-white hover:text-white disabled:opacity-100 disabled:text-white"
                           disabled={!editedProfessional || !editedServices.length}
                         >
                           <span>
@@ -1304,7 +1304,7 @@ export function AgendaManager() {
                       onValueChange={setEditedTime}
                       disabled={!editedDate || !editedServices.length}
                     >
-                      <SelectTrigger className="mt-2 bg-white text-slate-900 disabled:opacity-100 disabled:text-slate-400">
+                      <SelectTrigger className="mt-2 bg-background text-white data-placeholder:text-white disabled:opacity-100 disabled:text-white">
                         <SelectValue placeholder="Seleccionar hora" />
                       </SelectTrigger>
                       <SelectContent className="gold-scrollbar max-h-60">
