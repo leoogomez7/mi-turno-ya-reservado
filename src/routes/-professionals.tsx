@@ -1892,7 +1892,7 @@ export function ProfessionalsManager() {
                 viewMode === "schedule"
                   ? schedulePanel === "exceptions"
                     ? "w-[calc(100vw-2rem)] max-h-[calc(100dvh-1rem)] overflow-hidden gap-2 p-4 sm:max-w-lg"
-                    : "w-[calc(100vw-2rem)] max-h-[calc(100dvh-2rem)] overflow-x-hidden overflow-y-auto [&>button:last-child]:hidden sm:max-w-lg"
+                    : "gold-scrollbar mobile-dialog-scrollbar-hidden w-[calc(100vw-2rem)] max-h-[calc(100dvh-2rem)] overflow-x-hidden overflow-y-auto [&>button:last-child]:hidden sm:max-w-lg"
                   : "max-h-[90vh] overflow-y-auto"
               }
             >

@@ -213,7 +213,7 @@
 }
 
 input[type="time"]::-webkit-calendar-picker-indicator {
-  filter: brightness(0) invert(1);
+  filter: invert(77%) sepia(58%) saturate(607%) hue-rotate(4deg) brightness(93%) contrast(90%);
   opacity: 1;
 }
 
