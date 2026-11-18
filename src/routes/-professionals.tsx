@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
-import { Check, ImagePlus, Plus, Trash2, X } from "lucide-react";
+import { Check, Clock3, ImagePlus, Plus, Trash2, X } from "lucide-react";
 import { format, getDay, startOfToday } from "date-fns";
 import { es } from "date-fns/locale";
 import { SiteHeader } from "@/components/site-header";
@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { toast } from "sonner";
 import {
   professionalStore,
@@ -77,6 +78,118 @@ const emptyStoreSettings: StoreSettings = {
   refundPercent: 100,
   cancellationWindowMinutes: 30,
 };
+
+function ResponsiveTimePicker({
+  value,
+  onChange,
+  disabled = false,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  disabled?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [currentHour, currentMinute] = value.split(":");
+  const hour = /^\d{2}$/.test(currentHour ?? "") ? currentHour : "09";
+  const minute = /^\d{2}$/.test(currentMinute ?? "") ? currentMinute : "00";
+  const hours = Array.from({ length: 24 }, (_, index) => String(index).padStart(2, "0"));
+  const minutes = Array.from({ length: 60 }, (_, index) => String(index).padStart(2, "0"));
+
+  return (
+    <>
+      <div className="sm:hidden">
+        <Popover open={open} onOpenChange={setOpen}>
+          <PopoverTrigger asChild>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={disabled}
+              aria-label={`Elegir horario, ${hour}:${minute}`}
+              aria-expanded={open}
+              className="h-11 w-full justify-between border-gold/30 bg-background px-3 font-mono text-lg tracking-wider"
+            >
+              <span className="flex items-center gap-2">
+                <Clock3 className="h-4 w-4 text-gold" />
+                {hour}:{minute}
+              </span>
+              <span className="text-xs font-sans tracking-normal text-muted-foreground">
+                Elegir
+              </span>
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent
+            align="start"
+            className="w-[min(22rem,calc(100vw-2rem))] rounded-2xl border-gold/30 bg-card p-4 shadow-xl"
+          >
+            <div className="mb-3 flex items-center justify-between">
+              <div>
+                <p className="text-xs uppercase tracking-widest text-muted-foreground">
+                  Elegí el horario
+                </p>
+                <p className="mt-1 font-mono text-4xl font-semibold tracking-widest text-gold">
+                  {hour}:{minute}
+                </p>
+              </div>
+              <Clock3 className="h-7 w-7 text-gold/70" />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <p className="mb-1 text-center text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+                  Hora
+                </p>
+                <div className="grid max-h-40 grid-cols-4 gap-1 overflow-y-auto rounded-xl border border-border bg-background/60 p-1">
+                  {hours.map((option) => (
+                    <button
+                      key={option}
+                      type="button"
+                      aria-pressed={hour === option}
+                      onClick={() => onChange(`${option}:${minute}`)}
+                      className={`h-9 rounded-lg text-sm transition-colors ${hour === option ? "bg-gold font-semibold text-primary-foreground" : "text-foreground hover:bg-gold/10"}`}
+                    >
+                      {option}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <p className="mb-1 text-center text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+                  Minutos
+                </p>
+                <div className="grid max-h-40 grid-cols-3 gap-1 overflow-y-auto rounded-xl border border-border bg-background/60 p-1">
+                  {minutes.map((option) => (
+                    <button
+                      key={option}
+                      type="button"
+                      aria-pressed={minute === option}
+                      onClick={() => onChange(`${hour}:${option}`)}
+                      className={`h-9 rounded-lg text-sm transition-colors ${minute === option ? "bg-gold font-semibold text-primary-foreground" : "text-foreground hover:bg-gold/10"}`}
+                    >
+                      {option}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <Button
+              type="button"
+              onClick={() => setOpen(false)}
+              className="mt-3 w-full bg-gold text-primary-foreground hover:bg-gold-soft"
+            >
+              Listo
+            </Button>
+          </PopoverContent>
+        </Popover>
+      </div>
+      <Input
+        type="time"
+        className="scheme-dark hidden w-full [&::-webkit-calendar-picker-indicator]:invert sm:block"
+        disabled={disabled}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      />
+    </>
+  );
+}
 
 async function prepareStoreLogo(file: File) {
   if (!/^image\/(jpeg|png|webp|gif)$/.test(file.type)) {
@@ -1853,25 +1966,17 @@ export function ProfessionalsManager() {
                                   </label>
                                 </div>
                                 <Field label="Desde">
-                                  <Input
-                                    type="time"
-                                    className="scheme-dark w-full [&::-webkit-calendar-picker-indicator]:invert"
+                                  <ResponsiveTimePicker
                                     disabled={isClosed}
                                     value={schedule?.start ?? "09:00"}
-                                    onChange={(event) =>
-                                      setWeeklyDay(day.id, { start: event.target.value })
-                                    }
+                                    onChange={(start) => setWeeklyDay(day.id, { start })}
                                   />
                                 </Field>
                                 <Field label="Hasta">
-                                  <Input
-                                    type="time"
-                                    className="scheme-dark w-full [&::-webkit-calendar-picker-indicator]:invert"
+                                  <ResponsiveTimePicker
                                     disabled={isClosed}
                                     value={schedule?.end ?? "18:00"}
-                                    onChange={(event) =>
-                                      setWeeklyDay(day.id, { end: event.target.value })
-                                    }
+                                    onChange={(end) => setWeeklyDay(day.id, { end })}
                                   />
                                 </Field>
                                 <div className="flex items-center justify-between gap-3 sm:col-span-3">
@@ -2037,19 +2142,15 @@ export function ProfessionalsManager() {
               {!scheduleDateClosed && (
                 <div className="grid grid-cols-2 gap-3">
                   <Field label="Desde">
-                    <Input
-                      type="time"
-                      className="scheme-dark [&::-webkit-calendar-picker-indicator]:invert"
+                    <ResponsiveTimePicker
                       value={scheduleDateStart}
-                      onChange={(event) => setScheduleDateStart(event.target.value)}
+                      onChange={setScheduleDateStart}
                     />
                   </Field>
                   <Field label="Hasta">
-                    <Input
-                      type="time"
-                      className="scheme-dark [&::-webkit-calendar-picker-indicator]:invert"
+                    <ResponsiveTimePicker
                       value={scheduleDateEnd}
-                      onChange={(event) => setScheduleDateEnd(event.target.value)}
+                      onChange={setScheduleDateEnd}
                     />
                   </Field>
                   <div className="col-span-2 flex items-center justify-between gap-3">

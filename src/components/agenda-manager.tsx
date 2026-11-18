@@ -517,18 +517,18 @@ export function AgendaManager() {
               <p className="text-xs uppercase tracking-widest text-gold">Control</p>
               <h1 className="mt-1 font-display text-2xl font-semibold">Agenda</h1>
             </div>
-            <div className="flex w-full flex-nowrap gap-2 sm:w-auto">
+            <div className="grid w-full grid-cols-[minmax(0,1.8fr)_minmax(0,1fr)] gap-2 sm:flex sm:w-auto">
               <Button
                 type="button"
                 variant="outline"
-                className="min-w-0 flex-1 whitespace-nowrap px-2 text-xs sm:flex-none sm:px-4 sm:text-sm"
+                className="h-9 min-w-0 w-full whitespace-nowrap px-2 text-[11px] sm:w-auto sm:px-4 sm:text-sm"
                 onClick={() => setArchiveDialogOpen(true)}
               >
                 Turnos borrados/antiguos
               </Button>
               <Link
                 to="/reserva"
-                className="inline-flex h-10 min-w-0 flex-1 items-center justify-center whitespace-nowrap rounded-md bg-gold px-2 text-xs font-medium text-primary-foreground transition-colors hover:bg-gold-soft sm:flex-none sm:px-4 sm:text-sm"
+                className="inline-flex h-9 min-w-0 w-full items-center justify-center whitespace-nowrap rounded-md bg-gold px-2 text-[11px] font-medium text-primary-foreground transition-colors hover:bg-gold-soft sm:h-10 sm:w-auto sm:px-4 sm:text-sm"
               >
                 Nuevo turno
               </Link>
@@ -573,10 +573,10 @@ export function AgendaManager() {
                   <div
                     key={booking.id}
                     id={`booking-${booking.id}`}
-                    className={`flex flex-col items-stretch gap-3 rounded-xl border p-4 text-left transition-colors duration-300 xl:grid xl:grid-cols-[4rem_minmax(12rem,1fr)_auto_minmax(14rem,0.8fr)_minmax(22rem,1.3fr)] xl:items-center xl:gap-4 ${highlightedBookingId === booking.id ? "border-gold bg-gold/20 ring-2 ring-gold/70" : "border-gold/30 bg-card"}`}
+                    className={`flex flex-col items-stretch gap-3 rounded-xl border p-4 text-center transition-colors duration-300 xl:grid xl:grid-cols-[4rem_minmax(12rem,1fr)_auto_minmax(14rem,0.8fr)_minmax(22rem,1.3fr)] xl:items-center xl:gap-4 xl:text-left ${highlightedBookingId === booking.id ? "border-gold bg-gold/20 ring-2 ring-gold/70" : "border-gold/30 bg-card"}`}
                   >
                     <div className="flex w-full flex-col gap-3 xl:contents">
-                      <div className="flex w-full items-center justify-between gap-3 xl:contents">
+                      <div className="flex w-full items-center justify-center gap-8 xl:contents">
                         <div className="flex w-16 shrink-0 flex-col items-center rounded-lg bg-gold/10 px-1.5 py-2 text-gold xl:col-start-1 xl:row-start-1">
                           <span className="text-[10px] uppercase tracking-widest">
                             {format(date, "EEE", { locale: es })}
@@ -590,7 +590,7 @@ export function AgendaManager() {
                           ${booking.totalPrice.toLocaleString("es-AR")}
                         </div>
                       </div>
-                      <div className="min-w-0 w-full text-left xl:col-start-2 xl:row-start-1">
+                      <div className="min-w-0 w-full text-center xl:col-start-2 xl:row-start-1 xl:text-left">
                         <div className="font-medium">
                           {professional?.name ?? "Profesional"}
                           {professional?.specialty ? ` · ${professional.specialty}` : ""}
@@ -693,7 +693,7 @@ export function AgendaManager() {
                         </Badge>
                       )}
                     </div>
-                    <div className="grid w-full grid-cols-2 gap-2 xl:col-start-5 xl:grid-cols-3">
+                    <div className="flex w-full flex-wrap justify-center gap-2 xl:col-start-5 xl:grid xl:grid-cols-3">
                       {booking.status !== "cancelled" && (
                         <>
                           {!booking.paymentCancellationStatus &&
