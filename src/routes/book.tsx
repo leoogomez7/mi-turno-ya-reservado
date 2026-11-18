@@ -671,13 +671,12 @@ Observaciones: ${customer.notes || "Ninguna"}`;
 
   async function startMercadoPagoPayment() {
     if (startingPayment) return;
-    const useSameTab = window.matchMedia("(max-width: 767px)").matches;
-    const paymentTab = useSameTab ? null : window.open("about:blank", "_blank");
-    if (!useSameTab && !paymentTab) {
+    const paymentTab = window.open("about:blank", "_blank");
+    if (!paymentTab) {
       toast.error("Permití las ventanas emergentes para abrir el pago en otra pestaña.");
       return;
     }
-    if (paymentTab) paymentTab.opener = null;
+    paymentTab.opener = null;
     setStartingPayment(true);
     try {
       const saved = window.localStorage.getItem(PENDING_PAYMENT_SESSION_KEY);
@@ -698,13 +697,9 @@ Observaciones: ${customer.notes || "Ninguna"}`;
       const result = (await response.json()) as { initPoint?: string; error?: string };
       if (!response.ok || !result.initPoint)
         throw new Error(result.error || "No se pudo preparar el pago.");
-      if (useSameTab) {
-        window.location.assign(result.initPoint);
-      } else if (paymentTab) {
-        paymentTab.location.href = result.initPoint;
-      }
+      paymentTab.location.href = result.initPoint;
     } catch (error) {
-      paymentTab?.close();
+      paymentTab.close();
       toast.error(error instanceof Error ? error.message : "No se pudo iniciar el pago.");
     } finally {
       setStartingPayment(false);
