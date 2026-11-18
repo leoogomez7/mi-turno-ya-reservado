@@ -213,8 +213,8 @@
 }
 
 input[type="time"]::-webkit-calendar-picker-indicator {
-  filter: invert(77%) sepia(38%) saturate(340%) hue-rotate(4deg) brightness(84%) contrast(85%);
-  opacity: 0.65;
+  filter: invert(77%) sepia(58%) saturate(607%) hue-rotate(4deg) brightness(93%) contrast(90%);
+  opacity: 1;
 }
 
 input[type="date"]::-webkit-calendar-picker-indicator {
