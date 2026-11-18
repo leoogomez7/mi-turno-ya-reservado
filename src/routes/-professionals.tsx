@@ -1588,12 +1588,12 @@ export function ProfessionalsManager() {
                   </Field>
                 </div>
                 <div className="flex w-full flex-col gap-2 pt-2 sm:flex-row">
-                  <div className="flex w-full items-center gap-3 sm:flex-1">
+                  <div className="flex w-full items-center gap-3 sm:contents">
                     <Button
                       variant="outline"
                       disabled={savingProfessional || Boolean(deletingProfessionalId)}
                       onClick={() => setShowForm(false)}
-                      className="min-w-0 flex-1 px-2 text-xs sm:text-sm"
+                      className="min-w-0 flex-1 px-2 text-xs sm:order-2 sm:text-sm"
                     >
                       Cancelar
                     </Button>
@@ -1602,7 +1602,7 @@ export function ProfessionalsManager() {
                         savingProfessional || Boolean(deletingProfessionalId) || !canSaveProfessional
                       }
                       onClick={() => void saveProfessional()}
-                      className="min-w-0 flex-1 bg-gold px-2 text-xs text-primary-foreground hover:bg-gold-soft sm:text-sm"
+                      className="min-w-0 flex-1 bg-gold px-2 text-xs text-primary-foreground hover:bg-gold-soft sm:order-3 sm:text-sm"
                     >
                       {savingProfessional ? "Guardando…" : "Guardar profesional"}
                     </Button>
@@ -1612,7 +1612,7 @@ export function ProfessionalsManager() {
                       <Button
                         variant="outline"
                         disabled
-                        className="w-full px-2 text-xs opacity-50 text-muted-foreground sm:flex-1 sm:text-sm"
+                        className="w-full px-2 text-xs opacity-50 text-muted-foreground sm:order-1 sm:flex-1 sm:text-sm"
                       >
                         Profesional de prueba
                       </Button>
@@ -1620,7 +1620,7 @@ export function ProfessionalsManager() {
                       <Button
                         variant="outline"
                         disabled={Boolean(deletingProfessionalId) || savingProfessional}
-                        className="w-full border-red-500/30 px-2 text-xs text-red-300 hover:bg-red-500/10 hover:text-red-300 sm:flex-1 sm:text-sm"
+                        className="w-full border-red-500/30 px-2 text-xs text-red-300 hover:bg-red-500/10 hover:text-red-300 sm:order-1 sm:flex-1 sm:text-sm"
                         onClick={() => requestDeleteProfessional(editingId)}
                       >
                         {deletingProfessionalId === editingId
