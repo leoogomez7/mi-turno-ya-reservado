@@ -144,6 +144,7 @@ function CloudDataBootstrap({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (isLoading) return;
     if (!configured) {
+      setReadyFor(null);
       clearCloudSession();
       setVerifiedRole(null);
       void bootstrapCloudData("guest", async () => undefined)
@@ -154,6 +155,7 @@ function CloudDataBootstrap({ children }: { children: ReactNode }) {
       return;
     }
     if (!isAuthenticated) {
+      setReadyFor(null);
       clearCloudSession();
       setVerifiedRole(null);
       setError("");
@@ -172,6 +174,7 @@ function CloudDataBootstrap({ children }: { children: ReactNode }) {
     }
 
     let cancelled = false;
+    setReadyFor(null);
     setError("");
     void bootstrapCloudData(email, getIdToken)
       .then(async (verifiedRole) => {

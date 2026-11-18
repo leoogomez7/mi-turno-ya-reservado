@@ -719,27 +719,27 @@ function MyBookingsPage() {
                   <article
                     key={booking.id}
                     id={`booking-${booking.id}`}
-                    className={`flex flex-col items-center gap-3 rounded-xl border p-4 text-center transition-colors duration-300 xl:grid xl:grid-cols-[4rem_minmax(12rem,1fr)_auto_minmax(14rem,0.8fr)_minmax(22rem,1.3fr)] xl:items-center xl:gap-4 xl:text-left ${highlightedBookingId === booking.id ? "border-gold bg-gold/20 ring-2 ring-gold/70" : "border-gold/30 bg-card"}`}
+                    className={`flex flex-col items-stretch gap-3 rounded-xl border p-4 text-center transition-colors duration-300 xl:grid xl:grid-cols-[4.5rem_minmax(12rem,1fr)_auto_minmax(14rem,0.8fr)_minmax(22rem,1.3fr)] xl:items-center xl:gap-4 xl:text-left ${highlightedBookingId === booking.id ? "border-gold bg-gold/20 ring-2 ring-gold/70" : "border-gold/30 bg-card"}`}
                   >
-                    <div className="flex w-full items-center justify-center gap-2 xl:contents">
-                      <div className="flex w-16 shrink-0 flex-col items-center rounded-lg bg-gold/10 px-1.5 py-2 text-gold">
+                    <div className="grid w-full grid-cols-[auto_minmax(0,1fr)] items-center gap-3 xl:contents">
+                      <div className="flex w-18 shrink-0 flex-col items-center rounded-lg bg-gold/10 px-1.5 py-2 text-gold xl:col-start-1 xl:row-start-1">
                         <span className="text-[10px] uppercase tracking-widest">
                           {format(appointmentDate, "EEE", { locale: es })}
                         </span>
-                        <span className="font-display text-2xl font-semibold">
-                          {format(appointmentDate, "d")}
+                        <span className="font-display text-xl font-semibold">
+                          {format(appointmentDate, "dd/MM")}
                         </span>
                         <span className="text-[10px]">{booking.time}</span>
                       </div>
-                      <div className="min-w-0 flex-1 text-center xl:text-left">
+                      <div className="min-w-0 text-center xl:col-start-2 xl:row-start-1 xl:text-left">
                         <div className="font-medium">{professional?.name ?? "Profesional"}</div>
                         <div className="text-sm text-muted-foreground">
                           {serviceNames || "Servicio"} · {booking.duration} min
                         </div>
                       </div>
-                      <div className="shrink-0 font-display text-base font-semibold text-gold xl:col-start-3 xl:rounded-lg xl:border xl:border-gold/20 xl:bg-gold/5 xl:px-3 xl:py-2 xl:text-center xl:text-lg">
-                        ${booking.totalPrice.toLocaleString("es-AR")}
-                      </div>
+                    </div>
+                    <div className="mx-auto w-fit rounded-lg border border-gold/20 bg-gold/5 px-3 py-2 text-center font-display text-lg font-semibold text-gold xl:col-start-3 xl:row-start-1 xl:mx-0 xl:text-lg">
+                      ${booking.totalPrice.toLocaleString("es-AR")}
                     </div>
                     <div className="flex w-full flex-col items-center gap-1 text-xs text-muted-foreground xl:col-start-4 xl:items-start xl:justify-self-start">
                       {booking.status !== "cancelled" &&
@@ -798,7 +798,7 @@ function MyBookingsPage() {
                       )}
                     </div>
                     {(isActiveBooking || (canArchive && canArchiveBooking(booking))) && (
-                      <div className="grid w-full grid-cols-2 gap-2 xl:col-start-5 xl:grid-cols-3">
+                      <div className="flex w-full flex-wrap justify-center gap-2 xl:col-start-5 xl:grid xl:grid-cols-3">
                         {isActiveBooking &&
                           !hasPaymentReport &&
                           booking.paymentStatus !== "approved" && (
@@ -884,7 +884,7 @@ function MyBookingsPage() {
           if (!open && !busyBookingId) setEditingBooking(null);
         }}
       >
-        <DialogContent className="gold-scrollbar max-h-[85vh] overflow-y-auto">
+        <DialogContent className="gold-scrollbar mobile-dialog-scrollbar-hidden w-[calc(100vw-2rem)] max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Modificar turno</DialogTitle>
             <DialogDescription>
@@ -892,7 +892,7 @@ function MyBookingsPage() {
               guardar.
             </DialogDescription>
           </DialogHeader>
-          <div className="grid gap-4 py-3">
+          <div className="grid gap-4 py-4">
             <label className="space-y-2 text-sm text-muted-foreground">
               <span className="flex items-center gap-2">
                 <UserRound className="h-4 w-4 text-gold" />
@@ -912,7 +912,7 @@ function MyBookingsPage() {
                   setEditedTime("");
                 }}
               >
-                <SelectTrigger className="w-full">
+                <SelectTrigger className="w-full bg-background text-white data-placeholder:text-white">
                   <SelectValue placeholder="Seleccionar profesional" />
                 </SelectTrigger>
                 <SelectContent className="gold-scrollbar max-h-60">
@@ -942,7 +942,10 @@ function MyBookingsPage() {
                     }}
                     disabled={!editingProfessional}
                   >
-                    <SelectTrigger aria-label={`Servicio ${index + 1}`} className="min-w-0 flex-1">
+                    <SelectTrigger
+                      aria-label={`Servicio ${index + 1}`}
+                      className="min-w-0 flex-1 bg-background text-white data-placeholder:text-white"
+                    >
                       <SelectValue placeholder="Seleccionar servicio" />
                     </SelectTrigger>
                     <SelectContent className="gold-scrollbar max-h-60">
@@ -1015,7 +1018,7 @@ function MyBookingsPage() {
                   <Button
                     type="button"
                     variant="outline"
-                    className="w-full justify-between font-normal"
+                    className="w-full justify-between font-normal text-white hover:text-white"
                     disabled={!editingProfessional || !editingServices.length}
                   >
                     <span>
@@ -1056,7 +1059,7 @@ function MyBookingsPage() {
                 onValueChange={setEditedTime}
                 disabled={!editedDate || !editingProfessional}
               >
-                <SelectTrigger className="w-full">
+                <SelectTrigger className="w-full bg-background text-white data-placeholder:text-white disabled:opacity-100 disabled:text-white">
                   <SelectValue placeholder="Seleccionar horario" />
                 </SelectTrigger>
                 <SelectContent className="gold-scrollbar max-h-60">

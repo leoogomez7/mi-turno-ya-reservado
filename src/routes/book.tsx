@@ -251,7 +251,6 @@ export function BookPage() {
 
     if (hasActiveStore) {
       if (currentCode !== selectedStoreCode) setSelectedStoreCode(currentCode);
-      setStorePickerOpen(false);
       setStepError(null);
       return;
     }
@@ -406,8 +405,6 @@ export function BookPage() {
         await selectStore(store.code, user?.email ?? "guest", auth.getIdToken);
       }
       setSelectedStoreCode(store.code);
-      setStorePickerOpen(false);
-      setStoreSearch("");
       setBarberId("");
       setServiceIds([]);
       setDate(null);
@@ -948,12 +945,30 @@ Observaciones: ${customer.notes || "Ninguna"}`;
                     Agregando sucursal…
                   </p>
                 )}
-                {!storeLoading && storeSearch.trim() && matchingStores.length === 0 && (
+                {selectedStore && !storeSelectionPending && (
+                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-400/30 bg-emerald-400/5 px-3 py-2.5">
+                    <p className="min-w-0 text-sm text-emerald-300">
+                      Seleccionada: <span className="font-semibold">{selectedStore.name}</span>
+                    </p>
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="bg-gold text-primary-foreground hover:bg-gold-soft"
+                      onClick={() => {
+                        setStorePickerOpen(false);
+                        setStoreSearch("");
+                      }}
+                    >
+                      Continuar
+                    </Button>
+                  </div>
+                )}
+                {storeSearch.trim() && matchingStores.length === 0 && (
                   <p
                     role="status"
                     className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300"
                   >
-                    No encontramos sucursales con ese nombre o código.
+                    No encontramos sucursales activas con ese nombre o código.
                   </p>
                 )}
               </div>

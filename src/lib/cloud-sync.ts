@@ -72,6 +72,7 @@ let initialized = false;
 let storeCode = "";
 let availableStores: Store[] = [];
 let snapshotRevision = 0;
+let cloudSessionRevision = 0;
 let activeCloudWrites = 0;
 let cloudRefreshInFlight: Promise<void> | null = null;
 
@@ -95,10 +96,12 @@ async function request<T>(
   method: "GET" | "PUT" | "POST",
   body?: unknown,
   requestedStoreCode?: string,
+  requestTokenGetter: (() => Promise<string | undefined>) | undefined = tokenGetter,
 ): Promise<T> {
-  const token = await tokenGetter?.();
+  const token = await requestTokenGetter?.();
   if (!token && method === "PUT") throw new Error("No se obtuvo una sesión válida de Kinde.");
-  const requestStoreCode = requestedStoreCode?.trim().toUpperCase() || storeCode;
+  const requestStoreCode =
+    requestedStoreCode === undefined ? storeCode : requestedStoreCode.trim().toUpperCase();
   const response = await fetch("/api/data", {
     method,
     headers: {
@@ -148,16 +151,26 @@ export async function bootstrapCloudData(
   getToken: () => Promise<string | undefined>,
   requestedStore?: string,
 ) {
-  activeAccount = account.trim().toLowerCase();
+  const accountKey = account.trim().toLowerCase();
+  const sessionRevision = ++cloudSessionRevision;
+  activeAccount = accountKey;
   tokenGetter = activeAccount === "guest" ? undefined : getToken;
   storeCode = requestedStore?.trim().toUpperCase() || "";
+  activeRole = "guest";
+  snapshot = { bookings: [], professionals: [] };
+  availableStores = [];
+  initialized = false;
+  snapshotRevision += 1;
+  cloudRefreshInFlight = null;
+  window.dispatchEvent(new Event("mi-turno-ya:store-changed"));
 
   const result = await request<{
     data: CloudSnapshot;
     role: "admin" | "client" | "guest" | "unassigned";
     storeCode: string | null;
     stores: Store[];
-  }>("GET");
+  }>("GET", undefined, "", tokenGetter);
+  if (sessionRevision !== cloudSessionRevision || activeAccount !== accountKey) return result.role;
   if (!result.data || !Array.isArray(result.stores))
     throw new Error("Se devolvió una respuesta incompleta.");
   const loadedStoreCode = storeCode || result.storeCode || "";
@@ -172,11 +185,19 @@ export async function refreshCloudData() {
   if (!activeAccount || !initialized) return;
   if (cloudRefreshInFlight) return cloudRefreshInFlight;
   const revisionAtRequest = snapshotRevision;
+  const sessionAtRequest = cloudSessionRevision;
+  const accountAtRequest = activeAccount;
   const refreshPromise = (async () => {
     const result = await request<{ data: CloudSnapshot; stores: Store[] }>("GET");
     if (!result.data || !Array.isArray(result.stores))
       throw new Error("Se devolvió una respuesta incompleta.");
-    if (revisionAtRequest !== snapshotRevision || activeCloudWrites > 0) return;
+    if (
+      sessionAtRequest !== cloudSessionRevision ||
+      accountAtRequest !== activeAccount ||
+      revisionAtRequest !== snapshotRevision ||
+      activeCloudWrites > 0
+    )
+      return;
     availableStores = result.stores;
     setSnapshot(result.data);
   })();
@@ -189,6 +210,7 @@ export async function refreshCloudData() {
 }
 
 export function clearCloudSession() {
+  cloudSessionRevision += 1;
   snapshotRevision += 1;
   cloudRefreshInFlight = null;
   activeAccount = undefined;
@@ -197,6 +219,7 @@ export function clearCloudSession() {
   snapshot = { bookings: [], professionals: [] };
   initialized = false;
   storeCode = "";
+  availableStores = [];
   dispatchCloudReady();
 }
 

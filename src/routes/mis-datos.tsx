@@ -134,14 +134,14 @@ function MyDataPage() {
           </div>
           <div>
             <label className="mb-2 block text-sm text-muted-foreground" htmlFor="profile-phone">
-              Teléfono
+              {loadingProfile ? "Cargando teléfono/celular..." : "Teléfono/celular"}
             </label>
             <Input
               id="profile-phone"
               type="tel"
               value={phone}
               onChange={(event) => setPhone(event.target.value)}
-              placeholder="Tu número de teléfono"
+              placeholder={loadingProfile ? "Cargando teléfono/celular..." : "Tu número de teléfono/celular"}
               disabled={loadingProfile || savingProfile}
               maxLength={40}
             />
