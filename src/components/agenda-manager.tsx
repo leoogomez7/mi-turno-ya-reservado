@@ -607,7 +607,7 @@ export function AgendaManager() {
                           <span className="block break-all">{booking.customer.email}</span>
                         )}
                       </div>
-                      <div className="w-full text-center font-display text-base font-semibold text-gold">
+                      <div className="mx-auto w-fit rounded-lg border border-gold/20 bg-gold/5 px-3 py-2 text-center font-display text-lg font-semibold text-gold">
                         ${booking.totalPrice.toLocaleString("es-AR")}
                       </div>
                     </div>
