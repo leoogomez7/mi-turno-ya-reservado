@@ -84,6 +84,7 @@ export function AgendaManager() {
   const [archiveSearch, setArchiveSearch] = useState("");
   const [bookingSearch, setBookingSearch] = useState("");
   const [restoringBookingId, setRestoringBookingId] = useState<string | null>(null);
+  const [restoringAllArchivedBookings, setRestoringAllArchivedBookings] = useState(false);
   const [permanentlyDeletingBookingId, setPermanentlyDeletingBookingId] = useState<string | null>(
     null,
   );
@@ -175,7 +176,7 @@ export function AgendaManager() {
       return [];
     const date = parseISO(`${editedDate}T12:00:00`);
     if (Number.isNaN(date.getTime())) return [];
-    return getAvailableSlotCapacities(
+    const slots = getAvailableSlotCapacities(
       editedProfessional,
       date,
       editedDuration,
@@ -183,6 +184,10 @@ export function AgendaManager() {
       selectedBooking?.id ?? "",
       editedProfessional.storeCode,
     );
+    const currentDate = format(new Date(currentTime), "yyyy-MM-dd");
+    if (editedDate !== currentDate) return slots;
+    const currentClock = format(new Date(currentTime), "HH:mm");
+    return slots.filter((slot) => slot.time > currentClock);
   }, [
     bookings,
     editedDate,
@@ -191,6 +196,7 @@ export function AgendaManager() {
     editedServiceIds,
     editedServices,
     selectedBooking,
+    currentTime,
   ]);
 
   useEffect(() => {
@@ -304,7 +310,7 @@ export function AgendaManager() {
   }
 
   async function restoreTurn(booking: Booking) {
-    if (restoringBookingId) return;
+    if (restoringBookingId || restoringAllArchivedBookings) return;
     setRestoringBookingId(booking.id);
     try {
       const result = await restoreArchivedBooking(booking.id);
@@ -316,6 +322,36 @@ export function AgendaManager() {
       toast.error(error instanceof Error ? error.message : "No se pudo restaurar el turno.");
     } finally {
       setRestoringBookingId(null);
+    }
+  }
+
+  async function restoreAllArchivedTurns() {
+    if (restoringAllArchivedBookings || restoringBookingId || !archivedBookings.length) return;
+    setRestoringAllArchivedBookings(true);
+    const restoredBookings: Booking[] = [];
+    let failedCount = 0;
+    try {
+      for (const booking of archivedBookings) {
+        try {
+          const result = await restoreArchivedBooking(booking.id);
+          restoredBookings.push(result.booking);
+        } catch {
+          failedCount += 1;
+        }
+      }
+      if (restoredBookings.length) {
+        const restoredById = new Map(restoredBookings.map((booking) => [booking.id, booking]));
+        setBookings((current) => current.map((booking) => restoredById.get(booking.id) ?? booking));
+      }
+      if (failedCount) {
+        toast.error(
+          `Se restauraron ${restoredBookings.length} turnos; ${failedCount} no se pudieron restaurar.`,
+        );
+      } else {
+        toast.success(`Se restauraron ${restoredBookings.length} turnos.`);
+      }
+    } finally {
+      setRestoringAllArchivedBookings(false);
     }
   }
 
@@ -921,19 +957,30 @@ export function AgendaManager() {
               </DialogDescription>
             </DialogHeader>
             {archivedBookings.length > 0 && (
-              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
                 <p className="text-xs text-muted-foreground">
-                  Borrar todos los turnos de este listado, aunque haya una búsqueda activa.
+                  Restaurar o borrar todos los turnos archivados, aunque haya una búsqueda activa.
                 </p>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="destructive"
-                  disabled={deletingAllArchivedBookings || permanentlyDeletingBookingId !== null}
-                  onClick={() => void permanentlyDeleteAllArchivedTurns()}
-                >
-                  {deletingAllArchivedBookings ? "Borrando…" : "Borrar todos"}
-                </Button>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={restoringAllArchivedBookings || restoringBookingId !== null || deletingAllArchivedBookings}
+                    onClick={() => void restoreAllArchivedTurns()}
+                  >
+                    {restoringAllArchivedBookings ? "Restaurando…" : "Restaurar todos"}
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="destructive"
+                    disabled={restoringAllArchivedBookings || deletingAllArchivedBookings || permanentlyDeletingBookingId !== null}
+                    onClick={() => void permanentlyDeleteAllArchivedTurns()}
+                  >
+                    {deletingAllArchivedBookings ? "Borrando…" : "Borrar todos"}
+                  </Button>
+                </div>
               </div>
             )}
             <label className="relative block">
@@ -999,7 +1046,7 @@ export function AgendaManager() {
                             type="button"
                             size="sm"
                             variant="outline"
-                            disabled={restoringBookingId !== null || deletingAllArchivedBookings}
+                            disabled={restoringBookingId !== null || restoringAllArchivedBookings || deletingAllArchivedBookings}
                             onClick={() => void restoreTurn(booking)}
                           >
                             {restoringBookingId === booking.id ? "Restaurando…" : "Restaurar"}
@@ -1010,6 +1057,7 @@ export function AgendaManager() {
                             variant="destructive"
                             disabled={
                               permanentlyDeletingBookingId !== null ||
+                              restoringAllArchivedBookings ||
                               deletingAllArchivedBookings ||
                               !canDeleteBooking(booking)
                             }

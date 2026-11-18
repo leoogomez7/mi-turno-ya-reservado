@@ -94,6 +94,7 @@ function MyBookingsPage() {
   const [bookingSearch, setBookingSearch] = useState("");
   const [archiveSearch, setArchiveSearch] = useState("");
   const [restoringBookingId, setRestoringBookingId] = useState<string | null>(null);
+  const [restoringAllArchivedBookings, setRestoringAllArchivedBookings] = useState(false);
   const [permanentlyDeletingBookingId, setPermanentlyDeletingBookingId] = useState<string | null>(
     null,
   );
@@ -133,7 +134,7 @@ function MyBookingsPage() {
     if (Number.isNaN(date.getTime())) return [];
     const today = format(new Date(), "yyyy-MM-dd");
     if (editedDate < today) return [];
-    return getAvailableSlotCapacities(
+    const slots = getAvailableSlotCapacities(
       editingProfessional,
       date,
       editingDuration,
@@ -141,6 +142,9 @@ function MyBookingsPage() {
       editingBooking?.id ?? "",
       editingBooking?.storeCode,
     );
+    if (editedDate !== today) return slots;
+    const currentClock = format(currentTime, "HH:mm");
+    return slots.filter((slot) => slot.time > currentClock);
   }, [
     editedDate,
     editingDuration,
@@ -149,6 +153,7 @@ function MyBookingsPage() {
     editingProfessional,
     editingServices,
     occupiedSlots,
+    currentTime,
   ]);
 
   useEffect(() => {
@@ -459,7 +464,7 @@ function MyBookingsPage() {
   }
 
   async function restoreTurn(booking: Booking) {
-    if (restoringBookingId) return;
+    if (restoringBookingId || restoringAllArchivedBookings) return;
     setRestoringBookingId(booking.id);
     try {
       const result = await restoreArchivedBooking(booking.id);
@@ -471,6 +476,36 @@ function MyBookingsPage() {
       toast.error(error instanceof Error ? error.message : "No se pudo restaurar el turno.");
     } finally {
       setRestoringBookingId(null);
+    }
+  }
+
+  async function restoreAllArchivedTurns() {
+    if (restoringAllArchivedBookings || restoringBookingId || !archivedBookings.length) return;
+    setRestoringAllArchivedBookings(true);
+    const restoredBookings: Booking[] = [];
+    let failedCount = 0;
+    try {
+      for (const booking of archivedBookings) {
+        try {
+          const result = await restoreArchivedBooking(booking.id);
+          restoredBookings.push(result.booking);
+        } catch {
+          failedCount += 1;
+        }
+      }
+      if (restoredBookings.length) {
+        const restoredById = new Map(restoredBookings.map((booking) => [booking.id, booking]));
+        setBookings((current) => current.map((booking) => restoredById.get(booking.id) ?? booking));
+      }
+      if (failedCount) {
+        toast.error(
+          `Se restauraron ${restoredBookings.length} turnos; ${failedCount} no se pudieron restaurar.`,
+        );
+      } else {
+        toast.success(`Se restauraron ${restoredBookings.length} turnos.`);
+      }
+    } finally {
+      setRestoringAllArchivedBookings(false);
     }
   }
 
@@ -1113,17 +1148,28 @@ function MyBookingsPage() {
           {archivedBookings.length > 0 && (
             <div className="flex flex-wrap items-center justify-between gap-3">
               <p className="text-xs text-muted-foreground">
-                Borrar todos los turnos de este listado, aunque haya una búsqueda activa.
+                Restaurar o borrar todos los turnos archivados, aunque haya una búsqueda activa.
               </p>
-              <Button
-                type="button"
-                size="sm"
-                variant="destructive"
-                disabled={deletingAllArchivedBookings || permanentlyDeletingBookingId !== null}
-                onClick={() => void permanentlyDeleteAllArchivedTurns()}
-              >
-                {deletingAllArchivedBookings ? "Borrando…" : "Borrar todos"}
-              </Button>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={restoringAllArchivedBookings || restoringBookingId !== null || deletingAllArchivedBookings}
+                  onClick={() => void restoreAllArchivedTurns()}
+                >
+                  {restoringAllArchivedBookings ? "Restaurando…" : "Restaurar todos"}
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="destructive"
+                  disabled={restoringAllArchivedBookings || deletingAllArchivedBookings || permanentlyDeletingBookingId !== null}
+                  onClick={() => void permanentlyDeleteAllArchivedTurns()}
+                >
+                  {deletingAllArchivedBookings ? "Borrando…" : "Borrar todos"}
+                </Button>
+              </div>
             </div>
           )}
           <label className="relative block">
@@ -1188,7 +1234,7 @@ function MyBookingsPage() {
                         type="button"
                         size="sm"
                         variant="outline"
-                        disabled={restoringBookingId !== null || deletingAllArchivedBookings}
+                        disabled={restoringBookingId !== null || restoringAllArchivedBookings || deletingAllArchivedBookings}
                         onClick={() => void restoreTurn(booking)}
                       >
                         {restoringBookingId === booking.id ? "Restaurando…" : "Restaurar"}
@@ -1199,6 +1245,7 @@ function MyBookingsPage() {
                         variant="destructive"
                         disabled={
                           permanentlyDeletingBookingId !== null ||
+                          restoringAllArchivedBookings ||
                           deletingAllArchivedBookings ||
                           !canDeleteBooking(booking)
                         }

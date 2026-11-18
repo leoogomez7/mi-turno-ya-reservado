@@ -799,13 +799,19 @@ async function verifyBookingPayment(db, bookingId, paymentId) {
   if (existingBooking.customer?.paymentMethod !== "tarjeta o mercado pago") {
     throw new Error("La reserva no corresponde a un pago con Mercado Pago.");
   }
+  const bookingSummary = {
+    date: String(existingBooking.date ?? ""),
+    time: String(existingBooking.time ?? ""),
+    totalPrice: Number(existingBooking.totalPrice ?? 0),
+    storeCode: normalizeStoreCode(existingBooking.storeCode),
+  };
   const credentials = await getStorePaymentCredentials(db, existingBooking.storeCode);
   const payment = await findApprovedMercadoPagoPayment(
     bookingId,
     paymentId,
     credentials.accessToken,
   );
-  if (!payment) return { approved: false };
+  if (!payment) return { approved: false, booking: bookingSummary };
 
   const transaction = await db.transaction("write");
   try {
@@ -823,7 +829,7 @@ async function verifyBookingPayment(db, bookingId, paymentId) {
     }
     if (booking.status === "confirmed" && booking.paymentStatus === "approved") {
       await transaction.commit();
-      return { approved: true };
+      return { approved: true, booking: bookingSummary };
     }
     if (
       !["confirmed", "pending-payment"].includes(booking.status) ||
@@ -855,7 +861,7 @@ async function verifyBookingPayment(db, bookingId, paymentId) {
     if (paymentNotice) await transaction.execute(paymentNotice);
     if (adminPaymentNotice) await transaction.execute(adminPaymentNotice);
     await transaction.commit();
-    return { approved: true };
+    return { approved: true, booking: bookingSummary };
   } catch (error) {
     await transaction.rollback().catch(() => undefined);
     throw error;

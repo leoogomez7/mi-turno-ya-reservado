@@ -298,7 +298,7 @@ export function BookPage() {
   }, [auth.getIdToken, cloudDataReady, isAuthenticated, selectedStoreCode]);
 
   useEffect(() => {
-    if (!paymentReturn) return;
+    if (!paymentReturn || !storeSelectionHydrated || !cloudDataReady) return;
     let pendingPayment: {
       bookingId?: string;
       cancellationToken?: string;
@@ -314,39 +314,53 @@ export function BookPage() {
     } catch {
       pendingPayment = {};
     }
+    const paymentParams = new URLSearchParams(location.searchStr);
+    const bookingId = paymentParams.get("booking_id") || pendingPayment.bookingId;
+    const paymentId = paymentParams.get("payment_id") || paymentParams.get("collection_id");
     let cancelled = false;
     void (async () => {
       let resultKind: ReservationResult["kind"] =
-        paymentReturn === "pending" ? "payment-pending" : "payment-failure";
-      if (paymentReturn === "success" && pendingPayment.bookingId) {
+        paymentReturn === "success" ? "payment-failure" : "payment-pending";
+      let returnedBooking: {
+        date?: string;
+        time?: string;
+        totalPrice?: number;
+        storeCode?: string;
+      } | undefined;
+      if (bookingId) {
         try {
           const response = await fetch("/api/data", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               action: "verify-booking-payment",
-              bookingId: pendingPayment.bookingId,
+              bookingId,
+              ...(paymentId ? { paymentId } : {}),
             }),
             cache: "no-store",
           });
-          const result = (await response.json()) as { approved?: boolean; error?: string };
-          resultKind = response.ok && result.approved ? "payment-success" : "payment-pending";
+          const result = (await response.json()) as {
+            approved?: boolean;
+            error?: string;
+            booking?: { date?: string; time?: string; totalPrice?: number; storeCode?: string };
+          };
+          returnedBooking = result.booking;
+          if (response.ok && result.approved) resultKind = "payment-success";
+          else resultKind = "payment-pending";
         } catch {
           resultKind = "payment-pending";
         }
-      } else if (paymentReturn === "failure") {
-        resultKind = "payment-pending";
-        toast.error(
-          "El pago no se completó. Tu turno sigue confirmado y podés intentar pagar nuevamente.",
-        );
       }
       if (cancelled) return;
+      const returnStoreCode = returnedBooking?.storeCode || pendingPayment.storeCode;
+      if (returnStoreCode) setSelectedStoreCode(returnStoreCode);
       if (resultKind !== "payment-pending")
         window.localStorage.removeItem(PENDING_PAYMENT_SESSION_KEY);
       setReservationResult({
         kind: resultKind,
-        date: pendingPayment.date ?? "",
-        time: pendingPayment.time ?? "",
+        date: returnedBooking?.date || pendingPayment.date || "",
+        time: returnedBooking?.time || pendingPayment.time || "",
+        totalPrice: returnedBooking?.totalPrice ?? undefined,
         paymentMethod: pendingPayment.paymentMethod,
       });
       void navigate({ to: "/reserva", replace: true });
@@ -354,7 +368,7 @@ export function BookPage() {
     return () => {
       cancelled = true;
     };
-  }, [navigate, paymentReturn]);
+  }, [cloudDataReady, location.searchStr, navigate, paymentReturn, storeSelectionHydrated]);
 
   useEffect(() => {
     if (step !== 3 || !selectedStoreCode) return;
@@ -657,12 +671,13 @@ Observaciones: ${customer.notes || "Ninguna"}`;
 
   async function startMercadoPagoPayment() {
     if (startingPayment) return;
-    const paymentTab = window.open("about:blank", "_blank");
-    if (!paymentTab) {
+    const useSameTab = window.matchMedia("(max-width: 767px)").matches;
+    const paymentTab = useSameTab ? null : window.open("about:blank", "_blank");
+    if (!useSameTab && !paymentTab) {
       toast.error("Permití las ventanas emergentes para abrir el pago en otra pestaña.");
       return;
     }
-    paymentTab.opener = null;
+    if (paymentTab) paymentTab.opener = null;
     setStartingPayment(true);
     try {
       const saved = window.localStorage.getItem(PENDING_PAYMENT_SESSION_KEY);
@@ -683,9 +698,13 @@ Observaciones: ${customer.notes || "Ninguna"}`;
       const result = (await response.json()) as { initPoint?: string; error?: string };
       if (!response.ok || !result.initPoint)
         throw new Error(result.error || "No se pudo preparar el pago.");
-      paymentTab.location.href = result.initPoint;
+      if (useSameTab) {
+        window.location.assign(result.initPoint);
+      } else if (paymentTab) {
+        paymentTab.location.href = result.initPoint;
+      }
     } catch (error) {
-      paymentTab.close();
+      paymentTab?.close();
       toast.error(error instanceof Error ? error.message : "No se pudo iniciar el pago.");
     } finally {
       setStartingPayment(false);
