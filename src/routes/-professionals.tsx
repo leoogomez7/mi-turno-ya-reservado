@@ -1474,13 +1474,32 @@ export function ProfessionalsManager() {
                     </div>
                   </Field>
                 </div>
-                <div className="flex w-full items-center gap-3 pt-2">
+                <div className="flex w-full flex-col gap-2 pt-2 sm:flex-row">
+                  <div className="flex w-full items-center gap-3 sm:flex-1">
+                    <Button
+                      variant="outline"
+                      disabled={savingProfessional || Boolean(deletingProfessionalId)}
+                      onClick={() => setShowForm(false)}
+                      className="min-w-0 flex-1 px-2 text-xs sm:text-sm"
+                    >
+                      Cancelar
+                    </Button>
+                    <Button
+                      disabled={
+                        savingProfessional || Boolean(deletingProfessionalId) || !canSaveProfessional
+                      }
+                      onClick={() => void saveProfessional()}
+                      className="min-w-0 flex-1 bg-gold px-2 text-xs text-primary-foreground hover:bg-gold-soft sm:text-sm"
+                    >
+                      {savingProfessional ? "Guardando…" : "Guardar profesional"}
+                    </Button>
+                  </div>
                   {editingId &&
                     (selectedProfessional?.isTest ? (
                       <Button
                         variant="outline"
                         disabled
-                        className="min-w-0 flex-1 px-2 text-xs opacity-50 text-muted-foreground sm:text-sm"
+                        className="w-full px-2 text-xs opacity-50 text-muted-foreground sm:flex-1 sm:text-sm"
                       >
                         Profesional de prueba
                       </Button>
@@ -1488,7 +1507,7 @@ export function ProfessionalsManager() {
                       <Button
                         variant="outline"
                         disabled={Boolean(deletingProfessionalId) || savingProfessional}
-                        className="min-w-0 flex-1 border-red-500/30 px-2 text-xs text-red-300 hover:bg-red-500/10 hover:text-red-300 sm:text-sm"
+                        className="w-full border-red-500/30 px-2 text-xs text-red-300 hover:bg-red-500/10 hover:text-red-300 sm:flex-1 sm:text-sm"
                         onClick={() => requestDeleteProfessional(editingId)}
                       >
                         {deletingProfessionalId === editingId
@@ -1496,30 +1515,16 @@ export function ProfessionalsManager() {
                           : "Eliminar profesional"}
                       </Button>
                     ))}
-                  <Button
-                    variant="outline"
-                    disabled={savingProfessional || Boolean(deletingProfessionalId)}
-                    onClick={() => setShowForm(false)}
-                    className="min-w-0 flex-1 px-2 text-xs sm:text-sm"
-                  >
-                    Cancelar
-                  </Button>
-                  <Button
-                    disabled={
-                      savingProfessional || Boolean(deletingProfessionalId) || !canSaveProfessional
-                    }
-                    onClick={() => void saveProfessional()}
-                    className="min-w-0 flex-1 bg-gold px-2 text-xs text-primary-foreground hover:bg-gold-soft sm:text-sm"
-                  >
-                    {savingProfessional ? "Guardando…" : "Guardar profesional"}
-                  </Button>
                 </div>
               </div>
             </DialogContent>
           </Dialog>
 
           <Dialog open={serviceDialogOpen} onOpenChange={handleServiceDialogChange}>
-            <DialogContent className="sm:max-w-lg">
+            <DialogContent
+              className="sm:max-w-lg"
+              onOpenAutoFocus={(event) => event.preventDefault()}
+            >
               <DialogHeader>
                 <DialogTitle>
                   {editingServiceId ? "Modificar servicio" : "Agregar servicio"}
@@ -1774,7 +1779,7 @@ export function ProfessionalsManager() {
                 viewMode === "schedule"
                   ? schedulePanel === "exceptions"
                     ? "w-[calc(100vw-2rem)] max-h-[calc(100dvh-1rem)] overflow-hidden gap-2 p-4 sm:max-w-lg"
-                    : "w-[calc(100vw-2rem)] max-h-[90vh] overflow-x-hidden overflow-y-auto [&>button:last-child]:hidden sm:max-w-lg"
+                    : "w-[calc(100vw-2rem)] max-h-[calc(100dvh-2rem)] overflow-x-hidden overflow-y-auto [&>button:last-child]:hidden sm:max-w-lg"
                   : "max-h-[90vh] overflow-y-auto"
               }
             >
@@ -2009,7 +2014,7 @@ export function ProfessionalsManager() {
           </Dialog>
 
           <Dialog open={scheduleDateDialogOpen} onOpenChange={handleScheduleDateDialogChange}>
-            <DialogContent className="sm:max-w-md">
+            <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-md">
               <DialogHeader>
                 <DialogTitle>
                   {activeScheduleDate

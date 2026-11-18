@@ -870,7 +870,7 @@ export function AgendaManager() {
         </Dialog>
 
         <Dialog open={archiveDialogOpen} onOpenChange={setArchiveDialogOpen}>
-          <DialogContent className="gold-scrollbar max-h-[85vh] overflow-y-auto sm:max-w-2xl">
+          <DialogContent className="gold-scrollbar archive-dialog-scrollbar max-h-[85vh] overflow-y-auto sm:max-w-2xl">
             <DialogHeader>
               <DialogTitle>Turnos borrados/antiguos</DialogTitle>
               <DialogDescription>

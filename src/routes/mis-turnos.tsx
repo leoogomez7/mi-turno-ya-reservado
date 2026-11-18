@@ -1097,7 +1097,7 @@ function MyBookingsPage() {
       </Dialog>
       <Dialog open={archiveDialogOpen} onOpenChange={setArchiveDialogOpen}>
         <DialogContent
-          className="gold-scrollbar max-h-[85vh] overflow-y-auto sm:max-w-2xl"
+          className="gold-scrollbar archive-dialog-scrollbar max-h-[85vh] overflow-y-auto sm:max-w-2xl"
           onOpenAutoFocus={(event) => event.preventDefault()}
         >
           <DialogHeader>
