@@ -709,7 +709,7 @@ function MyBookingsPage() {
               >
                 {deletingVisibleBookings
                   ? "Borrando turnos..."
-                  : `Borrar turnos disponibles (${eligibleVisibleBookings.length})`}
+                  : `Borrar turnos (${eligibleVisibleBookings.length})`}
               </Button>
               <Link
                 to="/reserva"

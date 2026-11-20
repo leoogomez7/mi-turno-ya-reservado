@@ -3488,10 +3488,16 @@ export default async function handler(request, response) {
       const storeCode = normalizeStoreCode(request.headers["x-store-code"]);
       if (!storeCode)
         return response.status(400).json({ error: "Seleccioná una sucursal para reservar." });
-      const storeResult = await db.execute({
-        sql: "SELECT code, subscription_expires_at FROM stores WHERE code = ?",
-        args: [storeCode],
-      });
+      const [storeResult, professionalResult] = await Promise.all([
+        db.execute({
+          sql: "SELECT code, subscription_expires_at, settings FROM stores WHERE code = ?",
+          args: [storeCode],
+        }),
+        db.execute({
+          sql: "SELECT value FROM professionals WHERE id = ?",
+          args: [storedRecordId(storeCode, booking.barberId)],
+        }),
+      ]);
       if (!storeResult.rows[0])
         return response.status(404).json({ error: "No encontramos la sucursal seleccionada." });
       if (!isSubscriptionActive(storeResult.rows[0].subscription_expires_at))
@@ -3500,12 +3506,8 @@ export default async function handler(request, response) {
           .json({ error: "Esta sucursal no tiene un plan activo para aceptar reservas." });
       booking.storeCode = storeCode;
       booking.cancellationPolicyAtBooking = snapshotCancellationPolicy(
-        await getStoreCancellationPolicy(db, storeCode),
+        parseStoreSettings(storeResult.rows[0].settings),
       );
-      const professionalResult = await db.execute({
-        sql: "SELECT value FROM professionals WHERE id = ?",
-        args: [storedRecordId(storeCode, booking.barberId)],
-      });
       if (!professionalResult.rows[0])
         return response
           .status(400)
