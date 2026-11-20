@@ -112,7 +112,7 @@ function getReservationSlotTimestamp(date: Date, time: string) {
 
 export function BookPage() {
   const auth = useAppAuth();
-  const { isAuthenticated, role, user } = auth;
+  const { isAuthenticated, isLoading, role, user } = auth;
   const location = useLocation();
   const initialStep = stepForPath(location.pathname) ?? 0;
   const [accountStoreCode] = useState(getCurrentStoreCode());
@@ -148,6 +148,7 @@ export function BookPage() {
   const [customer, setCustomer] = useState<Customer>(EMPTY_CUSTOMER);
   const [reservationDraftHydrated, setReservationDraftHydrated] = useState(false);
   const [clientProfileLoaded, setClientProfileLoaded] = useState(false);
+  const [clientIdentityLoaded, setClientIdentityLoaded] = useState(false);
   const [profileReloadKey, setProfileReloadKey] = useState(0);
   const [barberId, setBarberId] = useState("");
   const [serviceIds, setServiceIds] = useState<string[]>([]);
@@ -168,17 +169,25 @@ export function BookPage() {
   }, [step]);
 
   useEffect(() => {
+    if (!reservationDraftHydrated) return;
     if (role !== "client") {
       setClientProfileLoaded(true);
+      setClientIdentityLoaded(true);
       return;
     }
     setClientProfileLoaded(false);
-    const accountName = [user?.givenName, user?.familyName].filter(Boolean).join(" ");
-    setCustomer((current) => ({
-      ...current,
-      fullName: current.fullName || accountName,
-      email: current.email || user?.email || "",
-    }));
+    setClientIdentityLoaded(false);
+    if (user) {
+      const accountName = [user.givenName, user.familyName].filter(Boolean).join(" ");
+      setCustomer((current) => ({
+        ...current,
+        fullName: current.fullName || accountName,
+        email: current.email || user.email || "",
+      }));
+      setClientIdentityLoaded(true);
+    } else if (!isLoading && !isAuthenticated) {
+      setClientIdentityLoaded(true);
+    }
 
     let cancelled = false;
     void getClientProfile()
@@ -212,7 +221,17 @@ export function BookPage() {
     return () => {
       cancelled = true;
     };
-  }, [profileReloadKey, role, user?.email, user?.familyName, user?.givenName]);
+  }, [
+    isAuthenticated,
+    isLoading,
+    profileReloadKey,
+    reservationDraftHydrated,
+    role,
+    user,
+    user?.email,
+    user?.familyName,
+    user?.givenName,
+  ]);
 
   useEffect(() => {
     const reloadStores = () => {
@@ -1068,6 +1087,8 @@ Observaciones: ${customer.notes || "Ninguna"}`;
               setCustomer={setCustomer}
               mercadoPagoAvailable={Boolean(selectedStore?.mercadoPagoConfigured)}
               phoneLoading={role === "client" && !clientProfileLoaded}
+              nameLoading={role === "client" && !customer.fullName && !clientIdentityLoaded}
+              emailLoading={role === "client" && !customer.email && !clientIdentityLoaded}
             />
           )}
           {step === 1 && (
@@ -1477,11 +1498,15 @@ function StepCustomer({
   setCustomer,
   mercadoPagoAvailable,
   phoneLoading,
+  nameLoading,
+  emailLoading,
 }: {
   customer: Customer;
   setCustomer: (c: Customer) => void;
   mercadoPagoAvailable: boolean;
   phoneLoading: boolean;
+  nameLoading: boolean;
+  emailLoading: boolean;
 }) {
   return (
     <div>
@@ -1491,6 +1516,7 @@ function StepCustomer({
           <Input
             required
             value={customer.fullName}
+            placeholder={nameLoading ? "Cargando nombre completo..." : ""}
             onChange={(e) => setCustomer({ ...customer, fullName: e.target.value })}
           />
         </Field>
@@ -1508,6 +1534,7 @@ function StepCustomer({
             required
             type="email"
             value={customer.email}
+            placeholder={emailLoading ? "Cargando correo..." : ""}
             onChange={(e) => setCustomer({ ...customer, email: e.target.value })}
           />
         </Field>

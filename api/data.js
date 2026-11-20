@@ -13,6 +13,7 @@ const SUBSCRIPTION_PLANS = new Map([
   ["6m", { days: 0, months: 6, amount: 36999, label: "6 meses" }],
 ]);
 let schemaReady;
+let databaseReady;
 let legacyInvitesRemoved = false;
 let demoStoreRemoved = false;
 
@@ -583,17 +584,23 @@ async function database() {
       schemaReady = undefined;
       throw error;
     });
-  await schemaReady;
-  await ensureRoleStoreColumn(db);
-  await ensureStoreSettingsColumn(db);
-  await ensureStoreLogoColumn(db);
-  await ensureStoreSubscriptionColumn(db);
-  await ensureSubscriptionOrderDurationColumn(db);
-  await removeDemoStore(db);
-  if (!legacyInvitesRemoved) {
-    await db.execute("DROP TABLE IF EXISTS admin_invites");
-    legacyInvitesRemoved = true;
-  }
+  databaseReady ??= (async () => {
+    await schemaReady;
+    await ensureRoleStoreColumn(db);
+    await ensureStoreSettingsColumn(db);
+    await ensureStoreLogoColumn(db);
+    await ensureStoreSubscriptionColumn(db);
+    await ensureSubscriptionOrderDurationColumn(db);
+    await removeDemoStore(db);
+    if (!legacyInvitesRemoved) {
+      await db.execute("DROP TABLE IF EXISTS admin_invites");
+      legacyInvitesRemoved = true;
+    }
+  })().catch((error) => {
+    databaseReady = undefined;
+    throw error;
+  });
+  await databaseReady;
   return db;
 }
 
@@ -3483,7 +3490,6 @@ export default async function handler(request, response) {
         error: "Ese horario ya pasó y está fuera de horario. Elegí otro horario.",
       });
     }
-    let transaction;
     try {
       const storeCode = normalizeStoreCode(request.headers["x-store-code"]);
       if (!storeCode)
@@ -3555,36 +3561,73 @@ export default async function handler(request, response) {
           .json({ error: "El turno excede el horario de atención del profesional." });
       }
 
-      transaction = await db.transaction("write");
-      const hasConflict = await hasBookingConflict(
-        transaction,
-        booking,
-        storeCode,
-        bookingCapacityForDate(professional, booking.date),
-      );
-      if (hasConflict) {
-        await transaction.rollback();
-        return response.status(409).json({
-          error:
-            "Ese horario acaba de ser reservado o completó sus lugares disponibles. Elegí otro horario.",
-        });
-      }
-
-      await transaction.execute({
-        sql: "INSERT INTO bookings (id, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) ON CONFLICT(id) DO NOTHING",
-        args: [id, JSON.stringify(booking)],
-      });
-      const notice = notificationForAdmin(
+      const bookingEnd = startMinute + booking.duration;
+      const notification = notificationForAdmin(
         booking,
         "new_booking",
         "Nuevo turno reservado",
         `${customer.fullName} reservó para el ${booking.date} a las ${booking.time}.`,
       );
-      if (notice) await transaction.execute(notice);
-      await transaction.commit();
+      const statements = [
+        {
+          sql: `WITH RECURSIVE candidate_slots(minute) AS (
+            SELECT ?
+            UNION ALL
+            SELECT minute + 15 FROM candidate_slots WHERE minute + 15 < ?
+          )
+          INSERT INTO bookings (id, value, updated_at)
+          SELECT ?, ?, CURRENT_TIMESTAMP
+          WHERE NOT EXISTS (
+            SELECT 1 FROM candidate_slots AS slot
+            WHERE (
+              SELECT COUNT(*) FROM bookings AS existing
+              WHERE upper(json_extract(existing.value, '$.storeCode')) = ?
+                AND json_extract(existing.value, '$.barberId') = ?
+                AND json_extract(existing.value, '$.date') = ?
+                AND json_extract(existing.value, '$.status') <> 'cancelled'
+                AND slot.minute < (
+                  CAST(substr(json_extract(existing.value, '$.time'), 1, 2) AS INTEGER) * 60 +
+                  CAST(substr(json_extract(existing.value, '$.time'), 4, 2) AS INTEGER) +
+                  CAST(json_extract(existing.value, '$.duration') AS INTEGER)
+                )
+                AND (
+                  CAST(substr(json_extract(existing.value, '$.time'), 1, 2) AS INTEGER) * 60 +
+                  CAST(substr(json_extract(existing.value, '$.time'), 4, 2) AS INTEGER)
+                ) < slot.minute + 15
+            ) >= ?
+          )`,
+          args: [
+            startMinute,
+            bookingEnd,
+            id,
+            JSON.stringify(booking),
+            storeCode,
+            booking.barberId,
+            booking.date,
+            bookingCapacityForDate(professional, booking.date),
+          ],
+        },
+        ...(notification
+          ? [
+              {
+                sql: `INSERT INTO notifications
+                  (id, recipient_key, store_code, booking_id, type, title, message)
+                  SELECT ?, ?, ?, ?, ?, ?, ?
+                  WHERE EXISTS (SELECT 1 FROM bookings WHERE id = ? AND value = ?)`,
+                args: [...notification.args, id, JSON.stringify(booking)],
+              },
+            ]
+          : []),
+      ];
+      const results = await db.batch(statements, "write");
+      if (!results[0]?.rowsAffected) {
+        return response.status(409).json({
+          error:
+            "Ese horario acaba de ser reservado o completó sus lugares disponibles. Elegí otro horario.",
+        });
+      }
       return response.status(201).json({ ok: true, booking });
     } catch (error) {
-      if (transaction) await transaction.rollback().catch(() => undefined);
       console.error("No se pudo guardar la reserva pública", error);
       return response.status(500).json({ error: "No se pudo guardar la reserva." });
     }
