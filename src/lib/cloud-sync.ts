@@ -289,7 +289,19 @@ export async function persistCloudCollection(
           activeRole === "admin" ||
           (record as Booking).customer?.email?.trim().toLowerCase() === activeAccount,
       )
-      .map((record) => ({ ...record, storeCode: targetStoreCode }));
+      .map((record) => ({
+        ...record,
+        storeCode: targetStoreCode,
+        ...(collection === "bookings" && activeRole === "client"
+          ? {
+              appointmentConfirmation: ["confirmed", "pending"].includes(
+                (record as Booking).appointmentConfirmation ?? "",
+              )
+                ? (record as Booking).appointmentConfirmation
+                : "pending",
+            }
+          : {}),
+      }));
     const accountAtWrite = activeAccount;
     const createdBookings = await writeRecords(collection, recordsCopy, deleteIds, targetStoreCode);
     if (activeAccount !== accountAtWrite)
@@ -573,6 +585,19 @@ export async function archiveBooking(bookingId: string) {
   setSnapshot({
     ...snapshot,
     bookings: snapshot.bookings.map((item) => (item.id === bookingId ? result.booking : item)),
+  });
+  return result;
+}
+
+export async function archiveBookings(bookingIds: string[]) {
+  const result = await request<{ bookings: Booking[]; failedCount: number }>("POST", {
+    action: "archive-bookings",
+    bookingIds,
+  });
+  const updatedById = new Map(result.bookings.map((booking) => [booking.id, booking]));
+  setSnapshot({
+    ...snapshot,
+    bookings: snapshot.bookings.map((booking) => updatedById.get(booking.id) ?? booking),
   });
   return result;
 }

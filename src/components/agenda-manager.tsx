@@ -48,6 +48,7 @@ import {
 import { useAppAuth } from "@/lib/auth";
 import {
   archiveBooking,
+  archiveBookings,
   BOOKING_HIGHLIGHT_KEY,
   confirmBookingRefund,
   permanentlyDeleteArchivedBooking,
@@ -318,17 +319,10 @@ export function AgendaManager() {
       return;
     }
     setDeletingVisibleBookings(true);
-    const archived: Booking[] = [];
-    let failedCount = 0;
     try {
-      for (const booking of eligibleBookings) {
-        try {
-          const result = await archiveBooking(booking.id);
-          archived.push(result.booking);
-        } catch {
-          failedCount += 1;
-        }
-      }
+      const { bookings: archived, failedCount } = await archiveBookings(
+        eligibleBookings.map((booking) => booking.id),
+      );
       if (archived.length) {
         const archivedById = new Map(archived.map((booking) => [booking.id, booking]));
         setBookings((current) =>
@@ -340,6 +334,8 @@ export function AgendaManager() {
           ? `Se borraron ${archived.length} turnos; ${failedCount} no se pudieron borrar.`
           : `Se borraron ${archived.length} turnos.`,
       );
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudieron borrar los turnos.");
     } finally {
       setDeletingVisibleBookings(false);
     }

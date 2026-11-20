@@ -48,6 +48,7 @@ import {
 } from "@/lib/professional-store";
 import {
   archiveBooking,
+  archiveBookings,
   BOOKING_HIGHLIGHT_KEY,
   cancelClientBooking,
   cancelClientPayment,
@@ -472,17 +473,10 @@ function MyBookingsPage() {
       return;
     }
     setDeletingVisibleBookings(true);
-    const archived: Booking[] = [];
-    let failedCount = 0;
     try {
-      for (const booking of eligibleBookings) {
-        try {
-          const result = await archiveBooking(booking.id);
-          archived.push(result.booking);
-        } catch {
-          failedCount += 1;
-        }
-      }
+      const { bookings: archived, failedCount } = await archiveBookings(
+        eligibleBookings.map((booking) => booking.id),
+      );
       if (archived.length) {
         const archivedById = new Map(archived.map((booking) => [booking.id, booking]));
         setBookings((current) =>
@@ -494,6 +488,8 @@ function MyBookingsPage() {
           ? `Se borraron ${archived.length} turnos; ${failedCount} no se pudieron borrar.`
           : `Se borraron ${archived.length} turnos.`,
       );
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudieron borrar los turnos.");
     } finally {
       setDeletingVisibleBookings(false);
     }
