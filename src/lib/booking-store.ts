@@ -99,7 +99,7 @@ export function getBookingArchiveLabel(
     return audience === "admin" ? "Eliminado de la agenda" : "Eliminado de tu lista";
   }
   if (booking.paymentCancellationStatus === "requested") return null;
-  if (booking.status === "completed" || booking.status === "no-show") return null;
+  if (booking.status !== "completed" && booking.status !== "no-show") return null;
   const appointmentAt = Date.parse(`${booking.date}T${booking.time}:00-03:00`);
   if (Number.isFinite(appointmentAt) && now >= appointmentAt + 24 * 60 * 60 * 1000)
     return "Antiguo · Pasaron 24 horas";

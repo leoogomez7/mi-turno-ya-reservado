@@ -79,6 +79,7 @@ export function AgendaManager() {
     null,
   );
   const [deletingBookingId, setDeletingBookingId] = useState<string | null>(null);
+  const [deletingVisibleBookings, setDeletingVisibleBookings] = useState(false);
   const [cancellingBookingId, setCancellingBookingId] = useState<string | null>(null);
   const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
   const [archiveSearch, setArchiveSearch] = useState("");
@@ -306,6 +307,41 @@ export function AgendaManager() {
       toast.error(error instanceof Error ? error.message : "No se pudo archivar el turno.");
     } finally {
       setDeletingBookingId(null);
+    }
+  }
+
+  async function archiveVisibleTurns() {
+    if (deletingVisibleBookings || deletingBookingId) return;
+    const eligibleBookings = eligibleVisibleBookings;
+    if (!eligibleBookings.length) {
+      toast.error("No hay turnos disponibles para borrar en el listado actual.");
+      return;
+    }
+    setDeletingVisibleBookings(true);
+    const archived: Booking[] = [];
+    let failedCount = 0;
+    try {
+      for (const booking of eligibleBookings) {
+        try {
+          const result = await archiveBooking(booking.id);
+          archived.push(result.booking);
+        } catch {
+          failedCount += 1;
+        }
+      }
+      if (archived.length) {
+        const archivedById = new Map(archived.map((booking) => [booking.id, booking]));
+        setBookings((current) =>
+          current.map((booking) => archivedById.get(booking.id) ?? booking),
+        );
+      }
+      toast[failedCount ? "error" : "success"](
+        failedCount
+          ? `Se borraron ${archived.length} turnos; ${failedCount} no se pudieron borrar.`
+          : `Se borraron ${archived.length} turnos.`,
+      );
+    } finally {
+      setDeletingVisibleBookings(false);
     }
   }
 
@@ -542,6 +578,13 @@ export function AgendaManager() {
       .replace(/[\u0300-\u036f]/g, "");
     return normalizedBookingSearch.split(/\s+/).every((term) => searchable.includes(term));
   });
+  const eligibleVisibleBookings = filteredVisibleBookings.filter(
+    (booking) =>
+      canArchiveBooking(booking) &&
+      (booking.status === "cancelled" ||
+        booking.status === "completed" ||
+        booking.status === "no-show"),
+  );
 
   return (
     <div className="min-h-screen bg-gradient-dark">
@@ -553,7 +596,7 @@ export function AgendaManager() {
               <p className="text-xs uppercase tracking-widest text-gold">Control</p>
               <h1 className="mt-1 font-display text-2xl font-semibold">Agenda</h1>
             </div>
-            <div className="grid w-full grid-cols-[minmax(0,1.8fr)_minmax(0,1fr)] gap-2 sm:flex sm:w-auto">
+            <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap">
               <Button
                 type="button"
                 variant="outline"
@@ -561,6 +604,19 @@ export function AgendaManager() {
                 onClick={() => setArchiveDialogOpen(true)}
               >
                 Turnos borrados/antiguos
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                className="col-span-2 h-9 min-w-0 w-full whitespace-nowrap px-2 text-[11px] sm:col-span-1 sm:w-auto sm:px-4 sm:text-sm"
+                disabled={
+                  deletingVisibleBookings || deletingBookingId !== null || !eligibleVisibleBookings.length
+                }
+                onClick={() => void archiveVisibleTurns()}
+              >
+                {deletingVisibleBookings
+                  ? "Borrando turnos..."
+                  : `Borrar turnos disponibles (${eligibleVisibleBookings.length})`}
               </Button>
               <Link
                 to="/reserva"
@@ -843,7 +899,7 @@ export function AgendaManager() {
                             size="sm"
                             variant="destructive"
                             className="min-w-0 whitespace-normal px-2 text-center leading-tight"
-                            disabled={deletingBookingId === booking.id}
+                            disabled={deletingBookingId !== null || deletingVisibleBookings}
                             onClick={() => void archiveTurn(booking)}
                           >
                             {deletingBookingId === booking.id

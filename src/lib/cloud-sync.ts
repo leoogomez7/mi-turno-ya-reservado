@@ -122,10 +122,11 @@ async function writeRecords(
   records: Array<Booking | Professional>,
   deleteIds: string[] = [],
   requestedStoreCode?: string,
-) {
+): Promise<Booking[]> {
+  const createdBookings: Booking[] = [];
   const targetStoreCode = requestedStoreCode?.trim().toUpperCase() || undefined;
   for (let offset = 0; offset < records.length; offset += 100) {
-    await request(
+    const result = await request<{ bookings?: Booking[] }>(
       "PUT",
       {
         collection,
@@ -134,6 +135,9 @@ async function writeRecords(
       },
       targetStoreCode,
     );
+    if (collection === "bookings" && Array.isArray(result.bookings)) {
+      createdBookings.push(...result.bookings);
+    }
   }
   if (records.length === 0 && deleteIds.length) {
     for (let offset = 0; offset < deleteIds.length; offset += 100) {
@@ -144,6 +148,7 @@ async function writeRecords(
       );
     }
   }
+  return createdBookings;
 }
 
 export async function bootstrapCloudData(
@@ -251,21 +256,25 @@ export async function persistCloudCollection(
       if (activeAccount === "guest" && collection === "bookings") {
         const booking = records[records.length - 1] as Booking | undefined;
         if (!booking) return;
-        await request(
+        const result = await request<{ booking: Booking }>(
           "POST",
           { action: "guest-booking", booking: { ...booking, storeCode: targetStoreCode } },
           targetStoreCode,
         );
-        const result = await request<{ data: CloudSnapshot; stores: Store[] }>(
-          "GET",
-          undefined,
-          targetStoreCode,
-        );
-        if (!result.data || !Array.isArray(result.stores))
-          throw new Error("Se devolvió una respuesta incompleta.");
-        if (writeRevision !== snapshotRevision) return;
-        availableStores = result.stores;
-        setSnapshot(result.data);
+        if (!result.booking) throw new Error("No se recibió la reserva confirmada.");
+        if (
+          writeRevision !== snapshotRevision ||
+          activeAccount !== "guest" ||
+          storeCode !== targetStoreCode
+        )
+          return;
+        setSnapshot({
+          ...snapshot,
+          bookings: [
+            ...snapshot.bookings.filter((booking) => booking.id !== result.booking.id),
+            result.booking,
+          ],
+        });
         return;
       }
       throw new Error("Iniciá sesión para guardar cambios.");
@@ -282,9 +291,33 @@ export async function persistCloudCollection(
       )
       .map((record) => ({ ...record, storeCode: targetStoreCode }));
     const accountAtWrite = activeAccount;
-    await writeRecords(collection, recordsCopy, deleteIds, targetStoreCode);
+    const createdBookings = await writeRecords(collection, recordsCopy, deleteIds, targetStoreCode);
     if (activeAccount !== accountAtWrite)
       throw new Error("Cambió la cuenta activa; vuelve a cargar los datos.");
+    const newBookingIds = new Set(
+      collection === "bookings" && activeRole === "client"
+        ? recordsCopy
+            .filter((record) => !oldIds.has(record.id))
+            .map((record) => record.id)
+        : [],
+    );
+    if (
+      newBookingIds.size > 0 &&
+      deleteIds.length === 0 &&
+      createdBookings.length === newBookingIds.size &&
+      createdBookings.every((booking) => newBookingIds.has(booking.id))
+    ) {
+      if (writeRevision === snapshotRevision) {
+        setSnapshot({
+          ...snapshot,
+          bookings: [
+            ...snapshot.bookings.filter((booking) => !newBookingIds.has(booking.id)),
+            ...createdBookings,
+          ],
+        });
+      }
+      return;
+    }
     const result = await request<{ data: CloudSnapshot; stores: Store[] }>(
       "GET",
       undefined,

@@ -1110,6 +1110,7 @@ Observaciones: ${customer.notes || "Ninguna"}`;
                 storeAddress={storeSettings?.address ?? ""}
                 cancellationPolicy={storeSettings}
                 customer={customer}
+                isAuthenticated={isAuthenticated}
                 serviceIds={selectedServiceIds}
                 date={date}
                 time={time}
@@ -1320,7 +1321,7 @@ Observaciones: ${customer.notes || "Ninguna"}`;
                   className="shrink-0 whitespace-nowrap px-3 text-sm"
                   onClick={sendPendingBookingWhatsApp}
                 >
-                  Enviar comprobante por WhatsApp
+                  Avisar reserva por WhatsApp
                 </Button>
                 {reservationResult.paymentMethod === "transferencia" ? (
                   <Button
@@ -1936,6 +1937,7 @@ function StepConfirm({
   storeAddress,
   cancellationPolicy,
   customer,
+  isAuthenticated,
   serviceIds,
   date,
   time,
@@ -1949,6 +1951,7 @@ function StepConfirm({
   storeAddress: string;
   cancellationPolicy?: Store["settings"];
   customer: Customer;
+  isAuthenticated: boolean;
   serviceIds: string[];
   date: Date;
   time: string;
@@ -1977,6 +1980,19 @@ function StepConfirm({
           minutos antes del turno. Las solicitudes fuera de ese plazo no estarán disponibles.
         </p>
       </div>
+      {!isAuthenticated && (
+        <div
+          role="note"
+          className="mb-4 rounded-xl border border-gold/30 bg-gold/10 p-4 text-sm text-foreground"
+        >
+          <p className="font-semibold text-gold">¿Querés gestionar tu turno después?</p>
+          <p className="mt-1 text-muted-foreground">
+            Para cambiar el horario, solicitar una devolución o consultar más detalles, necesitás
+            registrarte. Si lo hacés después de reservar, usá este mismo correo electrónico y el
+            turno aparecerá automáticamente en tu cuenta; no hace falta volver a reservar.
+          </p>
+        </div>
+      )}
       <div className="grid gap-3 text-sm">
         <div className="flex items-center justify-between gap-4 border-b border-border/60 py-3">
           <span className="text-xs uppercase tracking-wider text-muted-foreground">Sucursal</span>

@@ -3580,7 +3580,7 @@ export default async function handler(request, response) {
       );
       if (notice) await transaction.execute(notice);
       await transaction.commit();
-      return response.status(201).json({ ok: true });
+      return response.status(201).json({ ok: true, booking });
     } catch (error) {
       if (transaction) await transaction.rollback().catch(() => undefined);
       console.error("No se pudo guardar la reserva pública", error);
@@ -3646,6 +3646,7 @@ export default async function handler(request, response) {
 
   try {
     const statements = [];
+    const createdBookings = [];
     for (const record of records) {
       const id = recordId(record);
       if (!id)
@@ -3812,6 +3813,7 @@ export default async function handler(request, response) {
             );
             if (notice) await transaction.execute(notice);
             await transaction.commit();
+            createdBookings.push(record);
           } catch (error) {
             await transaction.rollback().catch(() => undefined);
             throw error;
@@ -3863,7 +3865,7 @@ export default async function handler(request, response) {
       statements.push({ sql: `DELETE FROM ${body.collection} WHERE id = ?`, args: [databaseId] });
     }
     if (statements.length) await db.batch(statements, "write");
-    return response.status(200).json({ ok: true });
+    return response.status(200).json({ ok: true, bookings: createdBookings });
   } catch (error) {
     console.error("No se pudieron guardar datos en Turso", error);
     return response.status(500).json({ error: "No se pudieron guardar los datos." });

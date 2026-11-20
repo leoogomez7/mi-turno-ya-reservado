@@ -81,6 +81,7 @@ function MyBookingsPage() {
   const [busyBookingId, setBusyBookingId] = useState<string | null>(null);
   const [payingBookingId, setPayingBookingId] = useState<string | null>(null);
   const [deletingBookingId, setDeletingBookingId] = useState<string | null>(null);
+  const [deletingVisibleBookings, setDeletingVisibleBookings] = useState(false);
   const [cancelingBookingId, setCancelingBookingId] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState(Date.now());
   const [editingBooking, setEditingBooking] = useState<Booking | null>(null);
@@ -463,6 +464,41 @@ function MyBookingsPage() {
     }
   }
 
+  async function archiveVisibleTurns() {
+    if (busyBookingId || deletingVisibleBookings || deletingBookingId) return;
+    const eligibleBookings = eligibleVisibleBookings;
+    if (!eligibleBookings.length) {
+      toast.error("No hay turnos disponibles para borrar en el listado actual.");
+      return;
+    }
+    setDeletingVisibleBookings(true);
+    const archived: Booking[] = [];
+    let failedCount = 0;
+    try {
+      for (const booking of eligibleBookings) {
+        try {
+          const result = await archiveBooking(booking.id);
+          archived.push(result.booking);
+        } catch {
+          failedCount += 1;
+        }
+      }
+      if (archived.length) {
+        const archivedById = new Map(archived.map((booking) => [booking.id, booking]));
+        setBookings((current) =>
+          current.map((booking) => archivedById.get(booking.id) ?? booking),
+        );
+      }
+      toast[failedCount ? "error" : "success"](
+        failedCount
+          ? `Se borraron ${archived.length} turnos; ${failedCount} no se pudieron borrar.`
+          : `Se borraron ${archived.length} turnos.`,
+      );
+    } finally {
+      setDeletingVisibleBookings(false);
+    }
+  }
+
   async function restoreTurn(booking: Booking) {
     if (restoringBookingId || restoringAllArchivedBookings) return;
     setRestoringBookingId(booking.id);
@@ -632,6 +668,7 @@ function MyBookingsPage() {
   };
   const filteredVisibleBookings = filterBookings(visibleBookings, bookingSearch);
   const filteredArchivedBookings = filterBookings(archivedBookings, archiveSearch);
+  const eligibleVisibleBookings = filteredVisibleBookings.filter(canArchiveBooking);
 
   if (isLoading) return <LoadingScreen message="Buscando tus turnos" />;
   if (!isAuthenticated || role !== "client")
@@ -660,6 +697,19 @@ function MyBookingsPage() {
                 onClick={() => setArchiveDialogOpen(true)}
               >
                 Turnos borrados/antiguos
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                className="h-9 min-w-0 whitespace-nowrap px-2 text-[11px] sm:px-4 sm:text-sm"
+                disabled={
+                  deletingVisibleBookings || busyBookingId !== null || !eligibleVisibleBookings.length
+                }
+                onClick={() => void archiveVisibleTurns()}
+              >
+                {deletingVisibleBookings
+                  ? "Borrando turnos..."
+                  : `Borrar turnos disponibles (${eligibleVisibleBookings.length})`}
               </Button>
               <Link
                 to="/reserva"
@@ -877,7 +927,7 @@ function MyBookingsPage() {
                             >
                               Modificar turno
                             </Button>
-                          )}
+                        )}
                         {canCancel && (
                           <Button
                             size="sm"
