@@ -55,6 +55,7 @@ import {
   permanentlyDeleteArchivedBookings,
   refreshCloudData,
   restoreArchivedBooking,
+  restoreArchivedBookings,
 } from "@/lib/cloud-sync";
 import {
   getAvailableSlotCapacities,
@@ -360,17 +361,10 @@ export function AgendaManager() {
   async function restoreAllArchivedTurns() {
     if (restoringAllArchivedBookings || restoringBookingId || !archivedBookings.length) return;
     setRestoringAllArchivedBookings(true);
-    const restoredBookings: Booking[] = [];
-    let failedCount = 0;
     try {
-      for (const booking of archivedBookings) {
-        try {
-          const result = await restoreArchivedBooking(booking.id);
-          restoredBookings.push(result.booking);
-        } catch {
-          failedCount += 1;
-        }
-      }
+      const { bookings: restoredBookings, failedCount } = await restoreArchivedBookings(
+        archivedBookings.map((booking) => booking.id),
+      );
       if (restoredBookings.length) {
         const restoredById = new Map(restoredBookings.map((booking) => [booking.id, booking]));
         setBookings((current) => current.map((booking) => restoredById.get(booking.id) ?? booking));
@@ -382,6 +376,8 @@ export function AgendaManager() {
       } else {
         toast.success(`Se restauraron ${restoredBookings.length} turnos.`);
       }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudieron restaurar los turnos.");
     } finally {
       setRestoringAllArchivedBookings(false);
     }

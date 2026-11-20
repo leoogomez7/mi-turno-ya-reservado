@@ -1389,7 +1389,12 @@ export function ProfessionalsManager() {
                     min="0"
                     max="10080"
                     step="1"
-                    disabled={loadingStoreSettings || savingCancellationPolicy}
+                    disabled={
+                      loadingStoreSettings ||
+                      savingCancellationPolicy ||
+                      !storeSettings.allowRefunds ||
+                      storeSettings.noRefunds
+                    }
                     value={storeSettings.cancellationWindowMinutes}
                     onChange={(event) =>
                       setStoreSettings({

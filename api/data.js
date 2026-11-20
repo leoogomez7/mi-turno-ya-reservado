@@ -178,6 +178,80 @@ async function archiveBookings(db, user, bookingIds) {
   };
 }
 
+async function restoreArchivedBookings(db, user, bookingIds) {
+  if (!user.emailVerified)
+    return { status: 403, body: { error: "Verificá tu correo antes de restaurar turnos." } };
+  if (
+    !Array.isArray(bookingIds) ||
+    bookingIds.length === 0 ||
+    bookingIds.length > 2000 ||
+    bookingIds.some((id) => typeof id !== "string" || !id.trim() || id.length > 200)
+  ) {
+    return { status: 400, body: { error: "La lista de turnos para restaurar no es válida." } };
+  }
+  const account = await db.execute({
+    sql: "SELECT role, store_code FROM account_roles WHERE user_id = ?",
+    args: [user.id],
+  });
+  const role = String(account.rows[0]?.role ?? "");
+  if (!account.rows[0] || !["admin", "client"].includes(role))
+    return { status: 403, body: { error: "Configurá tu cuenta para restaurar turnos." } };
+
+  const uniqueIds = [...new Set(bookingIds.map((id) => id.trim()))];
+  const rows = [];
+  for (let offset = 0; offset < uniqueIds.length; offset += 400) {
+    const ids = uniqueIds.slice(offset, offset + 400);
+    const result = await db.execute({
+      sql: `SELECT id, value FROM bookings WHERE id IN (${ids.map(() => "?").join(",")})`,
+      args: ids,
+    });
+    rows.push(...result.rows);
+  }
+
+  const rowsById = new Map(rows.map((row) => [String(row.id), row]));
+  const storeCode = normalizeStoreCode(account.rows[0]?.store_code);
+  const archiveField = role === "client" ? "clientArchivedAt" : "adminArchivedAt";
+  const restoredField = role === "client" ? "clientRestoredAt" : "adminRestoredAt";
+  const restoredAt = new Date().toISOString();
+  const candidates = [];
+  const statements = [];
+  for (const id of uniqueIds) {
+    const row = rowsById.get(id);
+    if (!row) continue;
+    const storedValue = String(row.value);
+    const booking = JSON.parse(storedValue);
+    if (role === "client") {
+      if (booking.customer?.email?.trim().toLowerCase() !== user.email)
+        return { status: 403, body: { error: "Solo puedes restaurar tus propios turnos." } };
+    } else if (normalizeStoreCode(booking.storeCode) !== storeCode) {
+      return { status: 403, body: { error: "El turno no corresponde a tu sucursal." } };
+    }
+    const appointmentAt = Date.parse(`${booking.date}T${booking.time}:00-03:00`);
+    const isAutomaticallyArchived =
+      !booking[restoredField] &&
+      (booking.status === "completed" ||
+        booking.status === "no-show" ||
+        (Number.isFinite(appointmentAt) && Date.now() >= appointmentAt + 24 * 60 * 60 * 1000));
+    if (!booking[archiveField] && !isAutomaticallyArchived) continue;
+    delete booking[archiveField];
+    booking[restoredField] = restoredAt;
+    candidates.push({ booking, storedValue });
+    statements.push({
+      sql: "UPDATE bookings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND value = ?",
+      args: [JSON.stringify(booking), id, storedValue],
+    });
+  }
+
+  const results = statements.length ? await db.batch(statements, "write") : [];
+  const bookings = results.flatMap((result, index) =>
+    result.rowsAffected > 0 ? [candidates[index].booking] : [],
+  );
+  return {
+    status: 200,
+    body: { bookings, failedCount: uniqueIds.length - bookings.length },
+  };
+}
+
 async function permanentlyDeleteArchivedBookings(db, user, bookingIds) {
   if (!user.emailVerified)
     return { status: 403, body: { error: "Verificá tu correo antes de borrar turnos." } };
@@ -1714,6 +1788,15 @@ export default async function handler(request, response) {
       } catch (error) {
         console.error("No se pudieron archivar los turnos", error);
         return response.status(500).json({ error: "No se pudieron archivar los turnos seleccionados." });
+      }
+    }
+    if (user && body?.action === "restore-archived-bookings") {
+      try {
+        const result = await restoreArchivedBookings(db, user, body.bookingIds);
+        return response.status(result.status).json(result.body);
+      } catch (error) {
+        console.error("No se pudieron restaurar los turnos archivados", error);
+        return response.status(500).json({ error: "No se pudieron restaurar los turnos seleccionados." });
       }
     }
     if (user && body?.action === "archive-booking") {

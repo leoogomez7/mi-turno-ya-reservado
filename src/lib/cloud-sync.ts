@@ -614,6 +614,19 @@ export async function restoreArchivedBooking(bookingId: string) {
   return result;
 }
 
+export async function restoreArchivedBookings(bookingIds: string[]) {
+  const result = await request<{ bookings: Booking[]; failedCount: number }>("POST", {
+    action: "restore-archived-bookings",
+    bookingIds,
+  });
+  const updatedById = new Map(result.bookings.map((booking) => [booking.id, booking]));
+  setSnapshot({
+    ...snapshot,
+    bookings: snapshot.bookings.map((booking) => updatedById.get(booking.id) ?? booking),
+  });
+  return result;
+}
+
 export async function permanentlyDeleteArchivedBooking(bookingId: string) {
   const result = await request<{ ok: boolean; booking: Booking }>("POST", {
     action: "permanently-delete-archived-booking",
