@@ -2272,7 +2272,12 @@ export default async function handler(request, response) {
         }
 
         if (body.action === "cancel-client-payment") {
-          if (!["confirmed", "pending-payment"].includes(booking.status)) {
+          const cancelledByProfessional =
+            booking.status === "cancelled" && booking.cancelledBy === "professional";
+          if (
+            !cancelledByProfessional &&
+            !["confirmed", "pending-payment"].includes(booking.status)
+          ) {
             return response.status(409).json({ error: "Este turno ya no está activo." });
           }
           if (booking.paymentStatus !== "approved") {
@@ -2308,8 +2313,9 @@ export default async function handler(request, response) {
               ? Date.parse(`${booking.date}T${booking.time}:00-03:00`)
               : Number.NaN;
           if (
-            !Number.isFinite(appointmentAt) ||
-            appointmentAt - Date.now() < policy.cancellationWindowMinutes * 60 * 1000
+            !cancelledByProfessional &&
+            (!Number.isFinite(appointmentAt) ||
+              appointmentAt - Date.now() < policy.cancellationWindowMinutes * 60 * 1000)
           ) {
             return response.status(409).json({
               error: `Solo podés solicitar la cancelación con al menos ${policy.cancellationWindowMinutes} minutos de anticipación.`,
@@ -4033,6 +4039,9 @@ export default async function handler(request, response) {
           ON CONFLICT(id) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP`,
         args: [databaseId, JSON.stringify(record)],
       });
+      if (body.collection === "bookings" && !storedRecord.rows[0]) {
+        createdBookings.push(record);
+      }
       if (body.collection === "bookings" && role === "admin" && storedRecord.rows[0]) {
         const priorBooking = JSON.parse(String(storedRecord.rows[0].value));
         const change = describeAdminBookingChange(priorBooking, record);

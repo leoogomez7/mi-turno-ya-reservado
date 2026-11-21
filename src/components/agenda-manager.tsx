@@ -51,6 +51,7 @@ import {
   archiveBookings,
   BOOKING_HIGHLIGHT_KEY,
   confirmBookingRefund,
+  getAvailableStores,
   permanentlyDeleteArchivedBooking,
   permanentlyDeleteArchivedBookings,
   refreshCloudData,
@@ -688,6 +689,13 @@ export function AgendaManager() {
                         : "No especificado";
                 const isActiveBooking =
                   booking.status === "confirmed" || booking.status === "pending-payment";
+                const cancellationPolicy =
+                  booking.cancellationPolicyAtBooking ??
+                  getAvailableStores().find((store) => store.code === booking.storeCode)?.settings;
+                const refundNotAllowed =
+                  cancellationPolicy?.noRefunds ||
+                  cancellationPolicy?.allowRefunds === false ||
+                  (cancellationPolicy?.refundPercent ?? 100) <= 0;
                 return (
                   <div
                     key={booking.id}
@@ -844,6 +852,11 @@ export function AgendaManager() {
                           className="border-red-500/30 bg-red-500/10 text-red-300"
                         >
                           Cancelado por el profesional
+                        </Badge>
+                      )}
+                      {booking.status === "cancelled" && refundNotAllowed && (
+                        <Badge variant="outline" className="border-red-300 text-red-300">
+                          Devolución no permitida
                         </Badge>
                       )}
                     </div>

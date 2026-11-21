@@ -293,6 +293,8 @@ function MyBookingsPage() {
 
   async function cancelPayment(booking: Booking) {
     if (busyBookingId || booking.paymentCancellationStatus) return;
+    const cancelledByProfessional =
+      booking.status === "cancelled" && booking.cancelledBy === "professional";
     const policy = cancellationPolicyFor(booking);
     if (
       policy?.noRefunds ||
@@ -322,7 +324,10 @@ function MyBookingsPage() {
       );
       return;
     }
-    if (!Number.isFinite(appointmentAt) || appointmentAt - Date.now() < windowMinutes * 60 * 1000) {
+    if (
+      !cancelledByProfessional &&
+      (!Number.isFinite(appointmentAt) || appointmentAt - Date.now() < windowMinutes * 60 * 1000)
+    ) {
       toast.error(
         `Solo podés solicitar la cancelación con al menos ${windowMinutes} minutos de anticipación.`,
       );
@@ -343,9 +348,7 @@ function MyBookingsPage() {
       );
       setPaymentBooking(null);
       setRefundDestination("");
-      toast.success(
-        "Solicitud de devolución enviada. El turno se canceló y el horario quedó disponible; el profesional confirmará la devolución.",
-      );
+      toast.success("Solicitud de devolución enviada. El profesional confirmará la devolución.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "No se pudo cancelar el pago.");
     } finally {
@@ -433,7 +436,14 @@ function MyBookingsPage() {
       setBookings((current) =>
         current.map((item) => (item.id === booking.id ? result.booking : item)),
       );
-      toast.success("Turno cancelado. El profesional podrá verlo en su agenda.");
+      const policy = cancellationPolicyFor(result.booking);
+      const refundNotAllowed =
+        policy?.noRefunds || policy?.allowRefunds === false || (policy?.refundPercent ?? 100) <= 0;
+      toast.success(
+        refundNotAllowed
+          ? "Turno cancelado. La política no permite devolución; ahora podés borrar el turno."
+          : "Turno cancelado. El profesional podrá verlo en su agenda.",
+      );
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "No se pudo cancelar el turno.");
     } finally {
@@ -766,6 +776,10 @@ function MyBookingsPage() {
                         ? "Tarjeta o Mercado Pago"
                         : "No especificado";
                 const policy = cancellationPolicyFor(booking);
+                const refundNotAllowed =
+                  policy?.noRefunds ||
+                  policy?.allowRefunds === false ||
+                  (policy?.refundPercent ?? 100) <= 0;
                 const isActiveBooking =
                   booking.status === "confirmed" || booking.status === "pending-payment";
                 const hasPaymentReport =
@@ -785,12 +799,13 @@ function MyBookingsPage() {
                     booking.customer.paymentMethod ?? "",
                   );
                 const canRequestPaymentCancellation =
-                  isActiveBooking &&
+                  (isActiveBooking ||
+                    (booking.status === "cancelled" && booking.cancelledBy === "professional")) &&
                   booking.paymentStatus === "approved" &&
                   !policy?.noRefunds &&
                   policy?.allowRefunds !== false &&
                   (policy?.refundPercent ?? 100) > 0 &&
-                  !refundRequestTooLate &&
+                  (booking.cancelledBy === "professional" || !refundRequestTooLate) &&
                   ["efectivo", "transferencia", "tarjeta o mercado pago"].includes(
                     booking.customer.paymentMethod ?? "",
                   );
@@ -876,8 +891,15 @@ function MyBookingsPage() {
                           {statusLabel}
                         </Badge>
                       )}
+                      {booking.status === "cancelled" && refundNotAllowed && (
+                        <Badge variant="outline" className="border-red-300 text-red-300">
+                          Devolución no permitida
+                        </Badge>
+                      )}
                     </div>
-                    {(isActiveBooking || (canArchive && canArchiveBooking(booking))) && (
+                    {(isActiveBooking ||
+                      canRequestPaymentCancellation ||
+                      (canArchive && canArchiveBooking(booking))) && (
                       <div className="flex w-full flex-wrap justify-center gap-2 xl:col-start-5 xl:grid xl:grid-cols-3">
                         {isActiveBooking &&
                           !hasPaymentReport &&
@@ -1472,7 +1494,10 @@ function MyBookingsPage() {
                   60_000;
                 const windowMinutes =
                   cancellationPolicyFor(paymentBooking)?.cancellationWindowMinutes ?? 30;
-                return minutesRemaining < windowMinutes ? (
+                const cancelledByProfessional =
+                  paymentBooking.status === "cancelled" &&
+                  paymentBooking.cancelledBy === "professional";
+                return !cancelledByProfessional && minutesRemaining < windowMinutes ? (
                   <p role="alert" className="text-red-300">
                     La solicitud solo está disponible con al menos {windowMinutes} minutos de
                     anticipación.
@@ -1543,11 +1568,13 @@ function MyBookingsPage() {
                   {((paymentBooking.customer.paymentMethod !== "transferencia" &&
                     paymentBooking.customer.paymentMethod !== "efectivo") ||
                     isValidRefundDestination(refundDestinationType, refundDestination)) &&
-                    Date.parse(`${paymentBooking.date}T${paymentBooking.time}:00-03:00`) -
-                      currentTime >=
-                      (cancellationPolicyFor(paymentBooking)?.cancellationWindowMinutes ?? 30) *
-                        60 *
-                        1000 && (
+                    ((paymentBooking.status === "cancelled" &&
+                      paymentBooking.cancelledBy === "professional") ||
+                      Date.parse(`${paymentBooking.date}T${paymentBooking.time}:00-03:00`) -
+                        currentTime >=
+                        (cancellationPolicyFor(paymentBooking)?.cancellationWindowMinutes ?? 30) *
+                          60 *
+                          1000) && (
                       <Button
                         type="button"
                         className="w-full bg-gold text-primary-foreground hover:bg-gold-soft sm:w-auto"

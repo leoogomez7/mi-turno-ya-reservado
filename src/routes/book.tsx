@@ -436,14 +436,13 @@ export function BookPage() {
       if (returnStoreCode) setSelectedStoreCode(returnStoreCode);
       if (resultKind !== "payment-pending")
         window.localStorage.removeItem(PENDING_PAYMENT_SESSION_KEY);
-      setReservationResult({
+      showReservationResult({
         kind: resultKind,
         date: returnedBooking?.date || pendingPayment.date || "",
         time: returnedBooking?.time || pendingPayment.time || "",
         totalPrice: returnedBooking?.totalPrice ?? undefined,
         paymentMethod: pendingPayment.paymentMethod,
       });
-      void navigate({ to: "/reserva", replace: true });
     })();
     return () => {
       cancelled = true;
@@ -657,6 +656,13 @@ Observaciones: ${customer.notes || "Ninguna"}`;
     setStep(Number(pathStep));
   }, [location.pathname]);
 
+  function showReservationResult(result: ReservationResult) {
+    setStep(4);
+    setStepError(null);
+    void navigate({ to: STEP_PATHS[4], replace: true });
+    setReservationResult(result);
+  }
+
   useEffect(() => {
     if (!reservationResult || step === 4) return;
     setStep(4);
@@ -732,7 +738,7 @@ Observaciones: ${customer.notes || "Ninguna"}`;
             status: "confirmed",
             paymentStatus: "pending",
           });
-          setReservationResult({
+          showReservationResult({
             kind: "payment-pending",
             date: format(date, "yyyy-MM-dd"),
             time,
@@ -774,7 +780,7 @@ Observaciones: ${customer.notes || "Ninguna"}`;
               whatsappMessage: createBookingWhatsAppMessage(true),
             }),
           );
-          setReservationResult({
+          showReservationResult({
             kind: "payment-pending",
             date: format(date, "yyyy-MM-dd"),
             time,
@@ -792,7 +798,7 @@ Observaciones: ${customer.notes || "Ninguna"}`;
           }
           setReservationResult(null);
           if (pendingBooking) {
-            setReservationResult({
+            showReservationResult({
               kind: "payment-pending",
               date: pendingBooking.date,
               time: pendingBooking.time,
@@ -817,7 +823,7 @@ Observaciones: ${customer.notes || "Ninguna"}`;
           totalPrice: price,
           status: "confirmed",
         });
-        setReservationResult({ kind: "confirmed", date: format(date, "yyyy-MM-dd"), time });
+        showReservationResult({ kind: "confirmed", date: format(date, "yyyy-MM-dd"), time });
         window.sessionStorage.removeItem(RESERVATION_DRAFT_SESSION_KEY);
         toast.success("¡Turno confirmado!");
       } catch (error) {
@@ -895,7 +901,7 @@ Observaciones: ${customer.notes || "Ninguna"}`;
   function closeTransferPaymentDetails() {
     setPaymentDialog(null);
     if (pendingTransferReturn) {
-      setReservationResult({
+      showReservationResult({
         kind: "payment-pending",
         ...pendingTransferReturn,
         paymentMethod: "transferencia",

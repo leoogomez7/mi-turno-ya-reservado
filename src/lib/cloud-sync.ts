@@ -306,9 +306,11 @@ export async function persistCloudCollection(
     // Client accounts may only create reservations through this generic collection write.
     // Sending their entire cached booking list can include stale server-owned fields and
     // make an unrelated new reservation fail as an attempted edit of an existing booking.
+    const newBookingRecords =
+      collection === "bookings" ? recordsCopy.filter((record) => !oldIds.has(record.id)) : [];
     const recordsToWrite =
-      collection === "bookings" && activeRole === "client"
-        ? recordsCopy.filter((record) => !oldIds.has(record.id))
+      collection === "bookings" && deleteIds.length === 0 && newBookingRecords.length > 0
+        ? newBookingRecords
         : recordsCopy;
     const deletionsToWrite = activeRole === "client" ? [] : deleteIds;
     const createdBookings = await writeRecords(
@@ -320,10 +322,8 @@ export async function persistCloudCollection(
     if (activeAccount !== accountAtWrite)
       throw new Error("Cambió la cuenta activa; vuelve a cargar los datos.");
     const newBookingIds = new Set(
-      collection === "bookings" && activeRole === "client"
-        ? recordsCopy
-            .filter((record) => !oldIds.has(record.id))
-            .map((record) => record.id)
+      collection === "bookings"
+        ? newBookingRecords.map((record) => record.id)
         : [],
     );
     if (
