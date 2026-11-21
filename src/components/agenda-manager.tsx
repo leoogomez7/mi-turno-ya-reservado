@@ -148,6 +148,34 @@ export function AgendaManager() {
   }, []);
 
   useEffect(() => {
+    if (!selectedBooking || editMode !== "turno") return;
+    let active = true;
+    let refreshInFlight = false;
+    const refresh = () => {
+      if (!active || document.hidden || refreshInFlight) return;
+      refreshInFlight = true;
+      void refreshCloudData()
+        .catch(() => undefined)
+        .finally(() => {
+          refreshInFlight = false;
+        });
+    };
+    refresh();
+    const intervalId = window.setInterval(refresh, 5000);
+    const onVisibilityChange = () => {
+      if (!document.hidden) refresh();
+    };
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      active = false;
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [editMode, selectedBooking?.id]);
+
+  useEffect(() => {
     const intervalId = window.setInterval(() => setCurrentTime(Date.now()), 30_000);
     return () => window.clearInterval(intervalId);
   }, []);
@@ -268,7 +296,14 @@ export function AgendaManager() {
       toast.success("Turno modificado.");
       closeDialog();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "No se pudo guardar el cambio.");
+      const message = error instanceof Error ? error.message : "No se pudo guardar el cambio.";
+      if (message.toLowerCase().includes("acaba de ser reservado")) {
+        setEditedTime("");
+        await refreshCloudData().catch(() => undefined);
+        toast.error("Ese horario ya fue reservado. Actualizamos la disponibilidad; elegí otro.");
+      } else {
+        toast.error(message);
+      }
     } finally {
       setSavingEdit(false);
     }

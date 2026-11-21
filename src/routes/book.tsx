@@ -35,6 +35,7 @@ import { normalizeWhatsappNumber } from "@/lib/utils";
 import { bookingStore, type Booking, type Customer } from "@/lib/booking-store";
 import {
   type Professional,
+  getAvailableSlotCapacities,
   getScheduleForDate,
   generateSlotsFromSchedule,
   isProfessionalAvailableOnDate,
@@ -450,9 +451,12 @@ export function BookPage() {
   }, [cloudDataReady, location.searchStr, navigate, paymentReturn, storeSelectionHydrated]);
 
   useEffect(() => {
-    if (step !== 3 || !selectedStoreCode) return;
+    if ((step !== 3 && step !== 4) || !selectedStoreCode) return;
     let cancelled = false;
+    let refreshInFlight = false;
     const refresh = () => {
+      if (cancelled || document.hidden || refreshInFlight) return;
+      refreshInFlight = true;
       void loadReservationStore(selectedStoreCode, isAuthenticated ? auth.getIdToken : undefined)
         .then(({ data, stores: loadedStores }) => {
           if (cancelled) return;
@@ -460,15 +464,23 @@ export function BookPage() {
           setReservationBookings(data.bookings);
           setStores(loadedStores);
         })
-        .catch(() => undefined);
+        .catch(() => undefined)
+        .finally(() => {
+          refreshInFlight = false;
+        });
     };
     refresh();
-    const intervalId = window.setInterval(refresh, 15000);
+    const intervalId = window.setInterval(refresh, 5000);
+    const onVisibilityChange = () => {
+      if (!document.hidden) refresh();
+    };
     window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", onVisibilityChange);
     return () => {
       cancelled = true;
       window.clearInterval(intervalId);
       window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
     };
   }, [auth.getIdToken, isAuthenticated, selectedStoreCode, step]);
 
@@ -553,6 +565,51 @@ export function BookPage() {
     Number.isFinite(selectedSlotTimestamp) && selectedSlotTimestamp <= currentTime;
   const reservationDataLoading =
     Boolean(selectedStoreCode) && (!storeSelectionHydrated || storeLoading);
+
+  useEffect(() => {
+    if (!date || !time || !selectedProfessional || duration <= 0) return;
+    const availableSlots = getAvailableSlotCapacities(
+      selectedProfessional,
+      date,
+      duration,
+      reservationBookings,
+      "",
+      selectedStoreCode,
+    );
+    if (availableSlots.some((slot) => slot.time === time)) return;
+
+    setTime("");
+    setStepError("Ese horario ya no está disponible. Actualizamos la disponibilidad; elegí otro.");
+    if (step === 4) {
+      setStep(3);
+      navigate({ to: STEP_PATHS[3] });
+    }
+  }, [date, duration, navigate, reservationBookings, selectedProfessional, selectedStoreCode, step, time]);
+
+  async function handleBookingSaveError(error: unknown, fallback: string) {
+    const message = error instanceof Error ? error.message : fallback;
+    if (!message.toLowerCase().includes("acaba de ser reservado")) {
+      toast.error(message);
+      return;
+    }
+
+    try {
+      const { data, stores: loadedStores } = await loadReservationStore(
+        selectedStoreCode,
+        isAuthenticated ? auth.getIdToken : undefined,
+      );
+      setReservationProfessionals(data.professionals);
+      setReservationBookings(data.bookings);
+      setStores(loadedStores);
+    } catch {
+      // The next availability refresh will reconcile the list if this immediate retry fails.
+    }
+    setTime("");
+    setStep(3);
+    setStepError("Ese horario ya fue reservado. Actualizamos la disponibilidad; elegí otro.");
+    navigate({ to: STEP_PATHS[3] });
+    toast.error("Ese horario ya fue reservado. Elegí otro horario disponible.");
+  }
 
   function selectProfessional(nextBarberId: string) {
     if (nextBarberId === barberId) return;
@@ -678,7 +735,7 @@ Observaciones: ${customer.notes || "Ninguna"}`;
           });
           window.sessionStorage.removeItem(RESERVATION_DRAFT_SESSION_KEY);
         } catch (error) {
-          toast.error(error instanceof Error ? error.message : "No se pudo guardar el turno.");
+          await handleBookingSaveError(error, "No se pudo guardar el turno.");
         }
         return;
       }
@@ -719,6 +776,14 @@ Observaciones: ${customer.notes || "Ninguna"}`;
           });
           window.sessionStorage.removeItem(RESERVATION_DRAFT_SESSION_KEY);
         } catch (error) {
+          if (
+            error instanceof Error &&
+            error.message.toLowerCase().includes("acaba de ser reservado")
+          ) {
+            setPaymentError(null);
+            await handleBookingSaveError(error, "No se pudo preparar el pago.");
+            return;
+          }
           setReservationResult(null);
           if (pendingBooking) {
             setReservationResult({
@@ -750,7 +815,7 @@ Observaciones: ${customer.notes || "Ninguna"}`;
         window.sessionStorage.removeItem(RESERVATION_DRAFT_SESSION_KEY);
         toast.success("¡Turno confirmado!");
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : "No se pudo guardar el turno.");
+        await handleBookingSaveError(error, "No se pudo guardar el turno.");
       }
     } finally {
       setConfirmingBooking(false);
