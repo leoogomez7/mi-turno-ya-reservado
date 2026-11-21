@@ -2589,14 +2589,10 @@ export default async function handler(request, response) {
             error: "Este turno no se puede cancelar porque el método de pago no lo permite.",
           });
         }
-        const policy = await getStoreCancellationPolicy(db, booking.storeCode);
         const appointmentAt = Date.parse(`${booking.date}T${booking.time}:00-03:00`);
-        if (
-          !Number.isFinite(appointmentAt) ||
-          appointmentAt - Date.now() < policy.cancellationWindowMinutes * 60 * 1000
-        ) {
+        if (!Number.isFinite(appointmentAt) || appointmentAt <= Date.now()) {
           return response.status(409).json({
-            error: `Solo podés cancelar el turno con al menos ${policy.cancellationWindowMinutes} minutos de anticipación.`,
+            error: "No se puede cancelar un turno que ya comenzó o cuya fecha no es válida.",
           });
         }
         booking.status = "cancelled";

@@ -2002,10 +2002,12 @@ function StepConfirm({
             ? "Esta sucursal no acepta devoluciones de pagos."
             : `Si se aprueba una devolución, se reintegrará el ${cancellationPolicy?.refundPercent ?? 100}% del importe pagado.`}
         </p>
-        <p className="mt-1">
-          Podés solicitar cancelación hasta {cancellationPolicy?.cancellationWindowMinutes ?? 30}{" "}
-          minutos antes del turno. Las solicitudes fuera de ese plazo no estarán disponibles.
-        </p>
+        {!cancellationPolicy?.noRefunds && cancellationPolicy?.allowRefunds !== false && (
+          <p className="mt-1">
+            Podés solicitar una devolución hasta {cancellationPolicy?.cancellationWindowMinutes ?? 30}{" "}
+            minutos antes del turno. Cancelar un turno sin pago confirmado no depende de este plazo.
+          </p>
+        )}
       </div>
       {!isAuthenticated && (
         <div

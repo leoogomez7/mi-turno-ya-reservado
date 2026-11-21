@@ -770,14 +770,17 @@ function MyBookingsPage() {
                   booking.status === "confirmed" || booking.status === "pending-payment";
                 const hasPaymentReport =
                   Boolean(booking.paymentReportedAt) || booking.paymentStatus === "approved";
-                const cancellationTooLate =
+                const refundRequestTooLate =
                   !Number.isFinite(Date.parse(`${booking.date}T${booking.time}:00-03:00`)) ||
                   Date.parse(`${booking.date}T${booking.time}:00-03:00`) - currentTime <
                     (policy?.cancellationWindowMinutes ?? 30) * 60 * 1000;
+                const appointmentAlreadyStarted =
+                  !Number.isFinite(Date.parse(`${booking.date}T${booking.time}:00-03:00`)) ||
+                  Date.parse(`${booking.date}T${booking.time}:00-03:00`) <= currentTime;
                 const canCancel =
                   isActiveBooking &&
                   !hasPaymentReport &&
-                  !cancellationTooLate &&
+                  !appointmentAlreadyStarted &&
                   ["efectivo", "transferencia", "tarjeta o mercado pago"].includes(
                     booking.customer.paymentMethod ?? "",
                   );
@@ -787,7 +790,7 @@ function MyBookingsPage() {
                   !policy?.noRefunds &&
                   policy?.allowRefunds !== false &&
                   (policy?.refundPercent ?? 100) > 0 &&
-                  !cancellationTooLate &&
+                  !refundRequestTooLate &&
                   ["efectivo", "transferencia", "tarjeta o mercado pago"].includes(
                     booking.customer.paymentMethod ?? "",
                   );
