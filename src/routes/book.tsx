@@ -657,6 +657,12 @@ Observaciones: ${customer.notes || "Ninguna"}`;
     setStep(Number(pathStep));
   }, [location.pathname]);
 
+  useEffect(() => {
+    if (!reservationResult || step === 4) return;
+    setStep(4);
+    void navigate({ to: STEP_PATHS[4], replace: true });
+  }, [navigate, reservationResult, step]);
+
   function goToStep(nextStep: number) {
     const safeStep = Math.max(0, Math.min(STEPS.length - 1, nextStep));
     setStep(safeStep);
