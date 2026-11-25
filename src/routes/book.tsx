@@ -2179,7 +2179,7 @@ function StepDateTime({
       <Label className="mb-3 block text-xs uppercase tracking-wider text-muted-foreground">
         Fecha
       </Label>
-      <div className="-mx-1 flex gap-2 overflow-x-auto pb-3">
+      <div className="gold-scrollbar -mx-1 flex gap-2 overflow-x-auto pb-3">
         {days.map((d) => {
           const scheduleForDay = professional ? getScheduleForDate(professional, d) : undefined;
           const closed = scheduleForDay
