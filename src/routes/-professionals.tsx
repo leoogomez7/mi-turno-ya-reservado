@@ -315,10 +315,12 @@ export function ProfessionalsManager() {
   const [savedStoreLogo, setSavedStoreLogo] = useState("");
   const [savingStoreLogo, setSavingStoreLogo] = useState(false);
   const [savingStoreProfile, setSavingStoreProfile] = useState(false);
+  const [storeProfileOperation, setStoreProfileOperation] = useState<"save" | "upload" | "delete" | null>(null);
   const [storeLogoOperation, setStoreLogoOperation] = useState<"upload" | "delete" | null>(null);
   const [imageEditor, setImageEditor] = useState<ImageEditorState | null>(null);
   const [movingImage, setMovingImage] = useState(false);
-  const [loadingImageToMove, setLoadingImageToMove] = useState<ImageEditorState["kind"] | null>(null);
+  const [loadingLogoToAdjust, setLoadingLogoToAdjust] = useState(false);
+  const [loadingCoverToAdjust, setLoadingCoverToAdjust] = useState(false);
   const [currentStoreCode, setCurrentStoreCode] = useState(getCurrentStoreCode());
   const [currentStoreName, setCurrentStoreName] = useState(
     () => getAvailableStores().find((store) => store.code === getCurrentStoreCode())?.name ?? "",
@@ -521,6 +523,7 @@ export function ProfessionalsManager() {
 
   async function saveStoreProfile() {
     setSavingStoreProfile(true);
+    setStoreProfileOperation("save");
     try {
       const saved = await persistStoreProfile(storeSettings.coverImage);
       setStoreSettings(saved);
@@ -535,6 +538,7 @@ export function ProfessionalsManager() {
       );
     } finally {
       setSavingStoreProfile(false);
+      setStoreProfileOperation(null);
     }
   }
 
@@ -571,8 +575,9 @@ export function ProfessionalsManager() {
   }
 
   async function openSavedImageEditor(kind: ImageEditorState["kind"], imageUrl: string) {
-    if (!imageUrl || loadingImageToMove) return;
-    setLoadingImageToMove(kind);
+    if (!imageUrl || loadingLogoToAdjust || loadingCoverToAdjust) return;
+    const setLoading = kind === "logo" ? setLoadingLogoToAdjust : setLoadingCoverToAdjust;
+    setLoading(true);
     try {
       const response = await fetch(imageUrl);
       if (!response.ok) throw new Error("No se pudo abrir la imagen para moverla.");
@@ -582,7 +587,7 @@ export function ProfessionalsManager() {
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "No se pudo abrir la imagen para moverla.");
     } finally {
-      setLoadingImageToMove(null);
+      setLoading(false);
     }
   }
 
@@ -668,6 +673,7 @@ export function ProfessionalsManager() {
   async function removeStoreCover() {
     if (savingStoreProfile) return;
     setSavingStoreProfile(true);
+    setStoreProfileOperation("delete");
     try {
       const saved = await persistStoreProfile("");
       setStoreSettings(saved);
@@ -676,6 +682,7 @@ export function ProfessionalsManager() {
       toast.error(error instanceof Error ? error.message : "No se pudo eliminar la portada.");
     } finally {
       setSavingStoreProfile(false);
+      setStoreProfileOperation(null);
     }
   }
 
@@ -1267,10 +1274,10 @@ export function ProfessionalsManager() {
                   <Button
                     type="button"
                     variant="outline"
-                    disabled={savingStoreLogo || movingImage || loadingImageToMove !== null}
+                    disabled={savingStoreLogo || movingImage || loadingLogoToAdjust}
                     onClick={() => void openSavedImageEditor("logo", savedStoreLogo)}
                   >
-                    {loadingImageToMove === "logo" ? "Cargando…" : "Ajustar"}
+                    {loadingLogoToAdjust ? "Cargando…" : "Ajustar"}
                   </Button>
                 )}
                 <Button
@@ -1332,10 +1339,10 @@ export function ProfessionalsManager() {
                     <Button
                       type="button"
                       variant="outline"
-                      disabled={savingStoreProfile || movingImage || loadingImageToMove !== null}
+                      disabled={savingStoreProfile || movingImage || loadingCoverToAdjust}
                       onClick={() => void openSavedImageEditor("cover", storeSettings.coverImage)}
                     >
-                      {loadingImageToMove === "cover" ? "Cargando…" : "Ajustar"}
+                      {loadingCoverToAdjust ? "Cargando…" : "Ajustar"}
                     </Button>
                   )}
                   <Button
@@ -1345,7 +1352,7 @@ export function ProfessionalsManager() {
                     onClick={() => storeCoverInputRef.current?.click()}
                   >
                     <ImagePlus className="mr-2 h-4 w-4" />
-                    {savingStoreProfile
+                    {storeProfileOperation === "upload"
                       ? storeSettings.coverImage
                         ? "Cambiando portada..."
                         : "Agregando portada..."
@@ -1361,7 +1368,7 @@ export function ProfessionalsManager() {
                       disabled={savingStoreProfile || movingImage}
                       onClick={() => void removeStoreCover()}
                     >
-                      {savingStoreProfile ? "Eliminando..." : "Eliminar"}
+                      {storeProfileOperation === "delete" ? "Eliminando..." : "Eliminar"}
                     </Button>
                   )}
                 </div>
@@ -1616,7 +1623,7 @@ export function ProfessionalsManager() {
               onClick={() => void saveStoreProfile()}
               className="mt-5 bg-gold text-primary-foreground hover:bg-gold-soft"
             >
-              {savingStoreProfile ? "Guardando…" : "Guardar información"}
+              {storeProfileOperation === "save" ? "Guardando…" : "Guardar información"}
             </Button>
           </section>
 
