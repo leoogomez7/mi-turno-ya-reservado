@@ -104,6 +104,9 @@ export function SiteHeader({ openAuthDialogOnMount = false }: { openAuthDialogOn
       return;
     }
     setPendingNavigation({ target, from: location.pathname, label });
+    void navigate({ to: target as never }).catch(() => {
+      setPendingNavigation(null);
+    });
   }
 
   async function startLogin() {
@@ -309,7 +312,10 @@ export function SiteHeader({ openAuthDialogOnMount = false }: { openAuthDialogOn
                 {role === "admin" && (
                   <Link
                     to="/agenda"
-                    onClick={() => startMobileNavigation("/agenda", "Agenda")}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      startMobileNavigation("/agenda", "Agenda");
+                    }}
                     className="block rounded-xl border border-transparent px-3 py-2.5 text-foreground transition-colors hover:border-border hover:bg-card [&.active]:border-gold/30 [&.active]:bg-gold/10 [&.active]:text-gold"
                   >
                     Agenda
@@ -321,7 +327,10 @@ export function SiteHeader({ openAuthDialogOnMount = false }: { openAuthDialogOn
                     preload="intent"
                     onPointerEnter={preloadStatsCharts}
                     onFocus={preloadStatsCharts}
-                    onClick={() => startMobileNavigation("/estadisticas", "Estadísticas")}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      startMobileNavigation("/estadisticas", "Estadísticas");
+                    }}
                     className="block rounded-xl border border-transparent px-3 py-2.5 text-foreground transition-colors hover:border-border hover:bg-card [&.active]:border-gold/30 [&.active]:bg-gold/10 [&.active]:text-gold"
                   >
                     Estadísticas
@@ -331,7 +340,10 @@ export function SiteHeader({ openAuthDialogOnMount = false }: { openAuthDialogOn
                   <Link
                     to="/plan"
                     preload="intent"
-                    onClick={() => startMobileNavigation("/plan", "Plan")}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      startMobileNavigation("/plan", "Plan");
+                    }}
                     className="block rounded-xl border border-transparent px-3 py-2.5 text-foreground transition-colors hover:border-border hover:bg-card [&.active]:border-gold/30 [&.active]:bg-gold/10 [&.active]:text-gold"
                   >
                     Plan
@@ -340,7 +352,10 @@ export function SiteHeader({ openAuthDialogOnMount = false }: { openAuthDialogOn
                 {role === "admin" && (
                   <Link
                     to="/configuracion"
-                    onClick={() => startMobileNavigation("/configuracion", "Configuración")}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      startMobileNavigation("/configuracion", "Configuración");
+                    }}
                     className="block rounded-xl border border-transparent px-3 py-2.5 text-foreground transition-colors hover:border-border hover:bg-card [&.active]:border-gold/30 [&.active]:bg-gold/10 [&.active]:text-gold"
                   >
                     Configuración
@@ -349,7 +364,10 @@ export function SiteHeader({ openAuthDialogOnMount = false }: { openAuthDialogOn
                 {isAuthenticated && role === "client" && (
                   <Link
                     to="/mis-turnos"
-                    onClick={() => startMobileNavigation("/mis-turnos", "Mis turnos")}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      startMobileNavigation("/mis-turnos", "Mis turnos");
+                    }}
                     className="block rounded-xl border border-transparent px-3 py-2.5 text-foreground transition-colors hover:border-border hover:bg-card [&.active]:border-gold/30 [&.active]:bg-gold/10 [&.active]:text-gold"
                   >
                     Mis turnos
@@ -358,7 +376,10 @@ export function SiteHeader({ openAuthDialogOnMount = false }: { openAuthDialogOn
                 {isAuthenticated && role === "client" && (
                   <Link
                     to="/mis-datos"
-                    onClick={() => startMobileNavigation("/mis-datos", "Mis datos")}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      startMobileNavigation("/mis-datos", "Mis datos");
+                    }}
                     className="block rounded-xl border border-transparent px-3 py-2.5 text-foreground transition-colors hover:border-border hover:bg-card [&.active]:border-gold/30 [&.active]:bg-gold/10 [&.active]:text-gold"
                   >
                     Mis datos

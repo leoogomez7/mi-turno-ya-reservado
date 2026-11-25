@@ -3691,7 +3691,7 @@ export default async function handler(request, response) {
         });
         if (!settings)
           return response.status(400).json({
-            error: "Revisá la portada, el enlace de Google Maps y la información de la sucursal.",
+            error: "Información guardada.",
           });
         const rating = await getGoogleMapsRating(settings.googleMapsUrl);
         settings.googleRating = rating.rating;

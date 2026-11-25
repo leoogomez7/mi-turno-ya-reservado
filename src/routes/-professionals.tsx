@@ -300,7 +300,7 @@ function getStoreBookingPath(name: string, code: string) {
     .replace(/^-+|-+$/g, "");
   const reservationCode = code.trim().toUpperCase();
   return slug && reservationCode
-    ? `/reserva/${slug}/${encodeURIComponent(reservationCode)}`
+    ? `/${slug}/${encodeURIComponent(reservationCode)}`
     : "/reserva";
 }
 

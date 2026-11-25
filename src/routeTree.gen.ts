@@ -20,6 +20,7 @@ import { Route as MisTurnosRouteImport } from './routes/mis-turnos'
 import { Route as PlanRouteImport } from './routes/plan'
 import { Route as ProfesionalesRouteImport } from './routes/profesionales'
 import { Route as ReservaRouteImport } from './routes/reserva'
+import { Route as StoreSlugStoreCodeRouteImport } from './routes/$storeSlug.$storeCode'
 import { Route as BookSuccessRouteImport } from './routes/book.success'
 import { Route as ReservaStoreSlugRouteImport } from './routes/reserva.$storeSlug'
 import { Route as ReservaConfirmacionRouteImport } from './routes/reserva.confirmacion'
@@ -89,6 +90,11 @@ const ProfesionalesRoute = ProfesionalesRouteImport.update({
 const ReservaRoute = ReservaRouteImport.update({
   id: '/reserva',
   path: '/reserva',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const StoreSlugStoreCodeRoute = StoreSlugStoreCodeRouteImport.update({
+  id: '/$storeSlug/$storeCode',
+  path: '/$storeSlug/$storeCode',
   getParentRoute: () => rootRouteImport,
 } as any)
 const BookSuccessRoute = BookSuccessRouteImport.update({
@@ -187,6 +193,7 @@ export interface FileRoutesByFullPath {
   '/plan': typeof PlanRoute
   '/profesionales': typeof ProfesionalesRoute
   '/reserva': typeof ReservaRouteWithChildren
+  '/$storeSlug/$storeCode': typeof StoreSlugStoreCodeRoute
   '/book/success': typeof BookSuccessRoute
   '/reserva/$storeSlug': typeof ReservaStoreSlugRouteWithChildren
   '/reserva/confirmacion': typeof ReservaConfirmacionRoute
@@ -215,6 +222,7 @@ export interface FileRoutesByTo {
   '/plan': typeof PlanRoute
   '/profesionales': typeof ProfesionalesRoute
   '/reserva': typeof ReservaRouteWithChildren
+  '/$storeSlug/$storeCode': typeof StoreSlugStoreCodeRoute
   '/book/success': typeof BookSuccessRoute
   '/reserva/$storeSlug': typeof ReservaStoreSlugRouteWithChildren
   '/reserva/confirmacion': typeof ReservaConfirmacionRoute
@@ -244,6 +252,7 @@ export interface FileRoutesById {
   '/plan': typeof PlanRoute
   '/profesionales': typeof ProfesionalesRoute
   '/reserva': typeof ReservaRouteWithChildren
+  '/$storeSlug/$storeCode': typeof StoreSlugStoreCodeRoute
   '/book/success': typeof BookSuccessRoute
   '/reserva/$storeSlug': typeof ReservaStoreSlugRouteWithChildren
   '/reserva/confirmacion': typeof ReservaConfirmacionRoute
@@ -274,6 +283,7 @@ export interface FileRouteTypes {
     | '/plan'
     | '/profesionales'
     | '/reserva'
+    | '/$storeSlug/$storeCode'
     | '/book/success'
     | '/reserva/$storeSlug'
     | '/reserva/confirmacion'
@@ -302,6 +312,7 @@ export interface FileRouteTypes {
     | '/plan'
     | '/profesionales'
     | '/reserva'
+    | '/$storeSlug/$storeCode'
     | '/book/success'
     | '/reserva/$storeSlug'
     | '/reserva/confirmacion'
@@ -330,6 +341,7 @@ export interface FileRouteTypes {
     | '/plan'
     | '/profesionales'
     | '/reserva'
+    | '/$storeSlug/$storeCode'
     | '/book/success'
     | '/reserva/$storeSlug'
     | '/reserva/confirmacion'
@@ -359,6 +371,7 @@ export interface RootRouteChildren {
   PlanRoute: typeof PlanRoute
   ProfesionalesRoute: typeof ProfesionalesRoute
   ReservaRoute: typeof ReservaRouteWithChildren
+  StoreSlugStoreCodeRoute: typeof StoreSlugStoreCodeRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -438,6 +451,13 @@ declare module '@tanstack/react-router' {
       path: '/reserva'
       fullPath: '/reserva'
       preLoaderRoute: typeof ReservaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/$storeSlug/$storeCode': {
+      id: '/$storeSlug/$storeCode'
+      path: '/$storeSlug/$storeCode'
+      fullPath: '/$storeSlug/$storeCode'
+      preLoaderRoute: typeof StoreSlugStoreCodeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/book/success': {
@@ -632,6 +652,7 @@ const rootRouteChildren: RootRouteChildren = {
   PlanRoute: PlanRoute,
   ProfesionalesRoute: ProfesionalesRoute,
   ReservaRoute: ReservaRouteWithChildren,
+  StoreSlugStoreCodeRoute: StoreSlugStoreCodeRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
