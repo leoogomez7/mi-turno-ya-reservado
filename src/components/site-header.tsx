@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { LoaderCircle, LogOut, Menu } from "lucide-react";
+import { LogOut, Menu } from "lucide-react";
 import logo from "../../logo.png";
 import { Button } from "@/components/ui/button";
 import {
@@ -15,7 +15,7 @@ import { AUTH_CONFIGURED } from "@/lib/env";
 import { rememberAuthReturnPath, rememberSignupRole } from "@/lib/auth-utils";
 import { useAppAuth } from "@/lib/auth-context";
 import type { AccountRole } from "@/lib/auth";
-import { useLocation, useRouterState } from "@tanstack/react-router";
+import { useLocation } from "@tanstack/react-router";
 import { getAvailableStores, getCurrentStoreCode } from "@/lib/cloud-sync";
 import {
   DropdownMenu,
@@ -38,21 +38,10 @@ function preloadStatsCharts() {
 
 export function SiteHeader({ openAuthDialogOnMount = false }: { openAuthDialogOnMount?: boolean }) {
   const [open, setOpen] = useState(false);
-  const [pendingNavigation, setPendingNavigation] = useState<{
-    target: string;
-    from: string;
-    label: string;
-  } | null>(null);
   const [authDialogOpen, setAuthDialogOpen] = useState(openAuthDialogOnMount);
   const [registrationDialogOpen, setRegistrationDialogOpen] = useState(false);
   const { isAuthenticated, user, role, login, register, logout } = useAppAuth();
   const location = useLocation();
-  const routerState = useRouterState({
-    select: (state) => ({
-      isLoading: state.isLoading,
-      resolvedPath: state.resolvedLocation?.pathname,
-    }),
-  });
   const navigate = useNavigate();
   const [branchInfo, setBranchInfo] = useState(() => {
     const code = getCurrentStoreCode();
@@ -85,30 +74,6 @@ export function SiteHeader({ openAuthDialogOnMount = false }: { openAuthDialogOn
     return () => window.removeEventListener("mi-turno-ya:open-auth-dialog", openAuthDialog);
   }, []);
 
-  useEffect(() => {
-    if (
-      pendingNavigation &&
-      !routerState.isLoading &&
-      routerState.resolvedPath &&
-      routerState.resolvedPath !== pendingNavigation.from
-    ) {
-      setPendingNavigation(null);
-      setOpen(false);
-    }
-  }, [pendingNavigation, routerState.isLoading, routerState.resolvedPath]);
-
-  function startMobileNavigation(target: string, label: string) {
-    if (location.pathname === target && !routerState.isLoading) {
-      setPendingNavigation(null);
-      setOpen(false);
-      return;
-    }
-    setPendingNavigation({ target, from: location.pathname, label });
-    void navigate({ to: target as never }).catch(() => {
-      setPendingNavigation(null);
-    });
-  }
-
   async function startLogin() {
     rememberAuthReturnPath(location.pathname);
     await login();
@@ -131,7 +96,6 @@ export function SiteHeader({ openAuthDialogOnMount = false }: { openAuthDialogOn
       open={open}
       onOpenChange={(nextOpen) => {
         setOpen(nextOpen);
-        if (!nextOpen) setPendingNavigation(null);
       }}
     >
       <header className="sticky top-0 z-40 border-b border-border/60 bg-background/80 backdrop-blur-xl">
@@ -286,18 +250,9 @@ export function SiteHeader({ openAuthDialogOnMount = false }: { openAuthDialogOn
                   </SheetDescription>
                 </div>
               </SheetHeader>
-              {pendingNavigation && (
-                <div
-                  role="status"
-                  className="mx-4 mt-3 flex items-center gap-2 rounded-xl border border-gold/25 bg-gold/5 px-3 py-2.5 text-sm text-gold"
-                >
-                  <LoaderCircle className="h-4 w-4 shrink-0 animate-spin" />
-                  <span>Cargando {pendingNavigation.label}…</span>
-                </div>
-              )}
               <nav
                 aria-label="Navegación principal"
-                className={`flex flex-col gap-1 py-3 text-sm ${pendingNavigation ? "pointer-events-none opacity-60" : ""}`}
+                className="flex flex-col gap-1 py-3 text-sm"
               >
                 {role === "admin" && (
                   <div className="mb-1 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 rounded-xl border border-gold/30 bg-gold/5 px-3 py-2 text-xs leading-5">
@@ -312,10 +267,7 @@ export function SiteHeader({ openAuthDialogOnMount = false }: { openAuthDialogOn
                 {role === "admin" && (
                   <Link
                     to="/agenda"
-                    onClick={(event) => {
-                      event.preventDefault();
-                      startMobileNavigation("/agenda", "Agenda");
-                    }}
+                    onClick={() => setOpen(false)}
                     className="block rounded-xl border border-transparent px-3 py-2.5 text-foreground transition-colors hover:border-border hover:bg-card [&.active]:border-gold/30 [&.active]:bg-gold/10 [&.active]:text-gold"
                   >
                     Agenda
@@ -327,10 +279,7 @@ export function SiteHeader({ openAuthDialogOnMount = false }: { openAuthDialogOn
                     preload="intent"
                     onPointerEnter={preloadStatsCharts}
                     onFocus={preloadStatsCharts}
-                    onClick={(event) => {
-                      event.preventDefault();
-                      startMobileNavigation("/estadisticas", "Estadísticas");
-                    }}
+                    onClick={() => setOpen(false)}
                     className="block rounded-xl border border-transparent px-3 py-2.5 text-foreground transition-colors hover:border-border hover:bg-card [&.active]:border-gold/30 [&.active]:bg-gold/10 [&.active]:text-gold"
                   >
                     Estadísticas
@@ -340,10 +289,7 @@ export function SiteHeader({ openAuthDialogOnMount = false }: { openAuthDialogOn
                   <Link
                     to="/plan"
                     preload="intent"
-                    onClick={(event) => {
-                      event.preventDefault();
-                      startMobileNavigation("/plan", "Plan");
-                    }}
+                    onClick={() => setOpen(false)}
                     className="block rounded-xl border border-transparent px-3 py-2.5 text-foreground transition-colors hover:border-border hover:bg-card [&.active]:border-gold/30 [&.active]:bg-gold/10 [&.active]:text-gold"
                   >
                     Plan
@@ -352,10 +298,7 @@ export function SiteHeader({ openAuthDialogOnMount = false }: { openAuthDialogOn
                 {role === "admin" && (
                   <Link
                     to="/configuracion"
-                    onClick={(event) => {
-                      event.preventDefault();
-                      startMobileNavigation("/configuracion", "Configuración");
-                    }}
+                    onClick={() => setOpen(false)}
                     className="block rounded-xl border border-transparent px-3 py-2.5 text-foreground transition-colors hover:border-border hover:bg-card [&.active]:border-gold/30 [&.active]:bg-gold/10 [&.active]:text-gold"
                   >
                     Configuración
@@ -364,10 +307,7 @@ export function SiteHeader({ openAuthDialogOnMount = false }: { openAuthDialogOn
                 {isAuthenticated && role === "client" && (
                   <Link
                     to="/mis-turnos"
-                    onClick={(event) => {
-                      event.preventDefault();
-                      startMobileNavigation("/mis-turnos", "Mis turnos");
-                    }}
+                    onClick={() => setOpen(false)}
                     className="block rounded-xl border border-transparent px-3 py-2.5 text-foreground transition-colors hover:border-border hover:bg-card [&.active]:border-gold/30 [&.active]:bg-gold/10 [&.active]:text-gold"
                   >
                     Mis turnos
@@ -376,10 +316,7 @@ export function SiteHeader({ openAuthDialogOnMount = false }: { openAuthDialogOn
                 {isAuthenticated && role === "client" && (
                   <Link
                     to="/mis-datos"
-                    onClick={(event) => {
-                      event.preventDefault();
-                      startMobileNavigation("/mis-datos", "Mis datos");
-                    }}
+                    onClick={() => setOpen(false)}
                     className="block rounded-xl border border-transparent px-3 py-2.5 text-foreground transition-colors hover:border-border hover:bg-card [&.active]:border-gold/30 [&.active]:bg-gold/10 [&.active]:text-gold"
                   >
                     Mis datos
