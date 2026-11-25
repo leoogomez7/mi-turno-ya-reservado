@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { ExternalLink, MapPin, Star } from "lucide-react";
+import { ExternalLink, Star } from "lucide-react";
 
 import { SiteHeader } from "@/components/site-header";
 import { Button } from "@/components/ui/button";
@@ -97,50 +97,53 @@ function StoreLandingPage() {
               />
             )}
 
-            <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
-              <div className="flex min-w-0 items-center gap-4">
-                {store.logo && (
-                  <img
-                    src={store.logo}
-                    alt={`Logo de ${store.name}`}
-                    className="h-20 w-20 shrink-0 rounded-full border border-gold/30 bg-background object-contain p-1"
-                  />
-                )}
-                <div className="min-w-0">
-                  <h1 className="font-display text-2xl font-semibold sm:text-3xl">{store.name}</h1>
-                  <p className="mt-2 text-sm text-muted-foreground">
-                    Código de reserva: <span className="font-semibold text-gold">{store.code}</span>
-                  </p>
-                  {store.settings.googleMapsUrl && (
-                    <a
-                      href={store.settings.googleMapsUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="mt-2 inline-flex items-center gap-1.5 text-sm text-gold underline-offset-4 hover:underline"
-                    >
-                      {typeof rating === "number" && (
-                        <span className="inline-flex items-center gap-1 font-semibold">
-                          <Star className="h-4 w-4 fill-current" /> {rating.toFixed(1)}
-                        </span>
-                      )}
-                      Ver reseñas en Google Maps
-                      {store.settings.googleReviewCount > 0 && (
-                        <span>({store.settings.googleReviewCount})</span>
-                      )}
-                      <ExternalLink className="h-3.5 w-3.5" />
-                    </a>
+            <div className="grid gap-8 sm:grid-cols-2">
+              <div className="min-w-0">
+                <div className="flex min-w-0 items-center gap-4">
+                  {store.logo && (
+                    <img
+                      src={store.logo}
+                      alt={`Logo de ${store.name}`}
+                      className="h-20 w-20 shrink-0 rounded-full border border-gold/30 bg-background object-contain p-1"
+                    />
                   )}
+                  <div className="min-w-0">
+                    <h1 className="font-display text-2xl font-semibold sm:text-3xl">{store.name}</h1>
+                    <p className="mt-2 text-sm text-muted-foreground">
+                      Código de reserva: <span className="font-semibold text-gold">{store.code}</span>
+                    </p>
+                    {store.settings.googleMapsUrl && (
+                      <a
+                        href={store.settings.googleMapsUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="mt-2 inline-flex items-center gap-1.5 text-sm text-gold underline-offset-4 hover:underline"
+                      >
+                        {typeof rating === "number" && (
+                          <span className="inline-flex items-center gap-1 font-semibold">
+                            <Star className="h-4 w-4 fill-current" /> {rating.toFixed(1)}
+                          </span>
+                        )}
+                        Ver reseñas en Google Maps
+                        {store.settings.googleReviewCount > 0 && (
+                          <span>({store.settings.googleReviewCount})</span>
+                        )}
+                        <ExternalLink className="h-3.5 w-3.5" />
+                      </a>
+                    )}
+                  </div>
+                </div>
+                <div className="mt-6 flex justify-center">
+                  <Button
+                    asChild
+                    className="bg-gold text-primary-foreground hover:bg-gold-soft"
+                  >
+                    <Link to={bookingPath as never}>Reservar turno</Link>
+                  </Button>
                 </div>
               </div>
-              <Button
-                asChild
-                className="shrink-0 bg-gold text-primary-foreground hover:bg-gold-soft"
-              >
-                <Link to={bookingPath as never}>Reservar turno</Link>
-              </Button>
-            </div>
 
-            <div className="mt-6 space-y-5 border-t border-border pt-5">
+              <div className="space-y-5 border-t border-border pt-5 sm:border-l sm:border-t-0 sm:pl-8 sm:pt-0">
               {employeeNames.length > 0 && (
                 <div>
                   <p className="text-xs uppercase tracking-wider text-muted-foreground">
@@ -152,9 +155,7 @@ function StoreLandingPage() {
               {address && (
                 <div>
                   <p className="text-xs uppercase tracking-wider text-muted-foreground">Ubicación</p>
-                  <p className="mt-1 inline-flex items-start gap-1.5 text-sm text-foreground">
-                    <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-gold" /> {address}
-                  </p>
+                  <p className="mt-1 text-sm text-foreground">{address}</p>
                 </div>
               )}
               {description && (
@@ -165,6 +166,7 @@ function StoreLandingPage() {
                   <p className="mt-1 whitespace-pre-line text-sm text-foreground">{description}</p>
                 </div>
               )}
+              </div>
             </div>
           </section>
         )}
