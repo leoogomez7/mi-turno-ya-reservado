@@ -1,4 +1,11 @@
-import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import { Check, Clock3, Copy, ImagePlus, Plus, Trash2, X } from "lucide-react";
 import { format, getDay, startOfToday } from "date-fns";
 import { es } from "date-fns/locale";
@@ -198,98 +205,83 @@ function ResponsiveTimePicker({
   );
 }
 
-async function prepareStoreLogo(file: File) {
+async function prepareStoreLogo(file: File, positionX: number, positionY: number, zoom: number) {
   if (!/^image\/(jpeg|png|webp|gif)$/.test(file.type)) {
     throw new Error("Elegí una imagen JPG, PNG, WEBP o GIF.");
   }
   if (file.size > 2 * 1024 * 1024) throw new Error("La imagen no puede superar los 2 MB.");
+  return prepareImageCrop(file, 512, 512, positionX, positionY, zoom, "No se pudo preparar el logo.");
+}
+
+async function prepareStoreCover(file: File, positionX: number, positionY: number, zoom: number) {
+  if (!/^image\/(jpeg|png|webp)$/.test(file.type))
+    throw new Error("Elegí una imagen JPG, PNG o WEBP.");
+  if (file.size > 2 * 1024 * 1024) throw new Error("La portada no puede superar los 2 MB.");
+  return prepareImageCrop(
+    file,
+    1440,
+    560,
+    positionX,
+    positionY,
+    zoom,
+    "No se pudo preparar la portada.",
+  );
+}
+
+async function prepareImageCrop(
+  file: File,
+  outputWidth: number,
+  outputHeight: number,
+  positionX: number,
+  positionY: number,
+  zoom: number,
+  errorMessage: string,
+) {
   const image = await createImageBitmap(file);
-  const scale = Math.min(1, 512 / Math.max(image.width, image.height));
+  const aspectRatio = outputWidth / outputHeight;
+  const cropWidth = Math.min(image.width, image.height * aspectRatio) / zoom;
+  const cropHeight = cropWidth / aspectRatio;
+  const sourceX = (image.width - cropWidth) * (positionX / 100);
+  const sourceY = (image.height - cropHeight) * (positionY / 100);
   const canvas = document.createElement("canvas");
-  canvas.width = Math.max(1, Math.round(image.width * scale));
-  canvas.height = Math.max(1, Math.round(image.height * scale));
+  canvas.width = outputWidth;
+  canvas.height = outputHeight;
   const context = canvas.getContext("2d");
   if (!context) {
     image.close();
-    throw new Error("No se pudo preparar la imagen.");
+    throw new Error(errorMessage);
   }
-  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+  context.drawImage(image, sourceX, sourceY, cropWidth, cropHeight, 0, 0, outputWidth, outputHeight);
   image.close();
   const blob = await new Promise<Blob>((resolve, reject) => {
-    canvas.toBlob(
-      (result) => {
-        if (result?.type === "image/webp") {
-          resolve(result);
-          return;
-        }
-        canvas.toBlob(
-          (pngResult) =>
-            pngResult ? resolve(pngResult) : reject(new Error("No se pudo comprimir la imagen.")),
-          "image/png",
-        );
-      },
-      "image/webp",
-      0.8,
-    );
+    canvas.toBlob((result) => {
+      if (result) resolve(result);
+      else reject(new Error(errorMessage));
+    }, "image/webp", 0.82);
   });
   if (blob.size > 2 * 1024 * 1024)
-    throw new Error("El logo optimizado supera los 2 MB. Probá con otra imagen.");
+    throw new Error("La imagen optimizada supera los 2 MB. Probá con otra imagen.");
   return new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () =>
       typeof reader.result === "string"
         ? resolve(reader.result)
-        : reject(new Error("No se pudo leer la imagen."));
-    reader.onerror = () => reject(new Error("No se pudo leer la imagen."));
+        : reject(new Error(errorMessage));
+    reader.onerror = () => reject(new Error(errorMessage));
     reader.readAsDataURL(blob);
   });
 }
 
-async function prepareStoreCover(file: File) {
-  if (!/^image\/(jpeg|png|webp)$/.test(file.type))
-    throw new Error("Elegí una imagen JPG, PNG o WEBP.");
-  if (file.size > 2 * 1024 * 1024) throw new Error("La portada no puede superar los 2 MB.");
-  const image = await createImageBitmap(file);
-  const width = 1440;
-  const height = 560;
-  const scale = Math.max(width / image.width, height / image.height);
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-  const context = canvas.getContext("2d");
-  if (!context) {
-    image.close();
-    throw new Error("No se pudo preparar la portada.");
-  }
-  const scaledWidth = image.width * scale;
-  const scaledHeight = image.height * scale;
-  context.drawImage(
-    image,
-    (width - scaledWidth) / 2,
-    (height - scaledHeight) / 2,
-    scaledWidth,
-    scaledHeight,
-  );
-  image.close();
-  const blob = await new Promise<Blob>((resolve, reject) => {
-    canvas.toBlob(
-      (result) =>
-        result ? resolve(result) : reject(new Error("No se pudo comprimir la portada.")),
-      "image/webp",
-      0.82,
-    );
-  });
-  if (blob.size > 2 * 1024 * 1024) throw new Error("La portada optimizada supera los 2 MB.");
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () =>
-      typeof reader.result === "string"
-        ? resolve(reader.result)
-        : reject(new Error("No se pudo leer la portada."));
-    reader.onerror = () => reject(new Error("No se pudo leer la portada."));
-    reader.readAsDataURL(blob);
-  });
-}
+type ImageEditorState = {
+  kind: "cover" | "logo";
+  file: File;
+  previewUrl: string;
+  positionX: number;
+  positionY: number;
+  zoom: number;
+  naturalWidth: number;
+  naturalHeight: number;
+};
 
 function getStoreBookingPath(name: string, code: string) {
   const slug = name
@@ -323,6 +315,9 @@ export function ProfessionalsManager() {
   const [savingStoreLogo, setSavingStoreLogo] = useState(false);
   const [savingStoreProfile, setSavingStoreProfile] = useState(false);
   const [storeLogoOperation, setStoreLogoOperation] = useState<"upload" | "delete" | null>(null);
+  const [imageEditor, setImageEditor] = useState<ImageEditorState | null>(null);
+  const [movingImage, setMovingImage] = useState(false);
+  const [loadingImageToMove, setLoadingImageToMove] = useState(false);
   const [currentStoreCode, setCurrentStoreCode] = useState(getCurrentStoreCode());
   const [currentStoreName, setCurrentStoreName] = useState(
     () => getAvailableStores().find((store) => store.code === getCurrentStoreCode())?.name ?? "",
@@ -365,6 +360,9 @@ export function ProfessionalsManager() {
   const professionalDialogTitleRef = useRef<HTMLHeadingElement>(null);
   const storeLogoInputRef = useRef<HTMLInputElement>(null);
   const storeCoverInputRef = useRef<HTMLInputElement>(null);
+  const imageEditorFrameRef = useRef<HTMLDivElement>(null);
+  const imageEditorImageRef = useRef<HTMLImageElement>(null);
+  const imageDragRef = useRef<{ pointerId: number; x: number; y: number } | null>(null);
 
   useEffect(() => {
     const load = () => setProfessionals(professionalStore.all());
@@ -556,6 +554,123 @@ export function ProfessionalsManager() {
     });
   }
 
+  function openImageEditor(file: File, kind: ImageEditorState["kind"]) {
+    if (imageEditor) URL.revokeObjectURL(imageEditor.previewUrl);
+    setImageEditor({
+      kind,
+      file,
+      previewUrl: URL.createObjectURL(file),
+      positionX: 50,
+      positionY: 50,
+      zoom: 1,
+      naturalWidth: 0,
+      naturalHeight: 0,
+    });
+  }
+
+  async function openSavedImageEditor(kind: ImageEditorState["kind"], imageUrl: string) {
+    if (!imageUrl || loadingImageToMove) return;
+    setLoadingImageToMove(true);
+    try {
+      const response = await fetch(imageUrl);
+      if (!response.ok) throw new Error("No se pudo abrir la imagen para moverla.");
+      const blob = await response.blob();
+      const type = blob.type || "image/webp";
+      openImageEditor(new File([blob], `${kind}.${type.split("/")[1] || "webp"}`, { type }), kind);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo abrir la imagen para moverla.");
+    } finally {
+      setLoadingImageToMove(false);
+    }
+  }
+
+  function closeImageEditor() {
+    if (movingImage) return;
+    if (imageEditor) URL.revokeObjectURL(imageEditor.previewUrl);
+    setImageEditor(null);
+    imageDragRef.current = null;
+  }
+
+  function handleImagePointerDown(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!imageEditor) return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    imageDragRef.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY };
+  }
+
+  function handleImagePointerMove(event: ReactPointerEvent<HTMLDivElement>) {
+    const drag = imageDragRef.current;
+    const frame = imageEditorFrameRef.current;
+    const image = imageEditorImageRef.current;
+    if (!imageEditor || !drag || drag.pointerId !== event.pointerId || !frame || !image) return;
+
+    const frameRect = frame.getBoundingClientRect();
+    const aspectRatio = imageEditor.kind === "cover" ? 1440 / 560 : 1;
+    const sourceRatio = image.naturalWidth / image.naturalHeight;
+    const baseWidthRatio = sourceRatio > aspectRatio ? sourceRatio / aspectRatio : 1;
+    const baseHeightRatio = sourceRatio < aspectRatio ? aspectRatio / sourceRatio : 1;
+    const overflowX = Math.max(0, frameRect.width * (baseWidthRatio * imageEditor.zoom - 1));
+    const overflowY = Math.max(0, frameRect.height * (baseHeightRatio * imageEditor.zoom - 1));
+    const deltaX = event.clientX - drag.x;
+    const deltaY = event.clientY - drag.y;
+    imageDragRef.current = { ...drag, x: event.clientX, y: event.clientY };
+    setImageEditor((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        positionX: Math.max(0, Math.min(100, current.positionX - (overflowX ? (deltaX / overflowX) * 100 : 0))),
+        positionY: Math.max(0, Math.min(100, current.positionY - (overflowY ? (deltaY / overflowY) * 100 : 0))),
+      };
+    });
+  }
+
+  function handleImagePointerUp(event: ReactPointerEvent<HTMLDivElement>) {
+    if (imageDragRef.current?.pointerId === event.pointerId) imageDragRef.current = null;
+  }
+
+  async function saveImageEditorPosition() {
+    if (!imageEditor || movingImage) return;
+    const editor = imageEditor;
+    setMovingImage(true);
+    if (editor.kind === "cover") setSavingStoreProfile(true);
+    else {
+      setSavingStoreLogo(true);
+      setStoreLogoOperation("upload");
+    }
+    try {
+      if (editor.kind === "cover") {
+        const coverImage = await prepareStoreCover(
+          editor.file,
+          editor.positionX,
+          editor.positionY,
+          editor.zoom,
+        );
+        const saved = await persistStoreProfile(coverImage);
+        setStoreSettings(saved);
+        toast.success("Portada acomodada y guardada.");
+      } else {
+        const logo = await prepareStoreLogo(
+          editor.file,
+          editor.positionX,
+          editor.positionY,
+          editor.zoom,
+        );
+        const saved = await updateStoreLogo(logo);
+        setStoreLogoDraft(saved);
+        setSavedStoreLogo(saved);
+        toast.success("Logo acomodado y guardado.");
+      }
+      URL.revokeObjectURL(editor.previewUrl);
+      setImageEditor(null);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo guardar la posición.");
+    } finally {
+      setMovingImage(false);
+      setSavingStoreProfile(false);
+      setSavingStoreLogo(false);
+      setStoreLogoOperation(null);
+    }
+  }
+
   async function removeStoreCover() {
     if (savingStoreProfile) return;
     setSavingStoreProfile(true);
@@ -575,16 +690,13 @@ export function ProfessionalsManager() {
     event.target.value = "";
     if (!file) return;
     if (savingStoreProfile) return;
-    setSavingStoreProfile(true);
     try {
-      const coverImage = await prepareStoreCover(file);
-      const saved = await persistStoreProfile(coverImage);
-      setStoreSettings(saved);
-      toast.success("Portada guardada y publicada.");
+      if (!/^image\/(jpeg|png|webp)$/.test(file.type))
+        throw new Error("Elegí una imagen JPG, PNG o WEBP.");
+      if (file.size > 2 * 1024 * 1024) throw new Error("La portada no puede superar los 2 MB.");
+      openImageEditor(file, "cover");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "No se pudo preparar la portada.");
-    } finally {
-      setSavingStoreProfile(false);
     }
   }
 
@@ -818,19 +930,13 @@ export function ProfessionalsManager() {
     const file = event.currentTarget.files?.[0];
     event.currentTarget.value = "";
     if (!file || savingStoreLogo) return;
-    setSavingStoreLogo(true);
-    setStoreLogoOperation("upload");
     try {
-      const preparedLogo = await prepareStoreLogo(file);
-      const saved = await updateStoreLogo(preparedLogo);
-      setStoreLogoDraft(saved);
-      setSavedStoreLogo(saved);
-      toast.success("Logo de la sucursal guardado.");
+      if (!/^image\/(jpeg|png|webp|gif)$/.test(file.type))
+        throw new Error("Elegí una imagen JPG, PNG, WEBP o GIF.");
+      if (file.size > 2 * 1024 * 1024) throw new Error("La imagen no puede superar los 2 MB.");
+      openImageEditor(file, "logo");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "No se pudo preparar el logo.");
-    } finally {
-      setSavingStoreLogo(false);
-      setStoreLogoOperation(null);
     }
   }
 
@@ -1031,6 +1137,17 @@ export function ProfessionalsManager() {
     setForm({ ...form, services });
   }
 
+  const imageFrameAspect = imageEditor?.kind === "cover" ? 1440 / 560 : 1;
+  const editorSourceAspect = imageEditor?.naturalWidth && imageEditor.naturalHeight
+    ? imageEditor.naturalWidth / imageEditor.naturalHeight
+    : imageFrameAspect;
+  const editorWidthPercent =
+    Math.max(100, (editorSourceAspect / imageFrameAspect) * 100) * (imageEditor?.zoom ?? 1);
+  const editorHeightPercent =
+    Math.max(100, (imageFrameAspect / editorSourceAspect) * 100) * (imageEditor?.zoom ?? 1);
+  const editorLeftPercent = (100 - editorWidthPercent) * ((imageEditor?.positionX ?? 50) / 100);
+  const editorTopPercent = (100 - editorHeightPercent) * ((imageEditor?.positionY ?? 50) / 100);
+
   if (isLoading) return <LoadingScreen message="Preparando tus profesionales" />;
   if (!isAuthenticated || role !== "admin")
     return (
@@ -1125,7 +1242,7 @@ export function ProfessionalsManager() {
               </Button>
             </div>
             <div className="mt-4 flex flex-col gap-4 rounded-2xl border border-border bg-background/60 p-4 sm:flex-row sm:items-center">
-              <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden">
+              <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-full border border-gold/30 bg-background p-1">
                 {!storeDraftLoaded ? (
                   <span className="text-xs text-muted-foreground">Cargando...</span>
                 ) : storeLogoDraft ? (
@@ -1152,6 +1269,16 @@ export function ProfessionalsManager() {
                 onChange={(event) => void handleStoreLogoFile(event)}
               />
               <div className="flex flex-wrap gap-2 sm:justify-end">
+                {savedStoreLogo && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={savingStoreLogo || loadingImageToMove}
+                    onClick={() => void openSavedImageEditor("logo", savedStoreLogo)}
+                  >
+                    {loadingImageToMove ? "Cargando…" : "Mover"}
+                  </Button>
+                )}
                 <Button
                   type="button"
                   variant="outline"
@@ -1185,7 +1312,7 @@ export function ProfessionalsManager() {
                 <img
                   src={storeSettings.coverImage}
                   alt={`Portada de ${currentStoreName || "la sucursal"}`}
-                  className="h-40 w-full object-cover sm:h-52"
+                  className="aspect-18/7 w-full object-cover"
                 />
               ) : (
                 <div className="flex h-32 items-center justify-center bg-linear-to-r from-gold/10 via-background to-gold/10 text-sm text-muted-foreground">
@@ -1206,7 +1333,17 @@ export function ProfessionalsManager() {
                   className="hidden"
                   onChange={(event) => void handleStoreCoverFile(event)}
                 />
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
+                  {storeSettings.coverImage && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={savingStoreProfile || loadingImageToMove}
+                      onClick={() => void openSavedImageEditor("cover", storeSettings.coverImage)}
+                    >
+                      {loadingImageToMove ? "Cargando…" : "Mover"}
+                    </Button>
+                  )}
                   <Button
                     type="button"
                     variant="outline"
@@ -2429,6 +2566,89 @@ export function ProfessionalsManager() {
                   className="bg-gold text-primary-foreground hover:bg-gold-soft"
                 >
                   {savingScheduleDate ? "Guardando…" : "Guardar"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+          <Dialog
+            open={Boolean(imageEditor)}
+            onOpenChange={(open) => {
+              if (!open) closeImageEditor();
+            }}
+          >
+            <DialogContent className="w-[calc(100vw-2rem)] sm:max-w-3xl">
+              <DialogHeader>
+                <DialogTitle>
+                  Mover {imageEditor?.kind === "cover" ? "portada" : "logo de la sucursal"}
+                </DialogTitle>
+                <DialogDescription>
+                  Arrastrá la imagen para acomodarla. Usá el zoom para ajustar el encuadre.
+                </DialogDescription>
+              </DialogHeader>
+              {imageEditor && (
+                <>
+                  <div
+                    ref={imageEditorFrameRef}
+                    className={`relative mx-auto w-full touch-none overflow-hidden border border-gold/40 bg-black ${imageEditor.kind === "cover" ? "aspect-18/7 rounded-xl" : "aspect-square max-w-sm rounded-full"}`}
+                    onPointerDown={handleImagePointerDown}
+                    onPointerMove={handleImagePointerMove}
+                    onPointerUp={handleImagePointerUp}
+                    onPointerCancel={handleImagePointerUp}
+                    aria-label="Arrastrá para acomodar la imagen"
+                  >
+                    <img
+                      ref={imageEditorImageRef}
+                      src={imageEditor.previewUrl}
+                      alt="Vista previa del encuadre"
+                      draggable={false}
+                      onLoad={(event) => {
+                        const { naturalWidth, naturalHeight } = event.currentTarget;
+                        setImageEditor((current) =>
+                          current ? { ...current, naturalWidth, naturalHeight } : current,
+                        );
+                      }}
+                      className="pointer-events-none absolute max-w-none select-none"
+                      style={{
+                        width: `${editorWidthPercent}%`,
+                        height: `${editorHeightPercent}%`,
+                        left: `${editorLeftPercent}%`,
+                        top: `${editorTopPercent}%`,
+                      }}
+                    />
+                  </div>
+                  <label className="grid gap-2 text-sm">
+                    <span className="flex justify-between text-muted-foreground">
+                      <span>Zoom</span>
+                      <span>{Math.round(imageEditor.zoom * 100)}%</span>
+                    </span>
+                    <input
+                      type="range"
+                      min="1"
+                      max="3"
+                      step="0.01"
+                      value={imageEditor.zoom}
+                      onChange={(event) =>
+                        setImageEditor((current) =>
+                          current ? { ...current, zoom: Number(event.target.value) } : current,
+                        )
+                      }
+                      className="w-full accent-gold"
+                      aria-label="Zoom de la imagen"
+                    />
+                  </label>
+                </>
+              )}
+              <DialogFooter>
+                <Button type="button" variant="outline" disabled={movingImage} onClick={closeImageEditor}>
+                  Cancelar
+                </Button>
+                <Button
+                  type="button"
+                  className="bg-gold text-primary-foreground hover:bg-gold-soft"
+                  disabled={!imageEditor || movingImage}
+                  onClick={() => void saveImageEditorPosition()}
+                >
+                  {movingImage ? "Moviendo…" : "Mover"}
                 </Button>
               </DialogFooter>
             </DialogContent>

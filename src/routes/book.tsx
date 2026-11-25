@@ -618,6 +618,10 @@ export function BookPage() {
     .filter(Boolean);
 
   useEffect(() => {
+    if (selectedStore && routeStoreSlug) document.title = selectedStore.name;
+  }, [routeStoreSlug, selectedStore?.name]);
+
+  useEffect(() => {
     if (!selectedStore) return;
     const canonicalPath = reservationStepPath(
       step,

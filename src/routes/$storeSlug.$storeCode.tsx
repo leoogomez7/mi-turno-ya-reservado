@@ -72,6 +72,10 @@ function StoreLandingPage() {
   const address = store?.settings.address.trim();
   const rating = store?.settings.googleRating;
 
+  useEffect(() => {
+    if (store) document.title = store.name;
+  }, [store?.name]);
+
   return (
     <div className="min-h-screen bg-gradient-dark">
       <SiteHeader />
@@ -93,7 +97,7 @@ function StoreLandingPage() {
               <img
                 src={store.settings.coverImage}
                 alt={`Portada de ${store.name}`}
-                className="mb-4 h-40 w-full rounded-2xl object-cover sm:h-48 lg:h-40"
+                className="mb-4 aspect-18/7 w-full rounded-2xl object-cover"
               />
             )}
 
@@ -133,7 +137,7 @@ function StoreLandingPage() {
                     )}
                   </div>
                 </div>
-                <div className="mt-4">
+                <div className="mt-3 flex justify-start">
                   <Button
                     asChild
                     className="bg-gold text-primary-foreground hover:bg-gold-soft"
