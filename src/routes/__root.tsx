@@ -15,7 +15,8 @@ import { Toaster } from "@/components/ui/sonner";
 import { OverlayScrollbar } from "@/components/overlay-scrollbar";
 import { LoadingScreen } from "@/components/loading-screen";
 import { AccountSetup } from "@/components/account-setup";
-import { AuthProvider, useAppAuth } from "@/lib/auth";
+import { AuthProvider } from "@/lib/auth";
+import { useAppAuth } from "@/lib/auth-context";
 import { bootstrapCloudData, clearCloudSession, saveAccountRole } from "@/lib/cloud-sync";
 
 function NotFoundComponent() {

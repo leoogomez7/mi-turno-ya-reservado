@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { LoadingScreen } from "@/components/loading-screen";
-import { useAppAuth, type AccountRole } from "@/lib/auth";
+import type { AccountRole } from "@/lib/auth";
+import { useAppAuth } from "@/lib/auth-context";
 import { saveAccountRole } from "@/lib/cloud-sync";
 
 export function AccountSetup({ onComplete }: { onComplete: (role: AccountRole) => void }) {

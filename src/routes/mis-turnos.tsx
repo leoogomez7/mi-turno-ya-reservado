@@ -34,7 +34,7 @@ import {
 } from "@/components/ui/select";
 import { SiteHeader } from "@/components/site-header";
 import { AuthRequired } from "@/components/auth-required";
-import { useAppAuth } from "@/lib/auth";
+import { useAppAuth } from "@/lib/auth-context";
 import {
   canArchiveBooking,
   canDeleteBooking,
@@ -490,9 +490,7 @@ function MyBookingsPage() {
       );
       if (archived.length) {
         const archivedById = new Map(archived.map((booking) => [booking.id, booking]));
-        setBookings((current) =>
-          current.map((booking) => archivedById.get(booking.id) ?? booking),
-        );
+        setBookings((current) => current.map((booking) => archivedById.get(booking.id) ?? booking));
       }
       toast[failedCount ? "error" : "success"](
         failedCount
@@ -705,7 +703,9 @@ function MyBookingsPage() {
                 variant="destructive"
                 className="h-9 min-w-0 whitespace-nowrap px-2 text-[11px] sm:px-4 sm:text-sm"
                 disabled={
-                  deletingVisibleBookings || busyBookingId !== null || !eligibleVisibleBookings.length
+                  deletingVisibleBookings ||
+                  busyBookingId !== null ||
+                  !eligibleVisibleBookings.length
                 }
                 onClick={() => void archiveVisibleTurns()}
               >
@@ -944,7 +944,7 @@ function MyBookingsPage() {
                             >
                               Modificar turno
                             </Button>
-                        )}
+                          )}
                         {canCancel && (
                           <Button
                             size="sm"
@@ -1222,7 +1222,11 @@ function MyBookingsPage() {
                   type="button"
                   size="sm"
                   variant="outline"
-                  disabled={restoringAllArchivedBookings || restoringBookingId !== null || deletingAllArchivedBookings}
+                  disabled={
+                    restoringAllArchivedBookings ||
+                    restoringBookingId !== null ||
+                    deletingAllArchivedBookings
+                  }
                   onClick={() => void restoreAllArchivedTurns()}
                 >
                   {restoringAllArchivedBookings ? "Restaurando…" : "Restaurar todos"}
@@ -1231,7 +1235,11 @@ function MyBookingsPage() {
                   type="button"
                   size="sm"
                   variant="destructive"
-                  disabled={restoringAllArchivedBookings || deletingAllArchivedBookings || permanentlyDeletingBookingId !== null}
+                  disabled={
+                    restoringAllArchivedBookings ||
+                    deletingAllArchivedBookings ||
+                    permanentlyDeletingBookingId !== null
+                  }
                   onClick={() => void permanentlyDeleteAllArchivedTurns()}
                 >
                   {deletingAllArchivedBookings ? "Borrando…" : "Borrar todos"}
@@ -1301,7 +1309,11 @@ function MyBookingsPage() {
                         type="button"
                         size="sm"
                         variant="outline"
-                        disabled={restoringBookingId !== null || restoringAllArchivedBookings || deletingAllArchivedBookings}
+                        disabled={
+                          restoringBookingId !== null ||
+                          restoringAllArchivedBookings ||
+                          deletingAllArchivedBookings
+                        }
                         onClick={() => void restoreTurn(booking)}
                       >
                         {restoringBookingId === booking.id ? "Restaurando…" : "Restaurar"}

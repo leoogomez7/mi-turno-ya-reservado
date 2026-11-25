@@ -30,7 +30,7 @@ import {
   getProfessionalService,
 } from "@/lib/professional-store";
 import { AuthRequired } from "@/components/auth-required";
-import { useAppAuth } from "@/lib/auth";
+import { useAppAuth } from "@/lib/auth-context";
 import { LoadingScreen } from "@/components/loading-screen";
 import { Button } from "@/components/ui/button";
 import {
@@ -97,7 +97,10 @@ export function AdminPage() {
   }, []);
 
   const historyBounds = useMemo(() => {
-    const dates = bookings.map((booking) => booking.date).filter(Boolean).sort();
+    const dates = bookings
+      .map((booking) => booking.date)
+      .filter(Boolean)
+      .sort();
     return {
       start: dates[0] ?? startDate,
       end: dates[dates.length - 1] ?? endDate,
@@ -121,10 +124,10 @@ export function AdminPage() {
       bookings.filter(
         (booking) =>
           isPendingAttendanceBooking(booking) &&
-              booking.date >= activeStartDate &&
-              booking.date <= activeEndDate,
+          booking.date >= activeStartDate &&
+          booking.date <= activeEndDate,
       ),
-            [activeEndDate, activeStartDate, bookings],
+    [activeEndDate, activeStartDate, bookings],
   );
   const futureRevenue = useMemo(
     () =>
@@ -273,11 +276,7 @@ export function AdminPage() {
               label="Profesional con menos atención"
               value={`${periodStats.lowBarber.name} · ${periodStats.lowBarber.count}`}
             />
-            <Stat
-              icon={Users}
-              label="Último cliente"
-              value={periodStats.lastClient}
-            />
+            <Stat icon={Users} label="Último cliente" value={periodStats.lastClient} />
             <Stat
               icon={Scissors}
               label="Profesional con más servicios realizados"
@@ -288,11 +287,7 @@ export function AdminPage() {
               label="Profesional con menos servicios realizados"
               value={`${periodStats.lowServiceBarber.name} · ${periodStats.lowServiceBarber.count}`}
             />
-            <Stat
-              icon={Calendar}
-              label="Último profesional"
-              value={periodStats.lastBarber}
-            />
+            <Stat icon={Calendar} label="Último profesional" value={periodStats.lastBarber} />
           </div>
 
           {validDateRange ? (
@@ -390,8 +385,14 @@ export function AdminPage() {
                     <div className="h-80 animate-pulse rounded-2xl border border-gold/30 bg-card" />
                   }
                 >
-                  <ChartCard title="Servicios más solicitados" data={periodChartStats.servicesChart} />
-                  <ChartCard title="Turnos por profesionales" data={periodChartStats.barbersChart} />
+                  <ChartCard
+                    title="Servicios más solicitados"
+                    data={periodChartStats.servicesChart}
+                  />
+                  <ChartCard
+                    title="Turnos por profesionales"
+                    data={periodChartStats.barbersChart}
+                  />
                 </Suspense>
               </div>
             </>
@@ -409,7 +410,6 @@ export function AdminPage() {
             solicitadas o realizadas.
           </p>
         </section>
-
       </main>
     </div>
   );
@@ -597,9 +597,7 @@ function isAttendedBooking(booking: Booking) {
 
 function isPendingAttendanceBooking(booking: Booking) {
   return (
-    booking.status !== "completed" &&
-    booking.status !== "cancelled" &&
-    booking.status !== "no-show"
+    booking.status !== "completed" && booking.status !== "cancelled" && booking.status !== "no-show"
   );
 }
 
@@ -666,8 +664,7 @@ function computePeriodStats(bookings: Booking[], startDate: string, endDate: str
       .map((professional) => [professional.id, { name: professional.name, count: 0 }]),
   );
   const attendedInRange = bookings.filter(
-    (booking) =>
-      isAttendedBooking(booking) && booking.date >= startDate && booking.date <= endDate,
+    (booking) => isAttendedBooking(booking) && booking.date >= startDate && booking.date <= endDate,
   );
   attendedInRange.forEach((booking) => {
     const month = statsByMonth.get(booking.date.slice(0, 7));
@@ -711,8 +708,10 @@ function computePeriodStats(bookings: Booking[], startDate: string, endDate: str
     topBarber: sortedBarbers[0] ?? { name: "-", count: 0 },
     lowBarber: sortedBarbers[sortedBarbers.length - 1] ?? { name: "-", count: 0 },
     topServiceBarber: sortedBarbersByServices[0] ?? { name: "-", count: 0 },
-    lowServiceBarber:
-      sortedBarbersByServices[sortedBarbersByServices.length - 1] ?? { name: "-", count: 0 },
+    lowServiceBarber: sortedBarbersByServices[sortedBarbersByServices.length - 1] ?? {
+      name: "-",
+      count: 0,
+    },
     lastClient: lastBooking?.customer.fullName ?? "-",
     lastBarber: lastBooking ? (getProfessional(lastBooking.barberId)?.name ?? "-") : "-",
     mostBookingsMonth,

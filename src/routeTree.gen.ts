@@ -21,10 +21,15 @@ import { Route as PlanRouteImport } from './routes/plan'
 import { Route as ProfesionalesRouteImport } from './routes/profesionales'
 import { Route as ReservaRouteImport } from './routes/reserva'
 import { Route as BookSuccessRouteImport } from './routes/book.success'
+import { Route as ReservaStoreSlugRouteImport } from './routes/reserva.$storeSlug'
 import { Route as ReservaConfirmacionRouteImport } from './routes/reserva.confirmacion'
 import { Route as ReservaHorarioRouteImport } from './routes/reserva.horario'
 import { Route as ReservaProfesionalRouteImport } from './routes/reserva.profesional'
 import { Route as ReservaServiciosRouteImport } from './routes/reserva.servicios'
+import { Route as ReservaStoreSlugConfirmacionRouteImport } from './routes/reserva.$storeSlug.confirmacion'
+import { Route as ReservaStoreSlugHorarioRouteImport } from './routes/reserva.$storeSlug.horario'
+import { Route as ReservaStoreSlugProfesionalRouteImport } from './routes/reserva.$storeSlug.profesional'
+import { Route as ReservaStoreSlugServiciosRouteImport } from './routes/reserva.$storeSlug.servicios'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -86,6 +91,11 @@ const BookSuccessRoute = BookSuccessRouteImport.update({
   path: '/success',
   getParentRoute: () => BookRoute,
 } as any)
+const ReservaStoreSlugRoute = ReservaStoreSlugRouteImport.update({
+  id: '/$storeSlug',
+  path: '/$storeSlug',
+  getParentRoute: () => ReservaRoute,
+} as any)
 const ReservaConfirmacionRoute = ReservaConfirmacionRouteImport.update({
   id: '/confirmacion',
   path: '/confirmacion',
@@ -106,6 +116,29 @@ const ReservaServiciosRoute = ReservaServiciosRouteImport.update({
   path: '/servicios',
   getParentRoute: () => ReservaRoute,
 } as any)
+const ReservaStoreSlugConfirmacionRoute =
+  ReservaStoreSlugConfirmacionRouteImport.update({
+    id: '/confirmacion',
+    path: '/confirmacion',
+    getParentRoute: () => ReservaStoreSlugRoute,
+  } as any)
+const ReservaStoreSlugHorarioRoute = ReservaStoreSlugHorarioRouteImport.update({
+  id: '/horario',
+  path: '/horario',
+  getParentRoute: () => ReservaStoreSlugRoute,
+} as any)
+const ReservaStoreSlugProfesionalRoute =
+  ReservaStoreSlugProfesionalRouteImport.update({
+    id: '/profesional',
+    path: '/profesional',
+    getParentRoute: () => ReservaStoreSlugRoute,
+  } as any)
+const ReservaStoreSlugServiciosRoute =
+  ReservaStoreSlugServiciosRouteImport.update({
+    id: '/servicios',
+    path: '/servicios',
+    getParentRoute: () => ReservaStoreSlugRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -120,10 +153,15 @@ export interface FileRoutesByFullPath {
   '/profesionales': typeof ProfesionalesRoute
   '/reserva': typeof ReservaRouteWithChildren
   '/book/success': typeof BookSuccessRoute
+  '/reserva/$storeSlug': typeof ReservaStoreSlugRouteWithChildren
   '/reserva/confirmacion': typeof ReservaConfirmacionRoute
   '/reserva/horario': typeof ReservaHorarioRoute
   '/reserva/profesional': typeof ReservaProfesionalRoute
   '/reserva/servicios': typeof ReservaServiciosRoute
+  '/reserva/$storeSlug/confirmacion': typeof ReservaStoreSlugConfirmacionRoute
+  '/reserva/$storeSlug/horario': typeof ReservaStoreSlugHorarioRoute
+  '/reserva/$storeSlug/profesional': typeof ReservaStoreSlugProfesionalRoute
+  '/reserva/$storeSlug/servicios': typeof ReservaStoreSlugServiciosRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -138,10 +176,15 @@ export interface FileRoutesByTo {
   '/profesionales': typeof ProfesionalesRoute
   '/reserva': typeof ReservaRouteWithChildren
   '/book/success': typeof BookSuccessRoute
+  '/reserva/$storeSlug': typeof ReservaStoreSlugRouteWithChildren
   '/reserva/confirmacion': typeof ReservaConfirmacionRoute
   '/reserva/horario': typeof ReservaHorarioRoute
   '/reserva/profesional': typeof ReservaProfesionalRoute
   '/reserva/servicios': typeof ReservaServiciosRoute
+  '/reserva/$storeSlug/confirmacion': typeof ReservaStoreSlugConfirmacionRoute
+  '/reserva/$storeSlug/horario': typeof ReservaStoreSlugHorarioRoute
+  '/reserva/$storeSlug/profesional': typeof ReservaStoreSlugProfesionalRoute
+  '/reserva/$storeSlug/servicios': typeof ReservaStoreSlugServiciosRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -157,10 +200,15 @@ export interface FileRoutesById {
   '/profesionales': typeof ProfesionalesRoute
   '/reserva': typeof ReservaRouteWithChildren
   '/book/success': typeof BookSuccessRoute
+  '/reserva/$storeSlug': typeof ReservaStoreSlugRouteWithChildren
   '/reserva/confirmacion': typeof ReservaConfirmacionRoute
   '/reserva/horario': typeof ReservaHorarioRoute
   '/reserva/profesional': typeof ReservaProfesionalRoute
   '/reserva/servicios': typeof ReservaServiciosRoute
+  '/reserva/$storeSlug/confirmacion': typeof ReservaStoreSlugConfirmacionRoute
+  '/reserva/$storeSlug/horario': typeof ReservaStoreSlugHorarioRoute
+  '/reserva/$storeSlug/profesional': typeof ReservaStoreSlugProfesionalRoute
+  '/reserva/$storeSlug/servicios': typeof ReservaStoreSlugServiciosRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -177,10 +225,15 @@ export interface FileRouteTypes {
     | '/profesionales'
     | '/reserva'
     | '/book/success'
+    | '/reserva/$storeSlug'
     | '/reserva/confirmacion'
     | '/reserva/horario'
     | '/reserva/profesional'
     | '/reserva/servicios'
+    | '/reserva/$storeSlug/confirmacion'
+    | '/reserva/$storeSlug/horario'
+    | '/reserva/$storeSlug/profesional'
+    | '/reserva/$storeSlug/servicios'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -195,10 +248,15 @@ export interface FileRouteTypes {
     | '/profesionales'
     | '/reserva'
     | '/book/success'
+    | '/reserva/$storeSlug'
     | '/reserva/confirmacion'
     | '/reserva/horario'
     | '/reserva/profesional'
     | '/reserva/servicios'
+    | '/reserva/$storeSlug/confirmacion'
+    | '/reserva/$storeSlug/horario'
+    | '/reserva/$storeSlug/profesional'
+    | '/reserva/$storeSlug/servicios'
   id:
     | '__root__'
     | '/'
@@ -213,10 +271,15 @@ export interface FileRouteTypes {
     | '/profesionales'
     | '/reserva'
     | '/book/success'
+    | '/reserva/$storeSlug'
     | '/reserva/confirmacion'
     | '/reserva/horario'
     | '/reserva/profesional'
     | '/reserva/servicios'
+    | '/reserva/$storeSlug/confirmacion'
+    | '/reserva/$storeSlug/horario'
+    | '/reserva/$storeSlug/profesional'
+    | '/reserva/$storeSlug/servicios'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -319,6 +382,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof BookSuccessRouteImport
       parentRoute: typeof BookRoute
     }
+    '/reserva/$storeSlug': {
+      id: '/reserva/$storeSlug'
+      path: '/$storeSlug'
+      fullPath: '/reserva/$storeSlug'
+      preLoaderRoute: typeof ReservaStoreSlugRouteImport
+      parentRoute: typeof ReservaRoute
+    }
     '/reserva/confirmacion': {
       id: '/reserva/confirmacion'
       path: '/confirmacion'
@@ -347,6 +417,34 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ReservaServiciosRouteImport
       parentRoute: typeof ReservaRoute
     }
+    '/reserva/$storeSlug/confirmacion': {
+      id: '/reserva/$storeSlug/confirmacion'
+      path: '/confirmacion'
+      fullPath: '/reserva/$storeSlug/confirmacion'
+      preLoaderRoute: typeof ReservaStoreSlugConfirmacionRouteImport
+      parentRoute: typeof ReservaStoreSlugRoute
+    }
+    '/reserva/$storeSlug/horario': {
+      id: '/reserva/$storeSlug/horario'
+      path: '/horario'
+      fullPath: '/reserva/$storeSlug/horario'
+      preLoaderRoute: typeof ReservaStoreSlugHorarioRouteImport
+      parentRoute: typeof ReservaStoreSlugRoute
+    }
+    '/reserva/$storeSlug/profesional': {
+      id: '/reserva/$storeSlug/profesional'
+      path: '/profesional'
+      fullPath: '/reserva/$storeSlug/profesional'
+      preLoaderRoute: typeof ReservaStoreSlugProfesionalRouteImport
+      parentRoute: typeof ReservaStoreSlugRoute
+    }
+    '/reserva/$storeSlug/servicios': {
+      id: '/reserva/$storeSlug/servicios'
+      path: '/servicios'
+      fullPath: '/reserva/$storeSlug/servicios'
+      preLoaderRoute: typeof ReservaStoreSlugServiciosRouteImport
+      parentRoute: typeof ReservaStoreSlugRoute
+    }
   }
 }
 
@@ -360,7 +458,25 @@ const BookRouteChildren: BookRouteChildren = {
 
 const BookRouteWithChildren = BookRoute._addFileChildren(BookRouteChildren)
 
+interface ReservaStoreSlugRouteChildren {
+  ReservaStoreSlugConfirmacionRoute: typeof ReservaStoreSlugConfirmacionRoute
+  ReservaStoreSlugHorarioRoute: typeof ReservaStoreSlugHorarioRoute
+  ReservaStoreSlugProfesionalRoute: typeof ReservaStoreSlugProfesionalRoute
+  ReservaStoreSlugServiciosRoute: typeof ReservaStoreSlugServiciosRoute
+}
+
+const ReservaStoreSlugRouteChildren: ReservaStoreSlugRouteChildren = {
+  ReservaStoreSlugConfirmacionRoute: ReservaStoreSlugConfirmacionRoute,
+  ReservaStoreSlugHorarioRoute: ReservaStoreSlugHorarioRoute,
+  ReservaStoreSlugProfesionalRoute: ReservaStoreSlugProfesionalRoute,
+  ReservaStoreSlugServiciosRoute: ReservaStoreSlugServiciosRoute,
+}
+
+const ReservaStoreSlugRouteWithChildren =
+  ReservaStoreSlugRoute._addFileChildren(ReservaStoreSlugRouteChildren)
+
 interface ReservaRouteChildren {
+  ReservaStoreSlugRoute: typeof ReservaStoreSlugRouteWithChildren
   ReservaConfirmacionRoute: typeof ReservaConfirmacionRoute
   ReservaHorarioRoute: typeof ReservaHorarioRoute
   ReservaProfesionalRoute: typeof ReservaProfesionalRoute
@@ -368,6 +484,7 @@ interface ReservaRouteChildren {
 }
 
 const ReservaRouteChildren: ReservaRouteChildren = {
+  ReservaStoreSlugRoute: ReservaStoreSlugRouteWithChildren,
   ReservaConfirmacionRoute: ReservaConfirmacionRoute,
   ReservaHorarioRoute: ReservaHorarioRoute,
   ReservaProfesionalRoute: ReservaProfesionalRoute,

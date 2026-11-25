@@ -463,7 +463,9 @@ function parseStoreSettings(value) {
     const city = typeof source.city === "string" ? source.city : "";
     const province = typeof source.province === "string" ? source.province : "";
     const postalCode = typeof source.postalCode === "string" ? source.postalCode : "";
-    const address = [street, height, city, province, postalCode].filter(Boolean).join(", ");
+    const streetAddress = [street, height].filter(Boolean).join(" ");
+    const cityPostalCode = [city, postalCode].filter(Boolean).join(" ");
+    const address = [streetAddress, cityPostalCode, province].filter(Boolean).join(", ");
     return {
       address: address || (typeof source.address === "string" ? source.address : ""),
       street,
@@ -471,6 +473,20 @@ function parseStoreSettings(value) {
       city,
       province,
       postalCode,
+      employees: typeof source.employees === "string" ? source.employees : "",
+      description: typeof source.description === "string" ? source.description : "",
+      googleMapsUrl: typeof source.googleMapsUrl === "string" ? source.googleMapsUrl : "",
+      googleRating:
+        typeof source.googleRating === "number" &&
+        source.googleRating >= 0 &&
+        source.googleRating <= 5
+          ? source.googleRating
+          : null,
+      googleReviewCount:
+        Number.isInteger(source.googleReviewCount) && source.googleReviewCount >= 0
+          ? source.googleReviewCount
+          : 0,
+      coverImage: typeof source.coverImage === "string" ? source.coverImage : "",
       whatsapp: typeof source.whatsapp === "string" ? source.whatsapp : "",
       instagram: typeof source.instagram === "string" ? source.instagram : "",
       transferHolder: typeof source.transferHolder === "string" ? source.transferHolder : "",
@@ -500,6 +516,12 @@ function parseStoreSettings(value) {
       city: "",
       province: "",
       postalCode: "",
+      employees: "",
+      description: "",
+      googleMapsUrl: "",
+      googleRating: null,
+      googleReviewCount: 0,
+      coverImage: "",
       whatsapp: "",
       instagram: "",
       transferHolder: "",
@@ -545,6 +567,38 @@ function validateStoreSettings(value) {
     if (typeof setting !== "string" || setting.length > maxLength) return null;
     settings[field] = setting.trim();
   }
+  const employees = value.employees ?? "";
+  const description = value.description ?? "";
+  const googleMapsUrl = value.googleMapsUrl ?? "";
+  const coverImage = value.coverImage ?? "";
+  if (
+    typeof employees !== "string" ||
+    employees.length > 1000 ||
+    typeof description !== "string" ||
+    description.length > 2000 ||
+    typeof googleMapsUrl !== "string" ||
+    googleMapsUrl.length > 2048 ||
+    !isGoogleMapsUrl(googleMapsUrl) ||
+    typeof coverImage !== "string" ||
+    coverImage.length > 2_800_000 ||
+    (coverImage && !/^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(coverImage))
+  )
+    return null;
+  const googleRating = value.googleRating ?? null;
+  const googleReviewCount = value.googleReviewCount ?? 0;
+  if (
+    (googleRating !== null &&
+      (typeof googleRating !== "number" || googleRating < 0 || googleRating > 5)) ||
+    !Number.isInteger(googleReviewCount) ||
+    googleReviewCount < 0
+  )
+    return null;
+  settings.employees = employees.trim();
+  settings.description = description.trim();
+  settings.googleMapsUrl = googleMapsUrl.trim();
+  settings.googleRating = googleRating;
+  settings.googleReviewCount = googleReviewCount;
+  settings.coverImage = coverImage;
   if (settings.whatsapp && !/^\+?[0-9 ()-]{8,25}$/.test(settings.whatsapp)) return null;
   const noRefunds = value.noRefunds ?? false;
   const allowRefunds = value.allowRefunds ?? true;
@@ -565,16 +619,82 @@ function validateStoreSettings(value) {
   settings.allowRefunds = allowRefunds;
   settings.refundPercent = refundPercent;
   settings.cancellationWindowMinutes = cancellationWindowMinutes;
-  settings.address = [
-    settings.street,
-    settings.height,
-    settings.city,
-    settings.province,
-    settings.postalCode,
-  ]
-    .filter(Boolean)
-    .join(", ");
+  const streetAddress = [settings.street, settings.height].filter(Boolean).join(" ");
+  const cityPostalCode = [settings.city, settings.postalCode].filter(Boolean).join(" ");
+  settings.address = [streetAddress, cityPostalCode, settings.province].filter(Boolean).join(", ");
   return settings;
+}
+
+function isGoogleMapsUrl(value) {
+  if (!value) return true;
+  try {
+    const url = new URL(value);
+    return (
+      url.protocol === "https:" &&
+      ["google.com", "www.google.com", "maps.google.com", "maps.app.goo.gl"].includes(url.hostname)
+    );
+  } catch {
+    return false;
+  }
+}
+
+async function getGoogleMapsRating(mapsUrl) {
+  const apiKey = process.env.GOOGLE_MAPS_API_KEY?.trim();
+  if (!apiKey || !mapsUrl) return { rating: null, reviewCount: 0 };
+  try {
+    let url = new URL(mapsUrl);
+    for (let redirects = 0; redirects < 5 && url.hostname === "maps.app.goo.gl"; redirects += 1) {
+      const shortLinkResponse = await fetch(url, {
+        method: "GET",
+        redirect: "manual",
+        headers: { Range: "bytes=0-0" },
+        signal: AbortSignal.timeout(5000),
+      });
+      const location = shortLinkResponse.headers.get("location");
+      await shortLinkResponse.body?.cancel().catch(() => undefined);
+      if (!location) break;
+      const nextUrl = new URL(location, url);
+      if (!isGoogleMapsUrl(nextUrl.toString())) break;
+      url = nextUrl;
+    }
+    const placeId =
+      url.searchParams.get("query_place_id") ||
+      url.searchParams.get("place_id") ||
+      url.pathname.match(/!1s(ChIJ[A-Za-z0-9_-]+)/)?.[1];
+    const headers = { "X-Goog-Api-Key": apiKey, "X-Goog-FieldMask": "rating,userRatingCount" };
+    let response;
+    if (placeId) {
+      response = await fetch(
+        `https://places.googleapis.com/v1/places/${encodeURIComponent(placeId)}`,
+        { headers },
+      );
+    } else {
+      const nameFromPath = decodeURIComponent(
+        (url.pathname.split("/place/")[1] ?? url.pathname.split("/maps/search/")[1] ?? "").split(
+          "/",
+        )[0],
+      );
+      const placeName = (url.searchParams.get("query") || url.searchParams.get("q") || nameFromPath)
+        .replaceAll("+", " ")
+        .replaceAll("%20", " ");
+      if (!placeName) return { rating: null, reviewCount: 0 };
+      headers["X-Goog-FieldMask"] = "places.rating,places.userRatingCount";
+      response = await fetch("https://places.googleapis.com/v1/places:searchText", {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({ textQuery: placeName, maxResultCount: 1 }),
+      });
+    }
+    if (!response.ok) return { rating: null, reviewCount: 0 };
+    const result = await response.json();
+    const place = result.places?.[0] ?? result;
+    return {
+      rating: typeof place.rating === "number" ? place.rating : null,
+      reviewCount: Number.isInteger(place.userRatingCount) ? place.userRatingCount : 0,
+    };
+  } catch {
+    return { rating: null, reviewCount: 0 };
+  }
 }
 
 function validateCancellationPolicy(value) {
@@ -1787,7 +1907,9 @@ export default async function handler(request, response) {
         return response.status(result.status).json(result.body);
       } catch (error) {
         console.error("No se pudieron archivar los turnos", error);
-        return response.status(500).json({ error: "No se pudieron archivar los turnos seleccionados." });
+        return response
+          .status(500)
+          .json({ error: "No se pudieron archivar los turnos seleccionados." });
       }
     }
     if (user && body?.action === "restore-archived-bookings") {
@@ -1796,7 +1918,9 @@ export default async function handler(request, response) {
         return response.status(result.status).json(result.body);
       } catch (error) {
         console.error("No se pudieron restaurar los turnos archivados", error);
-        return response.status(500).json({ error: "No se pudieron restaurar los turnos seleccionados." });
+        return response
+          .status(500)
+          .json({ error: "No se pudieron restaurar los turnos seleccionados." });
       }
     }
     if (user && body?.action === "archive-booking") {
@@ -3522,6 +3646,53 @@ export default async function handler(request, response) {
         return response
           .status(500)
           .json({ error: "No se pudieron guardar los datos de la sucursal." });
+      }
+    }
+    if (user && body?.action === "update-store-profile") {
+      try {
+        const roleResult = await db.execute({
+          sql: "SELECT role, store_code FROM account_roles WHERE user_id = ?",
+          args: [user.id],
+        });
+        const role = roleResult.rows[0]?.role;
+        const storeCode = normalizeStoreCode(roleResult.rows[0]?.store_code);
+        if (role !== "admin" || !user.emailVerified || !storeCode)
+          return response
+            .status(403)
+            .json({ error: "Solo el administrador de una sucursal puede modificar su perfil." });
+        const storeResult = await db.execute({
+          sql: "SELECT settings FROM stores WHERE code = ? AND owner_id = ?",
+          args: [storeCode, user.id],
+        });
+        if (!storeResult.rows[0])
+          return response.status(404).json({ error: "No encontramos la sucursal." });
+        const currentSettings = parseStoreSettings(storeResult.rows[0].settings);
+        const profile =
+          body.profile && typeof body.profile === "object" && !Array.isArray(body.profile)
+            ? body.profile
+            : {};
+        const settings = validateStoreSettings({
+          ...currentSettings,
+          employees: profile.employees ?? currentSettings.employees,
+          description: profile.description ?? currentSettings.description,
+          googleMapsUrl: profile.googleMapsUrl ?? currentSettings.googleMapsUrl,
+          coverImage: profile.coverImage ?? currentSettings.coverImage,
+        });
+        if (!settings)
+          return response.status(400).json({
+            error: "Revisá la portada, el enlace de Google Maps y la información de la sucursal.",
+          });
+        const rating = await getGoogleMapsRating(settings.googleMapsUrl);
+        settings.googleRating = rating.rating;
+        settings.googleReviewCount = rating.reviewCount;
+        await db.execute({
+          sql: "UPDATE stores SET settings = ? WHERE code = ?",
+          args: [JSON.stringify(settings), storeCode],
+        });
+        return response.status(200).json({ code: storeCode, settings });
+      } catch (error) {
+        console.error("No se pudo guardar el perfil de la sucursal", error);
+        return response.status(500).json({ error: "No se pudo guardar el perfil de la sucursal." });
       }
     }
     if (user && body?.action === "update-store-logo") {

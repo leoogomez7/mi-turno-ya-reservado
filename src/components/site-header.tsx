@@ -12,12 +12,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { AUTH_CONFIGURED } from "@/lib/env";
-import {
-  rememberAuthReturnPath,
-  rememberSignupRole,
-  useAppAuth,
-  type AccountRole,
-} from "@/lib/auth";
+import { rememberAuthReturnPath, rememberSignupRole } from "@/lib/auth-utils";
+import { useAppAuth } from "@/lib/auth-context";
+import type { AccountRole } from "@/lib/auth";
 import { useLocation, useRouterState } from "@tanstack/react-router";
 import { getAvailableStores, getCurrentStoreCode } from "@/lib/cloud-sync";
 import {

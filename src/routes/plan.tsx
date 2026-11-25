@@ -8,7 +8,7 @@ import { SiteHeader } from "@/components/site-header";
 import { AuthRequired } from "@/components/auth-required";
 import { Button } from "@/components/ui/button";
 import { LoadingScreen } from "@/components/loading-screen";
-import { useAppAuth } from "@/lib/auth";
+import { useAppAuth } from "@/lib/auth-context";
 import {
   bootstrapCloudData,
   createSubscriptionCheckout,

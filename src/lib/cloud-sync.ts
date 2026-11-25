@@ -10,6 +10,12 @@ export type StoreSettings = {
   city: string;
   province: string;
   postalCode: string;
+  employees: string;
+  description: string;
+  googleMapsUrl: string;
+  googleRating: number | null;
+  googleReviewCount: number;
+  coverImage: string;
   whatsapp: string;
   instagram: string;
   transferHolder: string;
@@ -322,9 +328,7 @@ export async function persistCloudCollection(
     if (activeAccount !== accountAtWrite)
       throw new Error("Cambió la cuenta activa; vuelve a cargar los datos.");
     const newBookingIds = new Set(
-      collection === "bookings"
-        ? newBookingRecords.map((record) => record.id)
-        : [],
+      collection === "bookings" ? newBookingRecords.map((record) => record.id) : [],
     );
     if (
       newBookingIds.size > 0 &&
@@ -453,6 +457,25 @@ export async function updateStoreLogo(logo: string) {
   );
   window.dispatchEvent(new Event("mi-turno-ya:store-changed"));
   return response.logo;
+}
+
+export async function updateStoreProfile(profile: {
+  employees: string;
+  description: string;
+  googleMapsUrl: string;
+  coverImage: string;
+}) {
+  if (!tokenGetter)
+    throw new Error("Iniciá sesión como administrador para editar el perfil de la sucursal.");
+  const response = await request<{ code: string; settings: StoreSettings }>("POST", {
+    action: "update-store-profile",
+    profile,
+  });
+  availableStores = availableStores.map((store) =>
+    store.code === response.code ? { ...store, settings: response.settings } : store,
+  );
+  window.dispatchEvent(new Event("mi-turno-ya:store-changed"));
+  return response.settings;
 }
 
 export async function updateStoreContact(contact: StoreContactSettings) {

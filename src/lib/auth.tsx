@@ -1,89 +1,10 @@
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { KindeProvider, useKindeAuth } from "@kinde-oss/kinde-auth-react";
 import { AUTH_CONFIG, AUTH_CONFIGURED } from "@/lib/env";
+import { AuthContext, unavailableAuth } from "@/lib/auth-context";
+import type { AccountRole, AuthContextValue } from "@/lib/auth-context";
 
-export type AccountRole = "admin" | "client";
-
-type AuthUser = {
-  id?: string;
-  givenName?: string;
-  familyName?: string;
-  email?: string;
-};
-
-type AuthContextValue = {
-  configured: boolean;
-  isAuthenticated: boolean;
-  isLoading: boolean;
-  user: AuthUser | null;
-  role: AccountRole | null;
-  setVerifiedRole: (role: AccountRole | null) => void;
-  getIdToken: () => Promise<string | undefined>;
-  login: (
-    role?: AccountRole,
-    email?: string,
-    adminCode?: string,
-    storeCode?: string,
-  ) => void | Promise<void>;
-  register: (
-    role: AccountRole,
-    email?: string,
-    adminCode?: string,
-    storeCode?: string,
-  ) => void | Promise<void>;
-  logout: () => void | Promise<void>;
-};
-
-const unavailableAuth: AuthContextValue = {
-  configured: false,
-  isAuthenticated: false,
-  isLoading: false,
-  user: null,
-  role: null,
-  setVerifiedRole: () => undefined,
-  getIdToken: async () => undefined,
-  login: () => undefined,
-  register: () => undefined,
-  logout: () => undefined,
-};
-
-const AuthContext = createContext<AuthContextValue>(unavailableAuth);
-
-export function rememberAuthReturnPath(path: string) {
-  if (typeof window === "undefined") return;
-  const allowedPaths = [
-    "/admin",
-    "/agenda",
-    "/estadisticas",
-    "/plan",
-    "/configuracion",
-    "/profesionales",
-    "/mis-turnos",
-    "/mis-datos",
-    "/reserva",
-  ];
-  if (allowedPaths.includes(path)) {
-    window.sessionStorage.setItem("kinde-auth-return-path", path);
-  }
-}
-
-export function rememberSignupRole(role: AccountRole) {
-  if (typeof window === "undefined") return;
-  window.sessionStorage.setItem("kinde-signup-role", role);
-  window.sessionStorage.setItem(
-    "kinde-auth-return-path",
-    role === "admin" ? "/configuracion" : "/reserva",
-  );
-}
+export type { AccountRole } from "@/lib/auth-context";
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   if (!AUTH_CONFIGURED)
@@ -168,8 +89,4 @@ function KindeSession({ children }: { children: ReactNode }) {
   ]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
-}
-
-export function useAppAuth() {
-  return useContext(AuthContext);
 }

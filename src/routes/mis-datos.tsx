@@ -8,7 +8,7 @@ import { SiteHeader } from "@/components/site-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { LoadingScreen } from "@/components/loading-screen";
-import { useAppAuth } from "@/lib/auth";
+import { useAppAuth } from "@/lib/auth-context";
 import { bookingStore } from "@/lib/booking-store";
 import { getClientProfile, saveClientProfile } from "@/lib/cloud-sync";
 
@@ -141,7 +141,9 @@ function MyDataPage() {
               type="tel"
               value={phone}
               onChange={(event) => setPhone(event.target.value)}
-              placeholder={loadingProfile ? "Cargando teléfono/celular..." : "Tu número de teléfono/celular"}
+              placeholder={
+                loadingProfile ? "Cargando teléfono/celular..." : "Tu número de teléfono/celular"
+              }
               disabled={loadingProfile || savingProfile}
               maxLength={40}
             />

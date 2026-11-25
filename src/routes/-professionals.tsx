@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { toast } from "sonner";
 import {
@@ -23,7 +24,7 @@ import {
   type ProfessionalService,
 } from "@/lib/professional-store";
 import { AuthRequired } from "@/components/auth-required";
-import { useAppAuth } from "@/lib/auth";
+import { useAppAuth } from "@/lib/auth-context";
 import {
   createStore,
   getAvailableStores,
@@ -34,6 +35,7 @@ import {
   updateStoreCancellationPolicy,
   updateStoreContact,
   updateStoreLogo,
+  updateStoreProfile,
   updateStoreSettings,
   type StoreSettings,
 } from "@/lib/cloud-sync";
@@ -67,6 +69,12 @@ const emptyStoreSettings: StoreSettings = {
   city: "",
   province: "",
   postalCode: "",
+  employees: "",
+  description: "",
+  googleMapsUrl: "",
+  googleRating: null,
+  googleReviewCount: 0,
+  coverImage: "",
   whatsapp: "",
   instagram: "",
   transferHolder: "",
@@ -238,6 +246,52 @@ async function prepareStoreLogo(file: File) {
   });
 }
 
+async function prepareStoreCover(file: File) {
+  if (!/^image\/(jpeg|png|webp)$/.test(file.type))
+    throw new Error("Elegí una imagen JPG, PNG o WEBP.");
+  if (file.size > 2 * 1024 * 1024) throw new Error("La portada no puede superar los 2 MB.");
+  const image = await createImageBitmap(file);
+  const width = 1440;
+  const height = 560;
+  const scale = Math.max(width / image.width, height / image.height);
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d");
+  if (!context) {
+    image.close();
+    throw new Error("No se pudo preparar la portada.");
+  }
+  const scaledWidth = image.width * scale;
+  const scaledHeight = image.height * scale;
+  context.drawImage(
+    image,
+    (width - scaledWidth) / 2,
+    (height - scaledHeight) / 2,
+    scaledWidth,
+    scaledHeight,
+  );
+  image.close();
+  const blob = await new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob(
+      (result) =>
+        result ? resolve(result) : reject(new Error("No se pudo comprimir la portada.")),
+      "image/webp",
+      0.82,
+    );
+  });
+  if (blob.size > 2 * 1024 * 1024) throw new Error("La portada optimizada supera los 2 MB.");
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () =>
+      typeof reader.result === "string"
+        ? resolve(reader.result)
+        : reject(new Error("No se pudo leer la portada."));
+    reader.onerror = () => reject(new Error("No se pudo leer la portada."));
+    reader.readAsDataURL(blob);
+  });
+}
+
 export function ProfessionalsManager() {
   const { isAuthenticated, isLoading, role, getIdToken } = useAppAuth();
   const [professionals, setProfessionals] = useState<Professional[]>([]);
@@ -255,6 +309,7 @@ export function ProfessionalsManager() {
   const [storeLogoDraft, setStoreLogoDraft] = useState("");
   const [savedStoreLogo, setSavedStoreLogo] = useState("");
   const [savingStoreLogo, setSavingStoreLogo] = useState(false);
+  const [savingStoreProfile, setSavingStoreProfile] = useState(false);
   const [storeLogoOperation, setStoreLogoOperation] = useState<"upload" | "delete" | null>(null);
   const [currentStoreCode, setCurrentStoreCode] = useState(getCurrentStoreCode());
   const [currentStoreName, setCurrentStoreName] = useState(
@@ -298,6 +353,7 @@ export function ProfessionalsManager() {
   const [scheduleDateCapacity, setScheduleDateCapacity] = useState(1);
   const professionalDialogTitleRef = useRef<HTMLHeadingElement>(null);
   const storeLogoInputRef = useRef<HTMLInputElement>(null);
+  const storeCoverInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const load = () => setProfessionals(professionalStore.all());
@@ -473,6 +529,43 @@ export function ProfessionalsManager() {
       );
     } finally {
       setSavingContact(false);
+    }
+  }
+
+  async function saveStoreProfile() {
+    setSavingStoreProfile(true);
+    try {
+      const saved = await updateStoreProfile({
+        employees: storeSettings.employees,
+        description: storeSettings.description,
+        googleMapsUrl: storeSettings.googleMapsUrl,
+        coverImage: storeSettings.coverImage,
+      });
+      setStoreSettings(saved);
+      toast.success(
+        saved.googleRating
+          ? "Perfil guardado y reseñas de Google Maps actualizadas."
+          : "Perfil de la sucursal guardado.",
+      );
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "No se pudo guardar el perfil de la sucursal.",
+      );
+    } finally {
+      setSavingStoreProfile(false);
+    }
+  }
+
+  async function handleStoreCoverFile(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    try {
+      const coverImage = await prepareStoreCover(file);
+      setStoreSettings((current) => ({ ...current, coverImage }));
+      toast.success("Portada lista. Guardá el perfil para publicarla.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo preparar la portada.");
     }
   }
 
@@ -1029,6 +1122,57 @@ export function ProfessionalsManager() {
                 )}
               </div>
             </div>
+            <div className="mt-4 overflow-hidden rounded-2xl border border-border bg-background/60">
+              {storeSettings.coverImage ? (
+                <img
+                  src={storeSettings.coverImage}
+                  alt={`Portada de ${currentStoreName || "la sucursal"}`}
+                  className="h-40 w-full object-cover sm:h-52"
+                />
+              ) : (
+                <div className="flex h-32 items-center justify-center bg-linear-to-r from-gold/10 via-background to-gold/10 text-sm text-muted-foreground">
+                  Sin portada configurada
+                </div>
+              )}
+              <div className="flex flex-wrap items-center justify-between gap-3 p-4">
+                <div>
+                  <h3 className="font-medium">Portada de la sucursal</h3>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Opcional · JPG, PNG o WEBP · hasta 2 MB.
+                  </p>
+                </div>
+                <input
+                  ref={storeCoverInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  className="hidden"
+                  onChange={(event) => void handleStoreCoverFile(event)}
+                />
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={!storeDraftLoaded || savingStoreProfile}
+                    onClick={() => storeCoverInputRef.current?.click()}
+                  >
+                    <ImagePlus className="mr-2 h-4 w-4" />
+                    {storeSettings.coverImage ? "Cambiar portada" : "Agregar portada"}
+                  </Button>
+                  {storeSettings.coverImage && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={savingStoreProfile}
+                      onClick={() =>
+                        setStoreSettings((current) => ({ ...current, coverImage: "" }))
+                      }
+                    >
+                      Quitar
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </div>
             <p className="mt-3 text-xs text-muted-foreground">
               El código debe tener entre 3 y 20 caracteres (letras, números, guion o guion bajo). El
               código es único, compartilo con tus clientes para que encuentren tu sucursal al
@@ -1178,17 +1322,6 @@ export function ProfessionalsManager() {
                   placeholder={loadingStoreSettings ? "Cargando..." : "Ciudad"}
                 />
               </Field>
-              <Field label="Provincia">
-                <Input
-                  disabled={loadingStoreSettings}
-                  value={storeSettings.province}
-                  onChange={(event) =>
-                    setStoreSettings({ ...storeSettings, province: event.target.value })
-                  }
-                  maxLength={100}
-                  placeholder={loadingStoreSettings ? "Cargando..." : "Provincia"}
-                />
-              </Field>
               <Field label="Código postal">
                 <Input
                   disabled={loadingStoreSettings}
@@ -1200,6 +1333,61 @@ export function ProfessionalsManager() {
                   placeholder={loadingStoreSettings ? "Cargando..." : "Código postal"}
                 />
               </Field>
+              <Field label="Provincia">
+                <Input
+                  disabled={loadingStoreSettings}
+                  value={storeSettings.province}
+                  onChange={(event) =>
+                    setStoreSettings({ ...storeSettings, province: event.target.value })
+                  }
+                  maxLength={100}
+                  placeholder={loadingStoreSettings ? "Cargando..." : "Provincia"}
+                />
+              </Field>
+              <div className="sm:col-span-2">
+                <Field label="Empleado/s de la sucursal (opcional)">
+                  <Textarea
+                    disabled={loadingStoreSettings}
+                    value={storeSettings.employees}
+                    onChange={(event) =>
+                      setStoreSettings({ ...storeSettings, employees: event.target.value })
+                    }
+                    maxLength={1000}
+                    placeholder="Un nombre por línea"
+                  />
+                </Field>
+              </div>
+              <div className="sm:col-span-2">
+                <Field label="Información de la sucursal (opcional)">
+                  <Textarea
+                    disabled={loadingStoreSettings}
+                    value={storeSettings.description}
+                    onChange={(event) =>
+                      setStoreSettings({ ...storeSettings, description: event.target.value })
+                    }
+                    maxLength={2000}
+                    placeholder="Contá algo sobre el lugar, servicios o indicaciones para llegar"
+                  />
+                </Field>
+              </div>
+              <div className="sm:col-span-2">
+                <Field label="Enlace de Google Maps (opcional)">
+                  <Input
+                    type="url"
+                    disabled={loadingStoreSettings}
+                    value={storeSettings.googleMapsUrl}
+                    onChange={(event) =>
+                      setStoreSettings({ ...storeSettings, googleMapsUrl: event.target.value })
+                    }
+                    maxLength={2048}
+                    placeholder="https://maps.google.com/..."
+                  />
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Se mostrará un enlace al lugar. Las estrellas y cantidad de reseñas se importan
+                    con GOOGLE_MAPS_API_KEY configurada en el servidor.
+                  </p>
+                </Field>
+              </div>
               <Field label="WhatsApp">
                 <Input
                   type="tel"
@@ -1231,6 +1419,14 @@ export function ProfessionalsManager() {
               className="mt-5 bg-gold text-primary-foreground hover:bg-gold-soft"
             >
               {savingContact ? "Guardando…" : "Guardar dirección y contacto"}
+            </Button>
+            <Button
+              type="button"
+              disabled={loadingStoreSettings || savingStoreProfile || !currentStoreCode}
+              onClick={() => void saveStoreProfile()}
+              className="ml-0 mt-3 bg-gold text-primary-foreground hover:bg-gold-soft sm:ml-3"
+            >
+              {savingStoreProfile ? "Guardando…" : "Guardar perfil de sucursal"}
             </Button>
           </section>
 
@@ -1604,7 +1800,9 @@ export function ProfessionalsManager() {
                     </Button>
                     <Button
                       disabled={
-                        savingProfessional || Boolean(deletingProfessionalId) || !canSaveProfessional
+                        savingProfessional ||
+                        Boolean(deletingProfessionalId) ||
+                        !canSaveProfessional
                       }
                       onClick={() => void saveProfessional()}
                       className="min-w-0 flex-1 bg-gold px-2 text-xs text-primary-foreground hover:bg-gold-soft sm:order-3 sm:text-sm"
@@ -2153,10 +2351,7 @@ export function ProfessionalsManager() {
                     />
                   </Field>
                   <Field label="Hasta">
-                    <ResponsiveTimePicker
-                      value={scheduleDateEnd}
-                      onChange={setScheduleDateEnd}
-                    />
+                    <ResponsiveTimePicker value={scheduleDateEnd} onChange={setScheduleDateEnd} />
                   </Field>
                   <div className="col-span-2 flex items-center justify-between gap-3">
                     <label

@@ -1,5 +1,5 @@
 import { createFileRoute, Link, redirect, useLocation, useNavigate } from "@tanstack/react-router";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Check,
   ChevronLeft,
@@ -10,6 +10,8 @@ import {
   Briefcase,
   User,
   Copy,
+  MapPin,
+  ExternalLink,
   type LucideIcon,
 } from "lucide-react";
 import { addDays, format, isBefore, isSameDay, parseISO, startOfToday } from "date-fns";
@@ -40,7 +42,7 @@ import {
   generateSlotsFromSchedule,
   isProfessionalAvailableOnDate,
 } from "@/lib/professional-store";
-import { useAppAuth } from "@/lib/auth";
+import { useAppAuth } from "@/lib/auth-context";
 import {
   bootstrapCloudData,
   createPublicBooking,
@@ -69,9 +71,38 @@ const STEP_PATHS = {
   3: "/reserva/horario",
   4: "/reserva/confirmacion",
 } as const;
+const STEP_SEGMENTS = ["", "profesional", "servicios", "horario", "confirmacion"] as const;
+
+function slugifyStoreName(name: string) {
+  return name
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function storeSlugFromPath(pathname: string) {
+  const segments = pathname.split("/").filter(Boolean);
+  if (segments[0] !== "reserva" || segments.length < 2) return "";
+  return ["profesional", "servicios", "horario", "confirmacion"].includes(segments[1])
+    ? ""
+    : segments[1];
+}
+
+function reservationStepPath(step: number, storeSlug = "") {
+  if (storeSlug)
+    return `/reserva/${storeSlug}${STEP_SEGMENTS[step] ? `/${STEP_SEGMENTS[step]}` : ""}`;
+  return STEP_PATHS[step as keyof typeof STEP_PATHS];
+}
+
 function stepForPath(pathname: string) {
-  return Object.entries(STEP_PATHS).find(([, path]) => path === pathname)?.[0] as
-    keyof typeof STEP_PATHS | undefined;
+  const staticStep = Object.entries(STEP_PATHS).find(([, path]) => path === pathname)?.[0];
+  if (staticStep !== undefined) return staticStep as keyof typeof STEP_PATHS;
+  if (!storeSlugFromPath(pathname)) return undefined;
+  const lastSegment = pathname.split("/").filter(Boolean).at(-1) ?? "";
+  const dynamicStep = STEP_SEGMENTS.indexOf(lastSegment as (typeof STEP_SEGMENTS)[number]);
+  return String(dynamicStep < 0 ? 0 : dynamicStep) as keyof typeof STEP_PATHS;
 }
 
 const EMPTY_CUSTOMER: Customer = {
@@ -115,6 +146,7 @@ export function BookPage() {
   const auth = useAppAuth();
   const { isAuthenticated, isLoading, role, user } = auth;
   const location = useLocation();
+  const routeStoreSlug = storeSlugFromPath(location.pathname);
   const initialStep = stepForPath(location.pathname) ?? 0;
   const [accountStoreCode] = useState(getCurrentStoreCode());
   const [step, setStep] = useState<number>(Number(initialStep));
@@ -318,6 +350,41 @@ export function BookPage() {
 
   useEffect(() => {
     if (!cloudDataReady) return;
+    if (routeStoreSlug) {
+      const branchFromUrl = stores.find((store) => slugifyStoreName(store.name) === routeStoreSlug);
+      if (!branchFromUrl) {
+        if (selectedStoreCode) setSelectedStoreCode("");
+        if (step !== 0) {
+          setStep(0);
+          void navigate({ to: "/reserva", replace: true });
+        }
+        setStorePickerOpen(true);
+        setStepError("No encontramos una sucursal activa con ese enlace.");
+        return;
+      }
+      const branchIsActive = Boolean(
+        branchFromUrl.subscriptionExpiresAt &&
+        Date.parse(branchFromUrl.subscriptionExpiresAt) > Date.now(),
+      );
+      if (!branchIsActive) {
+        if (selectedStoreCode) setSelectedStoreCode("");
+        if (step !== 0) {
+          setStep(0);
+          void navigate({ to: "/reserva", replace: true });
+        }
+        setStorePickerOpen(true);
+        setStepError("Esta sucursal no está aceptando reservas actualmente.");
+        return;
+      }
+      if (branchFromUrl.code !== selectedStoreCode) {
+        setSelectedStoreCode(branchFromUrl.code);
+        setBarberId("");
+        setServiceIds([]);
+        setDate(null);
+        setTime("");
+        return;
+      }
+    }
     const currentCode = selectedStoreCode || getCurrentStoreCode();
     const currentStore = stores.find((store) => store.code === currentCode);
     const hasActiveStore = Boolean(
@@ -342,11 +409,11 @@ export function BookPage() {
     if (needsStore) {
       if (step !== 0) {
         setStep(0);
-        void navigate({ to: "/reserva", replace: true });
+        void navigate({ to: reservationStepPath(0, routeStoreSlug) as never, replace: true });
       }
       setStepError(step > 0 ? "Elegí una sucursal para poder continuar con la reserva." : null);
     }
-  }, [cloudDataReady, navigate, selectedStoreCode, stores, step]);
+  }, [cloudDataReady, navigate, routeStoreSlug, selectedStoreCode, stores, step]);
 
   useEffect(() => {
     if (!cloudDataReady || !selectedStoreCode) return;
@@ -447,7 +514,14 @@ export function BookPage() {
     return () => {
       cancelled = true;
     };
-  }, [cloudDataReady, location.searchStr, navigate, paymentReturn, storeSelectionHydrated]);
+  }, [
+    cloudDataReady,
+    location.searchStr,
+    navigate,
+    paymentReturn,
+    showReservationResult,
+    storeSelectionHydrated,
+  ]);
 
   useEffect(() => {
     if ((step !== 3 && step !== 4) || !selectedStoreCode) return;
@@ -491,6 +565,21 @@ export function BookPage() {
   );
   const selectedStore = activeStores.find((store) => store.code === selectedStoreCode);
   const storeSettings = selectedStore?.settings;
+  const googleRating = storeSettings?.googleRating;
+  const storeEmployees = storeSettings?.employees?.trim()
+    ? storeSettings.employees
+        .split(/[\r\n,]+/)
+        .map((name) => name.trim())
+        .filter(Boolean)
+    : reservationProfessionals.map((professional) => professional.name).filter(Boolean);
+
+  useEffect(() => {
+    if (!selectedStore || routeStoreSlug) return;
+    const canonicalPath = reservationStepPath(step, slugifyStoreName(selectedStore.name));
+    if (canonicalPath !== location.pathname) {
+      void navigate({ to: canonicalPath as never, replace: true });
+    }
+  }, [location.pathname, navigate, routeStoreSlug, selectedStore, step]);
 
   useEffect(() => {
     if (
@@ -519,6 +608,10 @@ export function BookPage() {
       setTime("");
       setStepError(null);
       toast.success(`Seleccionaste ${store.name}.`);
+      void navigate({
+        to: reservationStepPath(0, slugifyStoreName(store.name)) as never,
+        replace: true,
+      });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "No se pudo cambiar de sucursal.");
     } finally {
@@ -581,9 +674,25 @@ export function BookPage() {
     setStepError("Ese horario ya no está disponible. Actualizamos la disponibilidad; elegí otro.");
     if (step === 4) {
       setStep(3);
-      navigate({ to: STEP_PATHS[3] });
+      navigate({
+        to: reservationStepPath(
+          3,
+          slugifyStoreName(selectedStore?.name ?? "") || routeStoreSlug,
+        ) as never,
+      });
     }
-  }, [date, duration, navigate, reservationBookings, selectedProfessional, selectedStoreCode, step, time]);
+  }, [
+    date,
+    duration,
+    navigate,
+    reservationBookings,
+    routeStoreSlug,
+    selectedProfessional,
+    selectedStore?.name,
+    selectedStoreCode,
+    step,
+    time,
+  ]);
 
   async function handleBookingSaveError(error: unknown, fallback: string) {
     const message = error instanceof Error ? error.message : fallback;
@@ -606,7 +715,12 @@ export function BookPage() {
     setTime("");
     setStep(3);
     setStepError("Ese horario ya fue reservado. Actualizamos la disponibilidad; elegí otro.");
-    navigate({ to: STEP_PATHS[3] });
+    navigate({
+      to: reservationStepPath(
+        3,
+        slugifyStoreName(selectedStore?.name ?? "") || routeStoreSlug,
+      ) as never,
+    });
     toast.error("Ese horario ya fue reservado. Elegí otro horario disponible.");
   }
 
@@ -656,24 +770,44 @@ Observaciones: ${customer.notes || "Ninguna"}`;
     setStep(Number(pathStep));
   }, [location.pathname]);
 
-  function showReservationResult(result: ReservationResult) {
-    setStep(4);
-    setStepError(null);
-    void navigate({ to: STEP_PATHS[4], replace: true });
-    setReservationResult(result);
-  }
+  const showReservationResult = useCallback(
+    (result: ReservationResult) => {
+      setStep(4);
+      setStepError(null);
+      void navigate({
+        to: reservationStepPath(
+          4,
+          slugifyStoreName(selectedStore?.name ?? "") || routeStoreSlug,
+        ) as never,
+        replace: true,
+      });
+      setReservationResult(result);
+    },
+    [navigate, routeStoreSlug, selectedStore?.name],
+  );
 
   useEffect(() => {
     if (!reservationResult || step === 4) return;
     setStep(4);
-    void navigate({ to: STEP_PATHS[4], replace: true });
-  }, [navigate, reservationResult, step]);
+    void navigate({
+      to: reservationStepPath(
+        4,
+        slugifyStoreName(selectedStore?.name ?? "") || routeStoreSlug,
+      ) as never,
+      replace: true,
+    });
+  }, [navigate, reservationResult, routeStoreSlug, selectedStore?.name, step]);
 
   function goToStep(nextStep: number) {
     const safeStep = Math.max(0, Math.min(STEPS.length - 1, nextStep));
     setStep(safeStep);
     setStepError(null);
-    navigate({ to: STEP_PATHS[safeStep as keyof typeof STEP_PATHS] });
+    navigate({
+      to: reservationStepPath(
+        safeStep,
+        slugifyStoreName(selectedStore?.name ?? "") || routeStoreSlug,
+      ) as never,
+    });
   }
 
   const canNext = useMemo(() => {
@@ -927,7 +1061,7 @@ Observaciones: ${customer.notes || "Ninguna"}`;
         setStorePickerOpen(true);
       } else {
         setStep(0);
-        void navigate({ to: "/reserva", replace: true });
+        void navigate({ to: reservationStepPath(0, routeStoreSlug) as never, replace: true });
       }
       toast.error(message);
       return;
@@ -1009,47 +1143,114 @@ Observaciones: ${customer.notes || "Ninguna"}`;
               }
             }}
           >
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex min-w-0 items-center gap-3">
+            {selectedStore?.settings.coverImage && (
+              <img
+                src={selectedStore.settings.coverImage}
+                alt={`Portada de ${selectedStore.name}`}
+                className="mb-5 h-40 w-full rounded-2xl object-cover sm:h-56"
+              />
+            )}
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="flex min-w-0 items-center gap-4">
                 {selectedStore?.logo && (
                   <img
                     src={selectedStore.logo}
                     alt={`Logo de ${selectedStore.name}`}
-                    className="h-14 w-14 shrink-0 object-contain"
+                    className="h-20 w-20 shrink-0 rounded-full border border-gold/30 bg-background object-contain p-1"
                   />
                 )}
                 <div className="min-w-0">
                   <p className="text-xs uppercase tracking-widest text-gold">
                     {selectedStore ? "Sucursal seleccionada" : "Antes de reservar"}
                   </p>
-                  <h2 className="mt-1 flex flex-wrap items-baseline gap-x-2 font-display text-2xl font-semibold">
-                    {selectedStore ? (
-                      <>
-                        <span>{selectedStore?.name ?? "Sucursal no disponible"}</span>
-                        {selectedStore && (
-                          <span className="font-sans text-sm font-medium text-muted-foreground">
-                            {selectedStore.code}
-                          </span>
-                        )}
-                      </>
-                    ) : (
-                      "Seleccioná una sucursal · Tocá aquí para buscar"
-                    )}
+                  <h2 className="mt-1 font-display text-2xl font-semibold">
+                    {selectedStore?.name ?? "Seleccioná una sucursal · Tocá aquí para buscar"}
                   </h2>
+                  {selectedStore && (
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Código de reserva: <span className="text-gold">{selectedStore.code}</span>
+                    </p>
+                  )}
                 </div>
               </div>
-              <div className="flex items-center gap-3">
-                {selectedStore && (
-                  <Button
-                    type="button"
-                    className="h-10 px-4 text-sm bg-gold text-primary-foreground hover:bg-gold-soft"
-                    onClick={() => setStorePickerOpen(true)}
-                  >
-                    Cambiar sucursal
-                  </Button>
-                )}
-              </div>
+              {selectedStore && (
+                <Button
+                  type="button"
+                  className="h-10 px-4 text-sm bg-gold text-primary-foreground hover:bg-gold-soft"
+                  onClick={() => setStorePickerOpen(true)}
+                >
+                  Cambiar sucursal
+                </Button>
+              )}
             </div>
+            {selectedStore &&
+              (storeEmployees.length > 0 ||
+                storeSettings?.description ||
+                storeSettings?.address ||
+                storeSettings?.googleMapsUrl) && (
+                <div className="mt-5 grid gap-4 border-t border-border pt-5 sm:grid-cols-2">
+                  {storeEmployees.length > 0 && (
+                    <div>
+                      <p className="text-xs uppercase tracking-wider text-muted-foreground">
+                        {storeEmployees.length === 1 ? "Atiende" : "Equipo"}
+                      </p>
+                      <p className="mt-1 font-medium">{storeEmployees.join(" · ")}</p>
+                    </div>
+                  )}
+                  {storeSettings?.description && (
+                    <div className="sm:col-span-2">
+                      <p className="text-xs uppercase tracking-wider text-muted-foreground">
+                        Sobre la sucursal
+                      </p>
+                      <p className="mt-1 whitespace-pre-line text-sm text-muted-foreground">
+                        {storeSettings.description}
+                      </p>
+                    </div>
+                  )}
+                  {storeSettings?.address && (
+                    <div className="flex items-start gap-2">
+                      <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-gold" />
+                      <div>
+                        <p className="text-xs uppercase tracking-wider text-muted-foreground">
+                          Ubicación
+                        </p>
+                        <p className="mt-1 text-sm">{storeSettings.address}</p>
+                      </div>
+                    </div>
+                  )}
+                  {storeSettings?.googleMapsUrl && (
+                    <div className="flex flex-wrap items-center gap-3">
+                      {typeof googleRating === "number" ? (
+                        <div aria-label={`Calificación ${googleRating} de 5 en Google Maps`}>
+                          <div className="flex items-center gap-1 text-gold">
+                            {Array.from({ length: 5 }, (_, index) => (
+                              <Star
+                                key={index}
+                                className={`h-4 w-4 ${index < Math.round(googleRating) ? "fill-current" : ""}`}
+                              />
+                            ))}
+                            <span className="ml-1 font-semibold">{googleRating.toFixed(1)}</span>
+                          </div>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            {storeSettings.googleReviewCount} reseñas en Google
+                          </p>
+                        </div>
+                      ) : null}
+                      <a
+                        href={storeSettings.googleMapsUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1 text-sm text-gold underline-offset-4 hover:underline"
+                      >
+                        {googleRating === null
+                          ? "Ver reseñas en Google Maps"
+                          : "Ver en Google Maps"}
+                        <ExternalLink className="h-3.5 w-3.5" />
+                      </a>
+                    </div>
+                  )}
+                </div>
+              )}
           </section>
         )}
         {step === 0 && (
@@ -2081,8 +2282,9 @@ function StepConfirm({
         </p>
         {!cancellationPolicy?.noRefunds && cancellationPolicy?.allowRefunds !== false && (
           <p className="mt-1">
-            Podés solicitar una devolución hasta {cancellationPolicy?.cancellationWindowMinutes ?? 30}{" "}
-            minutos antes del turno. Cancelar un turno sin pago confirmado no depende de este plazo.
+            Podés solicitar una devolución hasta{" "}
+            {cancellationPolicy?.cancellationWindowMinutes ?? 30} minutos antes del turno. Cancelar
+            un turno sin pago confirmado no depende de este plazo.
           </p>
         )}
       </div>

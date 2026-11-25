@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { useLocation } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
-import { rememberAuthReturnPath, useAppAuth, type AccountRole } from "@/lib/auth";
+import { rememberAuthReturnPath } from "@/lib/auth-utils";
+import { useAppAuth } from "@/lib/auth-context";
+import type { AccountRole } from "@/lib/auth";
 
 export function AuthRequired({ role, title }: { role: AccountRole; title: string }) {
   const { configured, isLoading, login } = useAppAuth();

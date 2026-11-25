@@ -45,7 +45,7 @@ import {
   getBookingArchiveLabel,
   type Booking,
 } from "@/lib/booking-store";
-import { useAppAuth } from "@/lib/auth";
+import { useAppAuth } from "@/lib/auth-context";
 import {
   archiveBooking,
   archiveBookings,
@@ -149,7 +149,7 @@ export function AgendaManager() {
   }, []);
 
   useEffect(() => {
-    if (!selectedBooking || editMode !== "turno") return;
+    if (!selectedBooking?.id || editMode !== "turno") return;
     let active = true;
     let refreshInFlight = false;
     const refresh = () => {
@@ -362,9 +362,7 @@ export function AgendaManager() {
       );
       if (archived.length) {
         const archivedById = new Map(archived.map((booking) => [booking.id, booking]));
-        setBookings((current) =>
-          current.map((booking) => archivedById.get(booking.id) ?? booking),
-        );
+        setBookings((current) => current.map((booking) => archivedById.get(booking.id) ?? booking));
       }
       toast[failedCount ? "error" : "success"](
         failedCount
@@ -638,7 +636,9 @@ export function AgendaManager() {
                 variant="destructive"
                 className="col-span-2 h-9 min-w-0 w-full whitespace-nowrap px-2 text-[11px] sm:col-span-1 sm:w-auto sm:px-4 sm:text-sm"
                 disabled={
-                  deletingVisibleBookings || deletingBookingId !== null || !eligibleVisibleBookings.length
+                  deletingVisibleBookings ||
+                  deletingBookingId !== null ||
+                  !eligibleVisibleBookings.length
                 }
                 onClick={() => void archiveVisibleTurns()}
               >
@@ -1053,7 +1053,7 @@ export function AgendaManager() {
               </DialogDescription>
             </DialogHeader>
             {archivedBookings.length > 0 && (
-                <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
                 <p className="text-xs text-muted-foreground">
                   Restaurar o borrar todos los turnos archivados, aunque haya una búsqueda activa.
                 </p>
@@ -1062,7 +1062,11 @@ export function AgendaManager() {
                     type="button"
                     size="sm"
                     variant="outline"
-                    disabled={restoringAllArchivedBookings || restoringBookingId !== null || deletingAllArchivedBookings}
+                    disabled={
+                      restoringAllArchivedBookings ||
+                      restoringBookingId !== null ||
+                      deletingAllArchivedBookings
+                    }
                     onClick={() => void restoreAllArchivedTurns()}
                   >
                     {restoringAllArchivedBookings ? "Restaurando…" : "Restaurar todos"}
@@ -1071,7 +1075,11 @@ export function AgendaManager() {
                     type="button"
                     size="sm"
                     variant="destructive"
-                    disabled={restoringAllArchivedBookings || deletingAllArchivedBookings || permanentlyDeletingBookingId !== null}
+                    disabled={
+                      restoringAllArchivedBookings ||
+                      deletingAllArchivedBookings ||
+                      permanentlyDeletingBookingId !== null
+                    }
                     onClick={() => void permanentlyDeleteAllArchivedTurns()}
                   >
                     {deletingAllArchivedBookings ? "Borrando…" : "Borrar todos"}
@@ -1142,7 +1150,11 @@ export function AgendaManager() {
                             type="button"
                             size="sm"
                             variant="outline"
-                            disabled={restoringBookingId !== null || restoringAllArchivedBookings || deletingAllArchivedBookings}
+                            disabled={
+                              restoringBookingId !== null ||
+                              restoringAllArchivedBookings ||
+                              deletingAllArchivedBookings
+                            }
                             onClick={() => void restoreTurn(booking)}
                           >
                             {restoringBookingId === booking.id ? "Restaurando…" : "Restaurar"}
