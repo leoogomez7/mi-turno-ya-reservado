@@ -380,11 +380,8 @@ export function BookPage() {
         : stores.find((store) => slugifyStoreName(store.name) === routeStoreSlug);
       if (!branchFromUrl) {
         if (selectedStoreCode) setSelectedStoreCode("");
-        if (step !== 0) {
-          setStep(0);
-          void navigate({ to: "/reserva", replace: true });
-        }
-        setStorePickerOpen(true);
+        if (step !== 0) setStep(0);
+        void navigate({ to: "/reserva", replace: true });
         setStepError("No encontramos una sucursal activa con ese enlace.");
         return;
       }
@@ -394,11 +391,8 @@ export function BookPage() {
       );
       if (!branchIsActive) {
         if (selectedStoreCode) setSelectedStoreCode("");
-        if (step !== 0) {
-          setStep(0);
-          void navigate({ to: "/reserva", replace: true });
-        }
-        setStorePickerOpen(true);
+        if (step !== 0) setStep(0);
+        void navigate({ to: "/reserva", replace: true });
         setStepError("Esta sucursal no está aceptando reservas actualmente.");
         return;
       }
@@ -622,7 +616,7 @@ export function BookPage() {
   }, [routeStoreSlug, selectedStore?.name]);
 
   useEffect(() => {
-    if (!selectedStore) return;
+    if (!selectedStore || !location.pathname.startsWith("/reserva")) return;
     const canonicalPath = reservationStepPath(
       step,
       slugifyStoreName(selectedStore.name),
