@@ -13,7 +13,11 @@ export function rememberAuthReturnPath(path: string) {
     "/mis-datos",
     "/reserva",
   ];
-  if (allowedPaths.includes(path)) {
+  const isBranchReservationPath =
+    /^\/reserva\/[a-z0-9]+(?:-[a-z0-9]+)*(?:\/(?:profesional|servicios|horario|confirmacion))?$/.test(
+      path,
+    );
+  if (allowedPaths.includes(path) || isBranchReservationPath) {
     window.sessionStorage.setItem("kinde-auth-return-path", path);
   }
 }

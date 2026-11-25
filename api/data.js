@@ -3671,9 +3671,19 @@ export default async function handler(request, response) {
           body.profile && typeof body.profile === "object" && !Array.isArray(body.profile)
             ? body.profile
             : {};
+        const contact =
+          profile.contact && typeof profile.contact === "object" && !Array.isArray(profile.contact)
+            ? profile.contact
+            : {};
         const settings = validateStoreSettings({
           ...currentSettings,
-          employees: profile.employees ?? currentSettings.employees,
+          street: contact.street ?? currentSettings.street,
+          height: contact.height ?? currentSettings.height,
+          city: contact.city ?? currentSettings.city,
+          province: contact.province ?? currentSettings.province,
+          postalCode: contact.postalCode ?? currentSettings.postalCode,
+          whatsapp: contact.whatsapp ?? currentSettings.whatsapp,
+          instagram: contact.instagram ?? currentSettings.instagram,
           description: profile.description ?? currentSettings.description,
           googleMapsUrl: profile.googleMapsUrl ?? currentSettings.googleMapsUrl,
           coverImage: profile.coverImage ?? currentSettings.coverImage,

@@ -10,7 +10,6 @@ export type StoreSettings = {
   city: string;
   province: string;
   postalCode: string;
-  employees: string;
   description: string;
   googleMapsUrl: string;
   googleRating: number | null;
@@ -460,7 +459,7 @@ export async function updateStoreLogo(logo: string) {
 }
 
 export async function updateStoreProfile(profile: {
-  employees: string;
+  contact: StoreContactSettings;
   description: string;
   googleMapsUrl: string;
   coverImage: string;

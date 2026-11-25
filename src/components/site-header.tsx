@@ -36,14 +36,14 @@ function preloadStatsCharts() {
   void import("@/components/admin-charts");
 }
 
-export function SiteHeader() {
+export function SiteHeader({ openAuthDialogOnMount = false }: { openAuthDialogOnMount?: boolean }) {
   const [open, setOpen] = useState(false);
   const [pendingNavigation, setPendingNavigation] = useState<{
     target: string;
     from: string;
     label: string;
   } | null>(null);
-  const [authDialogOpen, setAuthDialogOpen] = useState(false);
+  const [authDialogOpen, setAuthDialogOpen] = useState(openAuthDialogOnMount);
   const [registrationDialogOpen, setRegistrationDialogOpen] = useState(false);
   const { isAuthenticated, user, role, login, register, logout } = useAppAuth();
   const location = useLocation();
@@ -54,18 +54,21 @@ export function SiteHeader() {
     }),
   });
   const navigate = useNavigate();
-  const [branchInfo, setBranchInfo] = useState(() => ({
-    name:
-      getAvailableStores().find((store) => store.code === getCurrentStoreCode())?.name ??
-      "Cargando...",
-    code: getCurrentStoreCode(),
-  }));
+  const [branchInfo, setBranchInfo] = useState(() => {
+    const code = getCurrentStoreCode();
+    const store = getAvailableStores().find((item) => item.code === code);
+    return {
+      name: store?.name ?? "Cargando...",
+      code,
+    };
+  });
 
   useEffect(() => {
     const updateBranchInfo = () => {
       const code = getCurrentStoreCode();
       const store = getAvailableStores().find((item) => item.code === code);
-      setBranchInfo({ name: store?.name ?? "Sin nombre", code });
+      const name = store?.name ?? "Sin nombre";
+      setBranchInfo({ name, code });
     };
     updateBranchInfo();
     window.addEventListener("mi-turno-ya:cloud-ready", updateBranchInfo);
@@ -74,6 +77,12 @@ export function SiteHeader() {
       window.removeEventListener("mi-turno-ya:cloud-ready", updateBranchInfo);
       window.removeEventListener("mi-turno-ya:store-changed", updateBranchInfo);
     };
+  }, []);
+
+  useEffect(() => {
+    const openAuthDialog = () => setAuthDialogOpen(true);
+    window.addEventListener("mi-turno-ya:open-auth-dialog", openAuthDialog);
+    return () => window.removeEventListener("mi-turno-ya:open-auth-dialog", openAuthDialog);
   }, []);
 
   useEffect(() => {
@@ -111,7 +120,7 @@ export function SiteHeader() {
   async function handleLogout() {
     setOpen(false);
     await logout();
-    await navigate({ to: "/reserva", replace: true });
+    await navigate({ to: "/", replace: true });
   }
 
   return (
@@ -124,7 +133,7 @@ export function SiteHeader() {
     >
       <header className="sticky top-0 z-40 border-b border-border/60 bg-background/80 backdrop-blur-xl">
         <div className="relative flex w-full flex-nowrap items-center justify-between gap-1 px-1 py-2.5 md:gap-2 md:px-4 lg:px-5">
-          <Link to="/reserva" className="flex shrink-0 items-center gap-1 sm:gap-2">
+          <Link to="/" className="flex shrink-0 items-center gap-1 sm:gap-2">
             <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full border border-gold/50 bg-black shadow-[0_0_18px_rgba(234,179,8,0.18)] sm:h-10 sm:w-10 md:h-12 md:w-12">
               <img
                 src={logo}
@@ -149,12 +158,6 @@ export function SiteHeader() {
                   <span className="font-semibold text-gold">{branchInfo.code || "—"}</span>
                 </div>
               )}
-              <Link
-                to="/reserva"
-                className="px-3 py-2 text-muted-foreground hover:text-foreground [&.active]:text-gold"
-              >
-                Reservar
-              </Link>
               {role === "admin" && (
                 <Link
                   to="/agenda"
@@ -303,13 +306,6 @@ export function SiteHeader() {
                     <span className="font-semibold text-gold">{branchInfo.code || "—"}</span>
                   </div>
                 )}
-                <Link
-                  to="/reserva"
-                  onClick={() => startMobileNavigation("/reserva", "Reservar")}
-                  className="block rounded-xl border border-transparent px-3 py-2.5 text-foreground transition-colors hover:border-border hover:bg-card [&.active]:border-gold/30 [&.active]:bg-gold/10 [&.active]:text-gold"
-                >
-                  Reservar
-                </Link>
                 {role === "admin" && (
                   <Link
                     to="/agenda"

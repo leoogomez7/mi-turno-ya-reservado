@@ -597,12 +597,9 @@ export function BookPage() {
   const selectedStore = activeStores.find((store) => store.code === selectedStoreCode);
   const storeSettings = selectedStore?.settings;
   const googleRating = storeSettings?.googleRating;
-  const storeEmployees = storeSettings?.employees?.trim()
-    ? storeSettings.employees
-        .split(/[\r\n,]+/)
-        .map((name) => name.trim())
-        .filter(Boolean)
-    : reservationProfessionals.map((professional) => professional.name).filter(Boolean);
+  const storeEmployees = reservationProfessionals
+    .map((professional) => professional.name.trim())
+    .filter(Boolean);
 
   useEffect(() => {
     if (!selectedStore || routeStoreSlug) return;

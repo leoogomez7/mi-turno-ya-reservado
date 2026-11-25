@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
@@ -652,6 +652,7 @@ function MyBookingsPage() {
         booking.customer.phone,
         professional?.name,
         professional?.specialty,
+        stores.find((store) => store.code === booking.storeCode)?.name,
         serviceNames,
         booking.date,
         booking.time,
@@ -713,12 +714,6 @@ function MyBookingsPage() {
                   ? "Borrando turnos..."
                   : `Borrar turnos (${eligibleVisibleBookings.length})`}
               </Button>
-              <Link
-                to="/reserva"
-                className="inline-flex h-9 shrink-0 items-center rounded-md bg-gold px-3 text-xs font-medium text-primary-foreground transition-colors hover:bg-gold-soft sm:h-10 sm:px-4 sm:text-sm"
-              >
-                Nuevo turno
-              </Link>
             </div>
           </div>
           <label className="relative mb-4 block">
@@ -746,6 +741,10 @@ function MyBookingsPage() {
                   professionals.find(
                     (item) => item.id === booking.barberId && item.storeCode === booking.storeCode,
                   ) ?? professionals.find((item) => item.id === booking.barberId);
+                const storeName =
+                  stores.find((store) => store.code === booking.storeCode)?.name ??
+                  booking.storeCode ??
+                  "Sucursal";
                 const serviceNames = booking.serviceIds
                   .map((id) => professional?.services.find((service) => service.id === id)?.name)
                   .filter(Boolean)
@@ -831,6 +830,7 @@ function MyBookingsPage() {
                         <div className="text-sm text-muted-foreground">
                           {serviceNames || "Servicio"} · {booking.duration} min
                         </div>
+                        <div className="text-xs font-medium text-gold">Sucursal: {storeName}</div>
                       </div>
                     </div>
                     <div className="mx-auto w-fit rounded-lg border border-gold/20 bg-gold/5 px-3 py-2 text-center font-display text-lg font-semibold text-gold xl:col-start-3 xl:row-start-1 xl:mx-0 xl:text-lg">
@@ -1270,6 +1270,10 @@ function MyBookingsPage() {
                   professionals.find(
                     (item) => item.id === booking.barberId && item.storeCode === booking.storeCode,
                   ) ?? professionals.find((item) => item.id === booking.barberId);
+                const storeName =
+                  stores.find((store) => store.code === booking.storeCode)?.name ??
+                  booking.storeCode ??
+                  "Sucursal";
                 const serviceNames = booking.serviceIds
                   .map((id) => professional?.services.find((service) => service.id === id)?.name)
                   .filter(Boolean)
@@ -1301,6 +1305,7 @@ function MyBookingsPage() {
                       {format(appointmentDate, "EEEE d 'de' MMMM, yyyy", { locale: es })} ·{" "}
                       {booking.time}
                     </p>
+                    <p className="mt-1 font-medium text-gold">Sucursal: {storeName}</p>
                     <p className="mt-1 text-muted-foreground">
                       Pago: {paymentMethod} · ${booking.totalPrice.toLocaleString("es-AR")}
                     </p>

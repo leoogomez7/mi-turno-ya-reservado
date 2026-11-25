@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
-import { Check, Clock3, ImagePlus, Plus, Trash2, X } from "lucide-react";
+import { Check, Clock3, Copy, ImagePlus, Plus, Trash2, X } from "lucide-react";
 import { format, getDay, startOfToday } from "date-fns";
 import { es } from "date-fns/locale";
 import { SiteHeader } from "@/components/site-header";
@@ -69,7 +69,6 @@ const emptyStoreSettings: StoreSettings = {
   city: "",
   province: "",
   postalCode: "",
-  employees: "",
   description: "",
   googleMapsUrl: "",
   googleRating: null,
@@ -327,7 +326,6 @@ export function ProfessionalsManager() {
   );
   const [storeSettings, setStoreSettings] = useState<StoreSettings>(emptyStoreSettings);
   const [loadingStoreSettings, setLoadingStoreSettings] = useState(true);
-  const [savingContact, setSavingContact] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
   const [savingCancellationPolicy, setSavingCancellationPolicy] = useState(false);
   const [mercadoPagoPublicKey, setMercadoPagoPublicKey] = useState("");
@@ -519,34 +517,19 @@ export function ProfessionalsManager() {
     }
   }
 
-  async function saveContact() {
-    setSavingContact(true);
-    try {
-      const saved = await updateStoreContact({
-        street: storeSettings.street,
-        height: storeSettings.height,
-        city: storeSettings.city,
-        province: storeSettings.province,
-        postalCode: storeSettings.postalCode,
-        whatsapp: storeSettings.whatsapp,
-        instagram: storeSettings.instagram,
-      });
-      setStoreSettings(saved);
-      toast.success("Datos de contacto guardados.");
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "No se pudieron guardar los datos de contacto.",
-      );
-    } finally {
-      setSavingContact(false);
-    }
-  }
-
   async function saveStoreProfile() {
     setSavingStoreProfile(true);
     try {
       const saved = await updateStoreProfile({
-        employees: storeSettings.employees,
+        contact: {
+          street: storeSettings.street,
+          height: storeSettings.height,
+          city: storeSettings.city,
+          province: storeSettings.province,
+          postalCode: storeSettings.postalCode,
+          whatsapp: storeSettings.whatsapp,
+          instagram: storeSettings.instagram,
+        },
         description: storeSettings.description,
         googleMapsUrl: storeSettings.googleMapsUrl,
         coverImage: storeSettings.coverImage,
@@ -770,6 +753,16 @@ export function ProfessionalsManager() {
       toast.error(error instanceof Error ? error.message : "No se pudo crear la sucursal.");
     } finally {
       setSavingStore(false);
+    }
+  }
+
+  async function copyStoreBookingLink() {
+    const url = new URL(getStoreBookingPath(currentStoreName), window.location.origin).toString();
+    try {
+      await navigator.clipboard.writeText(url);
+      toast.success("Link de reserva copiado.");
+    } catch {
+      toast.error("No se pudo copiar el link de reserva.");
     }
   }
 
@@ -1050,14 +1043,24 @@ export function ProfessionalsManager() {
                       >
                         Link para sacar turno
                       </a>
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="ghost"
+                        aria-label="Copiar link para sacar turno"
+                        title="Copiar link para sacar turno"
+                        className="ml-1 inline-flex h-7 w-7 text-gold hover:bg-gold/10 hover:text-gold"
+                        onClick={() => void copyStoreBookingLink()}
+                      >
+                        <Copy className="h-4 w-4" />
+                      </Button>
                     </>
                   )}
                 </p>
               </div>
             </div>
             <div className="mt-5 grid items-end gap-3 sm:grid-cols-[minmax(0,1fr)_220px_auto]">
-              <div className="space-y-2">
-                <Label htmlFor="store-name">Nombre de la sucursal</Label>
+              <Field label="Nombre de la sucursal">
                 <Input
                   id="store-name"
                   disabled={!storeDraftLoaded}
@@ -1066,9 +1069,8 @@ export function ProfessionalsManager() {
                   placeholder={storeDraftLoaded ? "Ej. Mi Sucursal" : "Cargando..."}
                   maxLength={100}
                 />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="store-code">Código de reserva</Label>
+              </Field>
+              <Field label="Código de reserva">
                 <Input
                   id="store-code"
                   disabled={!storeDraftLoaded}
@@ -1079,7 +1081,7 @@ export function ProfessionalsManager() {
                   placeholder={storeDraftLoaded ? "Ej. BARBER01" : "Cargando..."}
                   maxLength={20}
                 />
-              </div>
+              </Field>
               <Button
                 disabled={
                   !storeDraftLoaded ||
@@ -1109,11 +1111,8 @@ export function ProfessionalsManager() {
               </div>
               <div className="min-w-0 flex-1">
                 <h3 className="font-medium">Logo de la sucursal</h3>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Opcional. Lo verán tus clientes al confirmar el turno.
-                </p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  JPG, PNG, WEBP o GIF · hasta 2 MB.
+                  Opcional · JPG, PNG o WEBP · hasta 2 MB.
                 </p>
               </div>
               <input
@@ -1312,10 +1311,10 @@ export function ProfessionalsManager() {
 
           <section className="rounded-3xl border border-gold/30 bg-card p-6">
             <div className="mb-5">
-              <p className="text-xs uppercase tracking-widest text-gold">Contacto</p>
-              <h2 className="mt-1 font-display text-2xl font-semibold">Dirección de la sucursal</h2>
+              <p className="text-xs uppercase tracking-widest text-gold">Información</p>
+              <h2 className="mt-1 font-display text-2xl font-semibold">Sobre la sucursal</h2>
               <p className="mt-2 text-sm text-muted-foreground">
-                Dirección, WhatsApp e Instagram de la sucursal.
+                Dirección, contacto e información de la sucursal.
               </p>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
@@ -1375,19 +1374,6 @@ export function ProfessionalsManager() {
                 />
               </Field>
               <div className="sm:col-span-2">
-                <Field label="Empleado/s de la sucursal (opcional)">
-                  <Textarea
-                    disabled={loadingStoreSettings}
-                    value={storeSettings.employees}
-                    onChange={(event) =>
-                      setStoreSettings({ ...storeSettings, employees: event.target.value })
-                    }
-                    maxLength={1000}
-                    placeholder="Un nombre por línea"
-                  />
-                </Field>
-              </div>
-              <div className="sm:col-span-2">
                 <Field label="Información de la sucursal (opcional)">
                   <Textarea
                     disabled={loadingStoreSettings}
@@ -1444,19 +1430,11 @@ export function ProfessionalsManager() {
             </div>
             <Button
               type="button"
-              disabled={loadingStoreSettings || savingContact || !currentStoreCode}
-              onClick={() => void saveContact()}
-              className="mt-5 bg-gold text-primary-foreground hover:bg-gold-soft"
-            >
-              {savingContact ? "Guardando…" : "Guardar dirección y contacto"}
-            </Button>
-            <Button
-              type="button"
               disabled={loadingStoreSettings || savingStoreProfile || !currentStoreCode}
               onClick={() => void saveStoreProfile()}
-              className="ml-0 mt-3 bg-gold text-primary-foreground hover:bg-gold-soft sm:ml-3"
+              className="mt-5 bg-gold text-primary-foreground hover:bg-gold-soft"
             >
-              {savingStoreProfile ? "Guardando…" : "Guardar perfil de sucursal"}
+              {savingStoreProfile ? "Guardando…" : "Guardar información"}
             </Button>
           </section>
 

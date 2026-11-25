@@ -19,7 +19,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       clientId={AUTH_CONFIG.clientId}
       domain={domain}
       redirectUri={appOrigin}
-      logoutUri={`${appOrigin}/reserva`}
+      logoutUri={`${appOrigin}/`}
     >
       <KindeSession>{children}</KindeSession>
     </KindeProvider>
@@ -73,7 +73,7 @@ function KindeSession({ children }: { children: ReactNode }) {
       register: (_requestedRole = "client", email) => startAuth(register, "client", email),
       logout: async () => {
         setRole(null);
-        await logout({ redirectUrl: `${window.location.origin}/reserva` });
+        await logout({ redirectUrl: `${window.location.origin}/` });
       },
     };
   }, [
