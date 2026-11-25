@@ -394,6 +394,7 @@ export async function selectStore(
 export async function createStore(name: string, code: string) {
   if (!tokenGetter) throw new Error("Iniciá sesión como administrador para guardar una sucursal.");
   const previousCode = storeCode;
+  const previousStore = availableStores.find((store) => store.code === previousCode);
   const response = await request<{ store: Store; previousCode: string }>("POST", {
     action: "create-store",
     store: { name, code: code.trim().toUpperCase() },
@@ -402,7 +403,7 @@ export async function createStore(name: string, code: string) {
     ...availableStores.filter(
       (store) => store.code !== response.previousCode && store.code !== response.store.code,
     ),
-    response.store,
+    { ...previousStore, ...response.store, logo: response.store.logo ?? previousStore?.logo },
   ].sort((a, b) => a.name.localeCompare(b.name, "es"));
   storeCode = response.store.code;
   if (previousCode && previousCode !== storeCode) {

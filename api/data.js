@@ -3483,13 +3483,13 @@ export default async function handler(request, response) {
         const assignedCode = normalizeStoreCode(roleResult.rows[0]?.store_code);
         let existingStore = assignedCode
           ? await transaction.execute({
-              sql: "SELECT code, settings, subscription_expires_at, subscription_plan_type FROM stores WHERE code = ? AND owner_id = ?",
+              sql: "SELECT code, settings, logo, subscription_expires_at, subscription_plan_type FROM stores WHERE code = ? AND owner_id = ?",
               args: [assignedCode, user.id],
             })
           : { rows: [] };
         if (!existingStore.rows[0]) {
           existingStore = await transaction.execute({
-            sql: "SELECT code, settings, subscription_expires_at, subscription_plan_type FROM stores WHERE owner_id = ? ORDER BY created_at LIMIT 1",
+            sql: "SELECT code, settings, logo, subscription_expires_at, subscription_plan_type FROM stores WHERE owner_id = ? ORDER BY created_at LIMIT 1",
             args: [user.id],
           });
         }
@@ -3504,36 +3504,26 @@ export default async function handler(request, response) {
         } else {
           if (previousCode !== code) {
             const professionalPrefix = `${previousCode}:`;
-            const professionalRows = await transaction.execute({
-              sql: "SELECT id, value FROM professionals WHERE substr(id, 1, ?) = ?",
-              args: [professionalPrefix.length, professionalPrefix],
+            await transaction.execute({
+              sql: `UPDATE professionals
+                SET id = ? || substr(id, ?),
+                    value = json_set(value, '$.storeCode', ?),
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE substr(id, 1, ?) = ?`,
+              args: [
+                code + ":",
+                professionalPrefix.length + 1,
+                code,
+                professionalPrefix.length,
+                professionalPrefix,
+              ],
             });
-            for (const row of professionalRows.rows) {
-              const oldId = String(row.id);
-              const professional = JSON.parse(String(row.value));
-              professional.storeCode = code;
-              await transaction.execute({
-                sql: "UPDATE professionals SET id = ?, value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-                args: [
-                  `${code}:${oldId.slice(professionalPrefix.length)}`,
-                  JSON.stringify(professional),
-                  oldId,
-                ],
-              });
-            }
-
-            const bookingRows = await transaction.execute({
-              sql: "SELECT id, value FROM bookings",
+            await transaction.execute({
+              sql: `UPDATE bookings
+                SET value = json_set(value, '$.storeCode', ?), updated_at = CURRENT_TIMESTAMP
+                WHERE upper(json_extract(value, '$.storeCode')) = ?`,
+              args: [code, previousCode],
             });
-            for (const row of bookingRows.rows) {
-              const booking = JSON.parse(String(row.value));
-              if (normalizeStoreCode(booking.storeCode) !== previousCode) continue;
-              booking.storeCode = code;
-              await transaction.execute({
-                sql: "UPDATE bookings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-                args: [JSON.stringify(booking), String(row.id)],
-              });
-            }
             await transaction.execute({
               sql: "UPDATE subscription_orders SET store_code = ? WHERE store_code = ?",
               args: [code, previousCode],
@@ -3558,6 +3548,7 @@ export default async function handler(request, response) {
             settings: currentStore
               ? parseStoreSettings(currentStore.settings)
               : parseStoreSettings("{}"),
+            logo: typeof currentStore?.logo === "string" ? String(currentStore.logo) : "",
             subscriptionExpiresAt: currentStore?.subscription_expires_at
               ? String(currentStore.subscription_expires_at)
               : null,

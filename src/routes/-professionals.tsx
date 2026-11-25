@@ -520,20 +520,7 @@ export function ProfessionalsManager() {
   async function saveStoreProfile() {
     setSavingStoreProfile(true);
     try {
-      const saved = await updateStoreProfile({
-        contact: {
-          street: storeSettings.street,
-          height: storeSettings.height,
-          city: storeSettings.city,
-          province: storeSettings.province,
-          postalCode: storeSettings.postalCode,
-          whatsapp: storeSettings.whatsapp,
-          instagram: storeSettings.instagram,
-        },
-        description: storeSettings.description,
-        googleMapsUrl: storeSettings.googleMapsUrl,
-        coverImage: storeSettings.coverImage,
-      });
+      const saved = await persistStoreProfile(storeSettings.coverImage);
       setStoreSettings(saved);
       toast.success(
         saved.googleRating
@@ -549,16 +536,52 @@ export function ProfessionalsManager() {
     }
   }
 
+  async function persistStoreProfile(coverImage: string) {
+    return updateStoreProfile({
+      contact: {
+        street: storeSettings.street,
+        height: storeSettings.height,
+        city: storeSettings.city,
+        province: storeSettings.province,
+        postalCode: storeSettings.postalCode,
+        whatsapp: storeSettings.whatsapp,
+        instagram: storeSettings.instagram,
+      },
+      description: storeSettings.description,
+      googleMapsUrl: storeSettings.googleMapsUrl,
+      coverImage,
+    });
+  }
+
+  async function removeStoreCover() {
+    if (savingStoreProfile) return;
+    setSavingStoreProfile(true);
+    try {
+      const saved = await persistStoreProfile("");
+      setStoreSettings(saved);
+      toast.success("Portada eliminada.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo eliminar la portada.");
+    } finally {
+      setSavingStoreProfile(false);
+    }
+  }
+
   async function handleStoreCoverFile(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
+    if (savingStoreProfile) return;
+    setSavingStoreProfile(true);
     try {
       const coverImage = await prepareStoreCover(file);
-      setStoreSettings((current) => ({ ...current, coverImage }));
-      toast.success("Portada lista. Guardá el perfil para publicarla.");
+      const saved = await persistStoreProfile(coverImage);
+      setStoreSettings(saved);
+      toast.success("Portada guardada y publicada.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "No se pudo preparar la portada.");
+    } finally {
+      setSavingStoreProfile(false);
     }
   }
 
@@ -1192,9 +1215,7 @@ export function ProfessionalsManager() {
                       type="button"
                       variant="outline"
                       disabled={savingStoreProfile}
-                      onClick={() =>
-                        setStoreSettings((current) => ({ ...current, coverImage: "" }))
-                      }
+                      onClick={() => void removeStoreCover()}
                     >
                       Quitar
                     </Button>
