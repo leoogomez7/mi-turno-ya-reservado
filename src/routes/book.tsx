@@ -64,6 +64,7 @@ export const Route = createFileRoute("/book")({
 });
 
 const STEPS = ["Datos", "Profesional", "Servicios", "Horarios", "Confirmar"] as const;
+type ReservationStep = 0 | 1 | 2 | 3 | 4;
 const STEP_PATHS = {
   0: "/reserva",
   1: "/reserva/profesional",
@@ -71,7 +72,21 @@ const STEP_PATHS = {
   3: "/reserva/horario",
   4: "/reserva/confirmacion",
 } as const;
+const STEP_BY_PATH: Record<string, ReservationStep> = {
+  "/reserva": 0,
+  "/reserva/profesional": 1,
+  "/reserva/servicios": 2,
+  "/reserva/horario": 3,
+  "/reserva/confirmacion": 4,
+};
 const STEP_SEGMENTS = ["", "profesional", "servicios", "horario", "confirmacion"] as const;
+const STEP_BY_SEGMENT: Record<string, ReservationStep> = {
+  "": 0,
+  profesional: 1,
+  servicios: 2,
+  horario: 3,
+  confirmacion: 4,
+};
 
 function slugifyStoreName(name: string) {
   return name
@@ -97,12 +112,11 @@ function reservationStepPath(step: number, storeSlug = "") {
 }
 
 function stepForPath(pathname: string) {
-  const staticStep = Object.entries(STEP_PATHS).find(([, path]) => path === pathname)?.[0];
-  if (staticStep !== undefined) return staticStep as keyof typeof STEP_PATHS;
+  const staticStep = STEP_BY_PATH[pathname];
+  if (staticStep !== undefined) return staticStep;
   if (!storeSlugFromPath(pathname)) return undefined;
   const lastSegment = pathname.split("/").filter(Boolean).at(-1) ?? "";
-  const dynamicStep = STEP_SEGMENTS.indexOf(lastSegment as (typeof STEP_SEGMENTS)[number]);
-  return String(dynamicStep < 0 ? 0 : dynamicStep) as keyof typeof STEP_PATHS;
+  return STEP_BY_SEGMENT[lastSegment] ?? 0;
 }
 
 const EMPTY_CUSTOMER: Customer = {
@@ -442,6 +456,23 @@ export function BookPage() {
     };
   }, [auth.getIdToken, cloudDataReady, isAuthenticated, selectedStoreCode]);
 
+  const showReservationResult = useCallback(
+    (result: ReservationResult) => {
+      const currentStore = stores.find((store) => store.code === selectedStoreCode);
+      setStep(4);
+      setStepError(null);
+      void navigate({
+        to: reservationStepPath(
+          4,
+          slugifyStoreName(currentStore?.name ?? "") || routeStoreSlug,
+        ) as never,
+        replace: true,
+      });
+      setReservationResult(result);
+    },
+    [navigate, routeStoreSlug, selectedStoreCode, stores],
+  );
+
   useEffect(() => {
     if (!paymentReturn || !storeSelectionHydrated || !cloudDataReady) return;
     let pendingPayment: {
@@ -769,22 +800,6 @@ Observaciones: ${customer.notes || "Ninguna"}`;
     if (pathStep === undefined) return;
     setStep(Number(pathStep));
   }, [location.pathname]);
-
-  const showReservationResult = useCallback(
-    (result: ReservationResult) => {
-      setStep(4);
-      setStepError(null);
-      void navigate({
-        to: reservationStepPath(
-          4,
-          slugifyStoreName(selectedStore?.name ?? "") || routeStoreSlug,
-        ) as never,
-        replace: true,
-      });
-      setReservationResult(result);
-    },
-    [navigate, routeStoreSlug, selectedStore?.name],
-  );
 
   useEffect(() => {
     if (!reservationResult || step === 4) return;

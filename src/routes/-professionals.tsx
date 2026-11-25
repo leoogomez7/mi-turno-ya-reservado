@@ -292,6 +292,16 @@ async function prepareStoreCover(file: File) {
   });
 }
 
+function getStoreBookingPath(name: string) {
+  const slug = name
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return slug ? `/reserva/${slug}` : "/reserva";
+}
+
 export function ProfessionalsManager() {
   const { isAuthenticated, isLoading, role, getIdToken } = useAppAuth();
   const [professionals, setProfessionals] = useState<Professional[]>([]);
@@ -1029,27 +1039,47 @@ export function ProfessionalsManager() {
                   <strong className="text-gold">
                     {currentStoreCode || (storeDraftLoaded ? "—" : "Cargando...")}
                   </strong>
-                  .{" "}
+                  {currentStoreName.trim() && (
+                    <>
+                      {" · "}
+                      <a
+                        href={getStoreBookingPath(currentStoreName)}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1 font-medium text-gold underline-offset-4 hover:underline"
+                      >
+                        Link para sacar turno
+                      </a>
+                    </>
+                  )}
                 </p>
               </div>
             </div>
-            <div className="mt-5 grid gap-3 sm:grid-cols-[1fr_220px_auto]">
-              <Input
-                disabled={!storeDraftLoaded}
-                value={storeName}
-                onChange={(event) => setStoreName(event.target.value)}
-                placeholder={storeDraftLoaded ? "Nombre de la sucursal" : "Cargando..."}
-                maxLength={100}
-              />
-              <Input
-                disabled={!storeDraftLoaded}
-                value={storeCode}
-                onChange={(event) =>
-                  setStoreCode(event.target.value.toUpperCase().replace(/[^A-Z0-9_-]/g, ""))
-                }
-                placeholder={storeDraftLoaded ? "Código único (ej. BARBER01)" : "Cargando..."}
-                maxLength={20}
-              />
+            <div className="mt-5 grid items-end gap-3 sm:grid-cols-[minmax(0,1fr)_220px_auto]">
+              <div className="space-y-2">
+                <Label htmlFor="store-name">Nombre de la sucursal</Label>
+                <Input
+                  id="store-name"
+                  disabled={!storeDraftLoaded}
+                  value={storeName}
+                  onChange={(event) => setStoreName(event.target.value)}
+                  placeholder={storeDraftLoaded ? "Ej. Mi Sucursal" : "Cargando..."}
+                  maxLength={100}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="store-code">Código de reserva</Label>
+                <Input
+                  id="store-code"
+                  disabled={!storeDraftLoaded}
+                  value={storeCode}
+                  onChange={(event) =>
+                    setStoreCode(event.target.value.toUpperCase().replace(/[^A-Z0-9_-]/g, ""))
+                  }
+                  placeholder={storeDraftLoaded ? "Ej. BARBER01" : "Cargando..."}
+                  maxLength={20}
+                />
+              </div>
               <Button
                 disabled={
                   !storeDraftLoaded ||
