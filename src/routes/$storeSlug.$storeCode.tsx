@@ -75,7 +75,7 @@ function StoreLandingPage() {
   return (
     <div className="min-h-screen bg-gradient-dark">
       <SiteHeader />
-      <main className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 sm:py-10">
+      <main className="mx-auto w-full max-w-7xl px-4 py-5 sm:px-6 sm:py-6 lg:py-4">
         {loading ? (
           <div className="rounded-3xl border border-gold/30 bg-card p-8 text-sm text-muted-foreground">
             Cargando información de la sucursal…
@@ -88,12 +88,12 @@ function StoreLandingPage() {
             </p>
           </div>
         ) : (
-          <section className="overflow-hidden rounded-3xl border border-gold/30 bg-card p-5 sm:p-6">
+          <section className="overflow-hidden rounded-3xl border border-gold/30 bg-card p-4 sm:p-5 lg:p-5">
             {store.settings.coverImage && (
               <img
                 src={store.settings.coverImage}
                 alt={`Portada de ${store.name}`}
-                className="mb-5 h-40 w-full rounded-2xl object-cover sm:h-56"
+                className="mb-4 h-40 w-full rounded-2xl object-cover sm:h-48 lg:h-40"
               />
             )}
 
@@ -133,7 +133,7 @@ function StoreLandingPage() {
                     )}
                   </div>
                 </div>
-                <div className="mt-6 flex justify-center">
+                <div className="mt-4">
                   <Button
                     asChild
                     className="bg-gold text-primary-foreground hover:bg-gold-soft"
