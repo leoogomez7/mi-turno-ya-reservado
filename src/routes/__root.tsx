@@ -17,7 +17,45 @@ import { LoadingScreen } from "@/components/loading-screen";
 import { AccountSetup } from "@/components/account-setup";
 import { AuthProvider } from "@/lib/auth";
 import { useAppAuth } from "@/lib/auth-context";
-import { bootstrapCloudData, clearCloudSession, saveAccountRole } from "@/lib/cloud-sync";
+import {
+  bootstrapCloudData,
+  clearCloudSession,
+  loadReservationStore,
+  saveAccountRole,
+} from "@/lib/cloud-sync";
+
+function getInitialRouteStoreCode() {
+  if (typeof window === "undefined") return "";
+  const segments = window.location.pathname.split("/").filter(Boolean);
+  const storeCode =
+    segments[0] === "reserva"
+      ? segments.length >= 3
+        ? segments[2]
+        : ""
+      : segments.length === 2
+        ? segments[1]
+        : "";
+  try {
+    return decodeURIComponent(storeCode).trim().toUpperCase();
+  } catch {
+    return storeCode.trim().toUpperCase();
+  }
+}
+
+async function bootstrapWithInitialRouteStore(
+  account: string,
+  getToken: () => Promise<string | undefined>,
+  storeCode: string,
+) {
+  if (account === "guest" && storeCode) {
+    return bootstrapCloudData(account, getToken, storeCode);
+  }
+  const branchData = storeCode
+    ? loadReservationStore(storeCode, getToken).catch(() => undefined)
+    : Promise.resolve(undefined);
+  const [role] = await Promise.all([bootstrapCloudData(account, getToken), branchData]);
+  return role;
+}
 
 function NotFoundComponent() {
   return (
@@ -140,6 +178,7 @@ function CloudDataBootstrap({ children }: { children: ReactNode }) {
   const [needsAccountSetup, setNeedsAccountSetup] = useState(false);
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
+  const [initialRouteStoreCode] = useState(getInitialRouteStoreCode);
   const roleAssignmentInProgress = useRef<Promise<void> | null>(null);
 
   useEffect(() => {
@@ -148,7 +187,7 @@ function CloudDataBootstrap({ children }: { children: ReactNode }) {
       setReadyFor(null);
       clearCloudSession();
       setVerifiedRole(null);
-      void bootstrapCloudData("guest", async () => undefined)
+      void bootstrapWithInitialRouteStore("guest", async () => undefined, initialRouteStoreCode)
         .then(() => setReadyFor("guest"))
         .catch((reason: unknown) =>
           setError(reason instanceof Error ? reason.message : "No se pudieron cargar los datos."),
@@ -160,7 +199,7 @@ function CloudDataBootstrap({ children }: { children: ReactNode }) {
       clearCloudSession();
       setVerifiedRole(null);
       setError("");
-      void bootstrapCloudData("guest", async () => undefined)
+      void bootstrapWithInitialRouteStore("guest", async () => undefined, initialRouteStoreCode)
         .then(() => setReadyFor("guest"))
         .catch((reason: unknown) =>
           setError(reason instanceof Error ? reason.message : "No se pudieron cargar los datos."),
@@ -177,7 +216,7 @@ function CloudDataBootstrap({ children }: { children: ReactNode }) {
     let cancelled = false;
     setReadyFor(null);
     setError("");
-    void bootstrapCloudData(email, getIdToken)
+    void bootstrapWithInitialRouteStore(email, getIdToken, initialRouteStoreCode)
       .then(async (verifiedRole) => {
         if (cancelled) return;
         const requestedRole = window.sessionStorage.getItem("kinde-signup-role");

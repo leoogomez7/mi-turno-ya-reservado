@@ -4,8 +4,12 @@ import { ExternalLink, Star } from "lucide-react";
 
 import { SiteHeader } from "@/components/site-header";
 import { Button } from "@/components/ui/button";
+import { LoadingScreen } from "@/components/loading-screen";
 import {
+  getCachedReservationStore,
   getAvailableStores,
+  getCloudRecords,
+  getCurrentStoreCode,
   isCloudInitialized,
   loadReservationStore,
   type Store,
@@ -20,11 +24,20 @@ export const Route = createFileRoute("/$storeSlug/$storeCode")({
 function StoreLandingPage() {
   const { storeSlug, storeCode } = Route.useParams();
   const normalizedCode = storeCode.toUpperCase();
+  const cachedBranch = getCachedReservationStore(normalizedCode);
+  const hasMatchingCloudSnapshot = getCurrentStoreCode() === normalizedCode;
   const [store, setStore] = useState<Store | null>(
-    () => getAvailableStores().find((item) => item.code === normalizedCode) ?? null,
+    () =>
+      cachedBranch?.stores.find((item) => item.code === normalizedCode) ??
+      getAvailableStores().find((item) => item.code === normalizedCode) ??
+      null,
   );
-  const [professionals, setProfessionals] = useState<Professional[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [professionals, setProfessionals] = useState<Professional[]>(
+    () =>
+      cachedBranch?.data.professionals ??
+      (hasMatchingCloudSnapshot ? getCloudRecords("professionals") : []),
+  );
+  const [loading, setLoading] = useState(!cachedBranch && !hasMatchingCloudSnapshot);
 
   useEffect(() => {
     let cancelled = false;
@@ -41,6 +54,13 @@ function StoreLandingPage() {
       }
 
       if (!cancelled) setStore(availableStore);
+      if (getCurrentStoreCode() === normalizedCode) {
+        if (!cancelled) {
+          setProfessionals(getCloudRecords("professionals"));
+          setLoading(false);
+        }
+        return;
+      }
       try {
         const result = await loadReservationStore(normalizedCode);
         if (cancelled) return;
@@ -76,15 +96,13 @@ function StoreLandingPage() {
     if (store) document.title = store.name;
   }, [store?.name]);
 
+  if (loading) return <LoadingScreen message="Sincronizando turnos y profesionales" />;
+
   return (
     <div className="min-h-screen bg-gradient-dark">
       <SiteHeader />
       <main className="mx-auto w-full max-w-7xl px-4 py-5 sm:px-6 sm:py-6 lg:py-4">
-        {loading ? (
-          <div className="rounded-3xl border border-gold/30 bg-card p-8 text-sm text-muted-foreground">
-            Cargando información de la sucursal…
-          </div>
-        ) : !store ? (
+        {!store ? (
           <div className="rounded-3xl border border-gold/30 bg-card p-8 text-center">
             <h1 className="font-display text-2xl font-semibold">No encontramos esta sucursal</h1>
             <p className="mt-2 text-sm text-muted-foreground">

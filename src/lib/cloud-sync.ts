@@ -3,6 +3,7 @@ import type { Professional } from "@/lib/professional-store";
 import type { AccountRole } from "@/lib/auth";
 
 type CloudSnapshot = { bookings: Booking[]; professionals: Professional[] };
+type ReservationStoreResult = { data: CloudSnapshot; stores: Store[] };
 export type StoreSettings = {
   address: string;
   street: string;
@@ -81,6 +82,10 @@ let snapshotRevision = 0;
 let cloudSessionRevision = 0;
 let activeCloudWrites = 0;
 let cloudRefreshInFlight: Promise<void> | null = null;
+const reservationStoreCache = new Map<
+  string,
+  { promise: Promise<ReservationStoreResult>; result: ReservationStoreResult | null; loadedAt: number }
+>();
 
 function dispatchCloudReady() {
   window.dispatchEvent(new Event("bookings:changed"));
@@ -759,33 +764,61 @@ export async function cancelPendingBooking(
   );
 }
 
-export async function loadReservationStore(
+export function getCachedReservationStore(storeCode: string) {
+  const cached = reservationStoreCache.get(storeCode.trim().toUpperCase());
+  if (!cached?.result || Date.now() - cached.loadedAt > 30_000) return undefined;
+  return cached.result;
+}
+
+export function loadReservationStore(
   storeCode: string,
   getToken?: () => Promise<string | undefined>,
 ) {
-  const token = await getToken?.();
-  const response = await fetch("/api/data", {
-    headers: {
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      "X-Store-Code": storeCode.trim().toUpperCase(),
-    },
-    cache: "no-store",
-  });
-  const result = (await response.json()) as {
-    data?: CloudSnapshot;
-    stores?: Store[];
-    error?: string;
-  };
-  if (!response.ok) throw new Error(result.error || "No se pudo cargar la sucursal elegida.");
-  if (
-    !result.data ||
-    !Array.isArray(result.data.professionals) ||
-    !Array.isArray(result.data.bookings) ||
-    !Array.isArray(result.stores)
-  ) {
-    throw new Error("No se recibieron los datos de la sucursal elegida.");
+  const normalizedCode = storeCode.trim().toUpperCase();
+  const cached = reservationStoreCache.get(normalizedCode);
+  if (cached && (cached.result && Date.now() - cached.loadedAt <= 30_000)) {
+    return Promise.resolve(cached.result);
   }
-  return { data: result.data, stores: result.stores };
+  if (cached && !cached.result) return cached.promise;
+
+  const promise = (async (): Promise<ReservationStoreResult> => {
+    const token = await getToken?.();
+    const response = await fetch("/api/data", {
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        "X-Store-Code": normalizedCode,
+      },
+      cache: "no-store",
+    });
+    const result = (await response.json()) as {
+      data?: CloudSnapshot;
+      stores?: Store[];
+      error?: string;
+    };
+    if (!response.ok) throw new Error(result.error || "No se pudo cargar la sucursal elegida.");
+    if (
+      !result.data ||
+      !Array.isArray(result.data.professionals) ||
+      !Array.isArray(result.data.bookings) ||
+      !Array.isArray(result.stores)
+    ) {
+      throw new Error("No se recibieron los datos de la sucursal elegida.");
+    }
+    return { data: result.data, stores: result.stores };
+  })();
+
+  reservationStoreCache.set(normalizedCode, { promise, result: null, loadedAt: 0 });
+  void promise.then(
+    (result) => {
+      reservationStoreCache.set(normalizedCode, { promise, result, loadedAt: Date.now() });
+    },
+    () => {
+      if (reservationStoreCache.get(normalizedCode)?.promise === promise) {
+        reservationStoreCache.delete(normalizedCode);
+      }
+    },
+  );
+  return promise;
 }
 
 export async function createPublicBooking(

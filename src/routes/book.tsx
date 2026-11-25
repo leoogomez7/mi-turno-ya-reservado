@@ -854,6 +854,21 @@ Observaciones: ${customer.notes || "Ninguna"}`;
     });
   }
 
+  function goBack() {
+    if (step > 0) {
+      goToStep(step - 1);
+      return;
+    }
+
+    const storeSlug = slugifyStoreName(selectedStore?.name ?? "") || routeStoreSlug;
+    const storeCode = selectedStore?.code ?? routeStoreCode;
+    const storeInfoPath =
+      storeSlug && storeCode
+        ? `/${encodeURIComponent(storeSlug)}/${encodeURIComponent(storeCode)}`
+        : "/";
+    void navigate({ to: storeInfoPath as never });
+  }
+
   const canNext = useMemo(() => {
     if (step === 0) {
       return (
@@ -1483,10 +1498,7 @@ Observaciones: ${customer.notes || "Ninguna"}`;
           <Button
             type="button"
             variant="ghost"
-            onClick={() => {
-              goToStep(step - 1);
-            }}
-            disabled={step === 0}
+            onClick={goBack}
           >
             <ChevronLeft className="mr-1 h-4 w-4" /> Atrás
           </Button>
