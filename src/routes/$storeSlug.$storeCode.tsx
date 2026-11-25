@@ -97,7 +97,7 @@ function StoreLandingPage() {
               <img
                 src={store.settings.coverImage}
                 alt={`Portada de ${store.name}`}
-                className="mb-4 aspect-45/7 w-full rounded-2xl object-cover"
+                className="mb-4 aspect-240/43 w-full rounded-2xl object-cover"
               />
             )}
 
@@ -121,14 +121,14 @@ function StoreLandingPage() {
                         href={store.settings.googleMapsUrl}
                         target="_blank"
                         rel="noreferrer"
-                        className="mt-2 inline-flex items-center gap-1.5 text-sm text-gold underline-offset-4 hover:underline"
+                        className="mt-2 flex w-fit items-center gap-1.5 text-sm text-gold underline-offset-4 hover:underline"
                       >
                         {typeof rating === "number" && (
                           <span className="inline-flex items-center gap-1 font-semibold">
                             <Star className="h-4 w-4 fill-current" /> {rating.toFixed(1)}
                           </span>
                         )}
-                        Ver reseñas en Google Maps
+                        Ver ubicación
                         {store.settings.googleReviewCount > 0 && (
                           <span>({store.settings.googleReviewCount})</span>
                         )}
@@ -140,21 +140,19 @@ function StoreLandingPage() {
                         href={store.settings.googleReviewUrl}
                         target="_blank"
                         rel="noreferrer"
-                        className="mt-1 inline-flex items-center gap-1.5 text-sm text-gold underline-offset-4 hover:underline"
+                        className="mt-1 flex w-fit items-center gap-1.5 text-sm text-gold underline-offset-4 hover:underline"
                       >
                         Escribir una reseña
                         <ExternalLink className="h-3.5 w-3.5" />
                       </a>
                     )}
+                    <Button
+                      asChild
+                      className="mt-3 w-fit bg-gold text-primary-foreground hover:bg-gold-soft"
+                    >
+                      <Link to={bookingPath as never}>Reservar turno</Link>
+                    </Button>
                   </div>
-                </div>
-                <div className="mt-3 flex justify-start">
-                  <Button
-                    asChild
-                    className="bg-gold text-primary-foreground hover:bg-gold-soft"
-                  >
-                    <Link to={bookingPath as never}>Reservar turno</Link>
-                  </Button>
                 </div>
               </div>
 

@@ -1226,7 +1226,7 @@ Observaciones: ${customer.notes || "Ninguna"}`;
                     rel="noreferrer"
                     className="inline-flex h-10 items-center gap-1 text-sm text-gold underline-offset-4 hover:underline"
                   >
-                    Ver reseñas en Google Maps
+                    Ver ubicación
                     <ExternalLink className="h-3.5 w-3.5" />
                   </a>
                 ) : null)}

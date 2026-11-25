@@ -221,7 +221,7 @@ async function prepareStoreCover(file: File, positionX: number, positionY: numbe
   return prepareImageCrop(
     file,
     1440,
-    224,
+    258,
     positionX,
     positionY,
     zoom,
@@ -606,7 +606,7 @@ export function ProfessionalsManager() {
     if (!imageEditor || !drag || drag.pointerId !== event.pointerId || !frame || !image) return;
 
     const frameRect = frame.getBoundingClientRect();
-    const aspectRatio = imageEditor.kind === "cover" ? 1440 / 224 : 1;
+    const aspectRatio = imageEditor.kind === "cover" ? 1440 / 258 : 1;
     const sourceRatio = image.naturalWidth / image.naturalHeight;
     const baseWidthRatio = sourceRatio > aspectRatio ? sourceRatio / aspectRatio : 1;
     const baseHeightRatio = sourceRatio < aspectRatio ? aspectRatio / sourceRatio : 1;
@@ -1139,7 +1139,7 @@ export function ProfessionalsManager() {
     setForm({ ...form, services });
   }
 
-  const imageFrameAspect = imageEditor?.kind === "cover" ? 1440 / 224 : 1;
+  const imageFrameAspect = imageEditor?.kind === "cover" ? 1440 / 258 : 1;
   const editorSourceAspect = imageEditor?.naturalWidth && imageEditor.naturalHeight
     ? imageEditor.naturalWidth / imageEditor.naturalHeight
     : imageFrameAspect;
@@ -1314,7 +1314,7 @@ export function ProfessionalsManager() {
                 <img
                   src={storeSettings.coverImage}
                   alt={`Portada de ${currentStoreName || "la sucursal"}`}
-                  className="aspect-45/7 w-full object-cover"
+                  className="aspect-240/43 w-full object-cover"
                 />
               ) : (
                 <div className="flex h-32 items-center justify-center bg-linear-to-r from-gold/10 via-background to-gold/10 text-sm text-muted-foreground">
@@ -2608,7 +2608,7 @@ export function ProfessionalsManager() {
                 <>
                   <div
                     ref={imageEditorFrameRef}
-                    className={`relative mx-auto w-full touch-none overflow-hidden border border-gold/40 bg-black ${imageEditor.kind === "cover" ? "aspect-45/7 rounded-xl" : "aspect-square max-w-sm rounded-full"}`}
+                    className={`relative mx-auto w-full touch-none overflow-hidden border border-gold/40 bg-black ${imageEditor.kind === "cover" ? "aspect-240/43 rounded-xl" : "aspect-square max-w-sm rounded-full"}`}
                     onPointerDown={handleImagePointerDown}
                     onPointerMove={handleImagePointerMove}
                     onPointerUp={handleImagePointerUp}
