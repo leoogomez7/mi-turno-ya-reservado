@@ -14,7 +14,7 @@ export function rememberAuthReturnPath(path: string) {
     "/reserva",
   ];
   const isBranchReservationPath =
-    /^\/reserva\/[a-z0-9]+(?:-[a-z0-9]+)*(?:\/(?:profesional|servicios|horario|confirmacion))?$/.test(
+    /^\/reserva\/[a-z0-9]+(?:-[a-z0-9]+)*(?:\/[A-Z0-9_-]+)?(?:\/(?:profesional|servicios|horario|confirmacion))?$/.test(
       path,
     );
   if (allowedPaths.includes(path) || isBranchReservationPath) {

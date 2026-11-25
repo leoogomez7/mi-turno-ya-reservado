@@ -291,14 +291,17 @@ async function prepareStoreCover(file: File) {
   });
 }
 
-function getStoreBookingPath(name: string) {
+function getStoreBookingPath(name: string, code: string) {
   const slug = name
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
-  return slug ? `/reserva/${slug}` : "/reserva";
+  const reservationCode = code.trim().toUpperCase();
+  return slug && reservationCode
+    ? `/reserva/${slug}/${encodeURIComponent(reservationCode)}`
+    : "/reserva";
 }
 
 export function ProfessionalsManager() {
@@ -780,7 +783,10 @@ export function ProfessionalsManager() {
   }
 
   async function copyStoreBookingLink() {
-    const url = new URL(getStoreBookingPath(currentStoreName), window.location.origin).toString();
+    const url = new URL(
+      getStoreBookingPath(currentStoreName, currentStoreCode),
+      window.location.origin,
+    ).toString();
     try {
       await navigator.clipboard.writeText(url);
       toast.success("Link de reserva copiado.");
@@ -1059,7 +1065,7 @@ export function ProfessionalsManager() {
                     <>
                       {" · "}
                       <a
-                        href={getStoreBookingPath(currentStoreName)}
+                        href={getStoreBookingPath(currentStoreName, currentStoreCode)}
                         target="_blank"
                         rel="noreferrer"
                         className="inline-flex items-center gap-1 font-medium text-gold underline-offset-4 hover:underline"
@@ -1208,16 +1214,23 @@ export function ProfessionalsManager() {
                     onClick={() => storeCoverInputRef.current?.click()}
                   >
                     <ImagePlus className="mr-2 h-4 w-4" />
-                    {storeSettings.coverImage ? "Cambiar portada" : "Agregar portada"}
+                    {savingStoreProfile
+                      ? storeSettings.coverImage
+                        ? "Cambiando portada..."
+                        : "Agregando portada..."
+                      : storeSettings.coverImage
+                        ? "Cambiar portada"
+                        : "Agregar portada"}
                   </Button>
                   {storeSettings.coverImage && (
                     <Button
                       type="button"
                       variant="outline"
+                      className="border-red-500/40 bg-red-500/10 text-red-300 hover:bg-red-500/20 hover:text-red-200"
                       disabled={savingStoreProfile}
                       onClick={() => void removeStoreCover()}
                     >
-                      Quitar
+                      {savingStoreProfile ? "Eliminando..." : "Eliminar"}
                     </Button>
                   )}
                 </div>

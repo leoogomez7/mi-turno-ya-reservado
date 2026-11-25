@@ -10,7 +10,6 @@ import {
   Briefcase,
   User,
   Copy,
-  MapPin,
   ExternalLink,
   type LucideIcon,
 } from "lucide-react";
@@ -105,9 +104,19 @@ function storeSlugFromPath(pathname: string) {
     : segments[1];
 }
 
-function reservationStepPath(step: number, storeSlug = "") {
-  if (storeSlug)
-    return `/reserva/${storeSlug}${STEP_SEGMENTS[step] ? `/${STEP_SEGMENTS[step]}` : ""}`;
+function storeCodeFromPath(pathname: string) {
+  const segments = pathname.split("/").filter(Boolean);
+  if (segments[0] !== "reserva" || segments.length < 3) return "";
+  return STEP_BY_SEGMENT[segments[2]] === undefined ? segments[2].toUpperCase() : "";
+}
+
+function reservationStepPath(step: number, storeSlug = "", storeCode = "") {
+  if (storeSlug) {
+    const branchPath = storeCode
+      ? `/reserva/${storeSlug}/${encodeURIComponent(storeCode.toUpperCase())}`
+      : `/reserva/${storeSlug}`;
+    return `${branchPath}${STEP_SEGMENTS[step] ? `/${STEP_SEGMENTS[step]}` : ""}`;
+  }
   return STEP_PATHS[step as keyof typeof STEP_PATHS];
 }
 
@@ -161,6 +170,7 @@ export function BookPage() {
   const { isAuthenticated, isLoading, role, user } = auth;
   const location = useLocation();
   const routeStoreSlug = storeSlugFromPath(location.pathname);
+  const routeStoreCode = storeCodeFromPath(location.pathname);
   const initialStep = stepForPath(location.pathname) ?? 0;
   const [accountStoreCode] = useState(getCurrentStoreCode());
   const [step, setStep] = useState<number>(Number(initialStep));
@@ -365,7 +375,9 @@ export function BookPage() {
   useEffect(() => {
     if (!cloudDataReady) return;
     if (routeStoreSlug) {
-      const branchFromUrl = stores.find((store) => slugifyStoreName(store.name) === routeStoreSlug);
+      const branchFromUrl = routeStoreCode
+        ? stores.find((store) => store.code === routeStoreCode)
+        : stores.find((store) => slugifyStoreName(store.name) === routeStoreSlug);
       if (!branchFromUrl) {
         if (selectedStoreCode) setSelectedStoreCode("");
         if (step !== 0) {
@@ -423,11 +435,14 @@ export function BookPage() {
     if (needsStore) {
       if (step !== 0) {
         setStep(0);
-        void navigate({ to: reservationStepPath(0, routeStoreSlug) as never, replace: true });
+        void navigate({
+          to: reservationStepPath(0, routeStoreSlug, routeStoreCode) as never,
+          replace: true,
+        });
       }
       setStepError(step > 0 ? "Elegí una sucursal para poder continuar con la reserva." : null);
     }
-  }, [cloudDataReady, navigate, routeStoreSlug, selectedStoreCode, stores, step]);
+  }, [cloudDataReady, navigate, routeStoreCode, routeStoreSlug, selectedStoreCode, stores, step]);
 
   useEffect(() => {
     if (!cloudDataReady || !selectedStoreCode) return;
@@ -465,12 +480,13 @@ export function BookPage() {
         to: reservationStepPath(
           4,
           slugifyStoreName(currentStore?.name ?? "") || routeStoreSlug,
+          currentStore?.code ?? routeStoreCode,
         ) as never,
         replace: true,
       });
       setReservationResult(result);
     },
-    [navigate, routeStoreSlug, selectedStoreCode, stores],
+    [navigate, routeStoreCode, routeStoreSlug, selectedStoreCode, stores],
   );
 
   useEffect(() => {
@@ -602,8 +618,12 @@ export function BookPage() {
     .filter(Boolean);
 
   useEffect(() => {
-    if (!selectedStore || routeStoreSlug) return;
-    const canonicalPath = reservationStepPath(step, slugifyStoreName(selectedStore.name));
+    if (!selectedStore) return;
+    const canonicalPath = reservationStepPath(
+      step,
+      slugifyStoreName(selectedStore.name),
+      selectedStore.code,
+    );
     if (canonicalPath !== location.pathname) {
       void navigate({ to: canonicalPath as never, replace: true });
     }
@@ -637,7 +657,7 @@ export function BookPage() {
       setStepError(null);
       toast.success(`Seleccionaste ${store.name}.`);
       void navigate({
-        to: reservationStepPath(0, slugifyStoreName(store.name)) as never,
+        to: reservationStepPath(0, slugifyStoreName(store.name), store.code) as never,
         replace: true,
       });
     } catch (error) {
@@ -706,6 +726,7 @@ export function BookPage() {
         to: reservationStepPath(
           3,
           slugifyStoreName(selectedStore?.name ?? "") || routeStoreSlug,
+          selectedStore?.code ?? routeStoreCode,
         ) as never,
       });
     }
@@ -714,8 +735,10 @@ export function BookPage() {
     duration,
     navigate,
     reservationBookings,
+    routeStoreCode,
     routeStoreSlug,
     selectedProfessional,
+    selectedStore?.code,
     selectedStore?.name,
     selectedStoreCode,
     step,
@@ -747,6 +770,7 @@ export function BookPage() {
       to: reservationStepPath(
         3,
         slugifyStoreName(selectedStore?.name ?? "") || routeStoreSlug,
+        selectedStore?.code ?? routeStoreCode,
       ) as never,
     });
     toast.error("Ese horario ya fue reservado. Elegí otro horario disponible.");
@@ -805,10 +829,19 @@ Observaciones: ${customer.notes || "Ninguna"}`;
       to: reservationStepPath(
         4,
         slugifyStoreName(selectedStore?.name ?? "") || routeStoreSlug,
+        selectedStore?.code ?? routeStoreCode,
       ) as never,
       replace: true,
     });
-  }, [navigate, reservationResult, routeStoreSlug, selectedStore?.name, step]);
+  }, [
+    navigate,
+    reservationResult,
+    routeStoreCode,
+    routeStoreSlug,
+    selectedStore?.code,
+    selectedStore?.name,
+    step,
+  ]);
 
   function goToStep(nextStep: number) {
     const safeStep = Math.max(0, Math.min(STEPS.length - 1, nextStep));
@@ -818,6 +851,7 @@ Observaciones: ${customer.notes || "Ninguna"}`;
       to: reservationStepPath(
         safeStep,
         slugifyStoreName(selectedStore?.name ?? "") || routeStoreSlug,
+        selectedStore?.code ?? routeStoreCode,
       ) as never,
     });
   }
@@ -1073,7 +1107,10 @@ Observaciones: ${customer.notes || "Ninguna"}`;
         setStorePickerOpen(true);
       } else {
         setStep(0);
-        void navigate({ to: reservationStepPath(0, routeStoreSlug) as never, replace: true });
+        void navigate({
+          to: reservationStepPath(0, routeStoreSlug, routeStoreCode) as never,
+          replace: true,
+        });
       }
       toast.error(message);
       return;
@@ -1172,28 +1209,23 @@ Observaciones: ${customer.notes || "Ninguna"}`;
                   />
                 )}
                 <div className="min-w-0">
-                  <p className="text-xs uppercase tracking-widest text-gold">
-                    {selectedStore ? "Sucursal seleccionada" : "Antes de reservar"}
-                  </p>
                   <h2 className="mt-1 font-display text-2xl font-semibold">
                     {selectedStore?.name ?? "Seleccioná una sucursal · Tocá aquí para buscar"}
                   </h2>
-                  {selectedStore && (
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      Código de reserva: <span className="text-gold">{selectedStore.code}</span>
-                    </p>
-                  )}
                 </div>
               </div>
-              {selectedStore && (
-                <Button
-                  type="button"
-                  className="h-10 px-4 text-sm bg-gold text-primary-foreground hover:bg-gold-soft"
-                  onClick={() => setStorePickerOpen(true)}
-                >
-                  Cambiar sucursal
-                </Button>
-              )}
+              {selectedStore &&
+                (storeSettings?.googleMapsUrl ? (
+                  <a
+                    href={storeSettings.googleMapsUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex h-10 items-center gap-1 text-sm text-gold underline-offset-4 hover:underline"
+                  >
+                    Ver reseñas en Google Maps
+                    <ExternalLink className="h-3.5 w-3.5" />
+                  </a>
+                ) : null)}
             </div>
             {selectedStore &&
               (storeEmployees.length > 0 ||
@@ -1220,14 +1252,11 @@ Observaciones: ${customer.notes || "Ninguna"}`;
                     </div>
                   )}
                   {storeSettings?.address && (
-                    <div className="flex items-start gap-2">
-                      <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-gold" />
-                      <div>
-                        <p className="text-xs uppercase tracking-wider text-muted-foreground">
-                          Ubicación
-                        </p>
-                        <p className="mt-1 text-sm">{storeSettings.address}</p>
-                      </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wider text-muted-foreground">
+                        Ubicación
+                      </p>
+                      <p className="mt-1 text-sm">{storeSettings.address}</p>
                     </div>
                   )}
                   {storeSettings?.googleMapsUrl && (
@@ -1248,21 +1277,16 @@ Observaciones: ${customer.notes || "Ninguna"}`;
                           </p>
                         </div>
                       ) : null}
-                      <a
-                        href={storeSettings.googleMapsUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-1 text-sm text-gold underline-offset-4 hover:underline"
-                      >
-                        {googleRating === null
-                          ? "Ver reseñas en Google Maps"
-                          : "Ver en Google Maps"}
-                        <ExternalLink className="h-3.5 w-3.5" />
-                      </a>
                     </div>
                   )}
                 </div>
               )}
+            {selectedStore && (
+              <p className="mt-4 border-t border-border pt-3 text-xs text-muted-foreground">
+                Código de reserva:{" "}
+                <span className="font-medium text-gold">{selectedStore.code}</span>
+              </p>
+            )}
           </section>
         )}
         {step === 0 && (

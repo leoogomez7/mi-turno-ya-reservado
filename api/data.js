@@ -3495,6 +3495,16 @@ export default async function handler(request, response) {
         }
         const currentStore = existingStore.rows[0];
         const previousCode = currentStore ? normalizeStoreCode(currentStore.code) : "";
+        const duplicateCode = await transaction.execute({
+          sql: "SELECT code FROM stores WHERE upper(code) = ? AND code <> ? LIMIT 1",
+          args: [code, currentStore ? String(currentStore.code) : ""],
+        });
+        if (duplicateCode.rows[0]) {
+          await transaction.rollback();
+          return response
+            .status(409)
+            .json({ error: "Ese código de reserva ya está utilizado. Elegí otro." });
+        }
 
         if (!currentStore) {
           await transaction.execute({
