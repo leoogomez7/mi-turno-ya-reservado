@@ -12,6 +12,7 @@ export type StoreSettings = {
   postalCode: string;
   description: string;
   googleMapsUrl: string;
+  googleReviewUrl: string;
   googleRating: number | null;
   googleReviewCount: number;
   coverImage: string;
@@ -463,6 +464,7 @@ export async function updateStoreProfile(profile: {
   contact: StoreContactSettings;
   description: string;
   googleMapsUrl: string;
+  googleReviewUrl: string;
   coverImage: string;
 }) {
   if (!tokenGetter)

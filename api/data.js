@@ -476,6 +476,7 @@ function parseStoreSettings(value) {
       employees: typeof source.employees === "string" ? source.employees : "",
       description: typeof source.description === "string" ? source.description : "",
       googleMapsUrl: typeof source.googleMapsUrl === "string" ? source.googleMapsUrl : "",
+      googleReviewUrl: typeof source.googleReviewUrl === "string" ? source.googleReviewUrl : "",
       googleRating:
         typeof source.googleRating === "number" &&
         source.googleRating >= 0 &&
@@ -519,6 +520,7 @@ function parseStoreSettings(value) {
       employees: "",
       description: "",
       googleMapsUrl: "",
+      googleReviewUrl: "",
       googleRating: null,
       googleReviewCount: 0,
       coverImage: "",
@@ -570,6 +572,7 @@ function validateStoreSettings(value) {
   const employees = value.employees ?? "";
   const description = value.description ?? "";
   const googleMapsUrl = value.googleMapsUrl ?? "";
+  const googleReviewUrl = value.googleReviewUrl ?? "";
   const coverImage = value.coverImage ?? "";
   if (
     typeof employees !== "string" ||
@@ -579,6 +582,9 @@ function validateStoreSettings(value) {
     typeof googleMapsUrl !== "string" ||
     googleMapsUrl.length > 2048 ||
     !isGoogleMapsUrl(googleMapsUrl) ||
+    typeof googleReviewUrl !== "string" ||
+    googleReviewUrl.length > 2048 ||
+    !isSecureExternalUrl(googleReviewUrl) ||
     typeof coverImage !== "string" ||
     coverImage.length > 2_800_000 ||
     (coverImage && !/^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(coverImage))
@@ -596,6 +602,7 @@ function validateStoreSettings(value) {
   settings.employees = employees.trim();
   settings.description = description.trim();
   settings.googleMapsUrl = googleMapsUrl.trim();
+  settings.googleReviewUrl = googleReviewUrl.trim();
   settings.googleRating = googleRating;
   settings.googleReviewCount = googleReviewCount;
   settings.coverImage = coverImage;
@@ -633,6 +640,16 @@ function isGoogleMapsUrl(value) {
       url.protocol === "https:" &&
       ["google.com", "www.google.com", "maps.google.com", "maps.app.goo.gl"].includes(url.hostname)
     );
+  } catch {
+    return false;
+  }
+}
+
+function isSecureExternalUrl(value) {
+  if (!value) return true;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && !url.username && !url.password;
   } catch {
     return false;
   }
@@ -3687,6 +3704,7 @@ export default async function handler(request, response) {
           instagram: contact.instagram ?? currentSettings.instagram,
           description: profile.description ?? currentSettings.description,
           googleMapsUrl: profile.googleMapsUrl ?? currentSettings.googleMapsUrl,
+          googleReviewUrl: profile.googleReviewUrl ?? currentSettings.googleReviewUrl,
           coverImage: profile.coverImage ?? currentSettings.coverImage,
         });
         if (!settings)

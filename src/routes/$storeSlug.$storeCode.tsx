@@ -97,7 +97,7 @@ function StoreLandingPage() {
               <img
                 src={store.settings.coverImage}
                 alt={`Portada de ${store.name}`}
-                className="mb-4 aspect-18/7 w-full rounded-2xl object-cover"
+                className="mb-4 aspect-45/7 w-full rounded-2xl object-cover"
               />
             )}
 
@@ -132,6 +132,17 @@ function StoreLandingPage() {
                         {store.settings.googleReviewCount > 0 && (
                           <span>({store.settings.googleReviewCount})</span>
                         )}
+                        <ExternalLink className="h-3.5 w-3.5" />
+                      </a>
+                    )}
+                    {store.settings.googleReviewUrl && (
+                      <a
+                        href={store.settings.googleReviewUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="mt-1 inline-flex items-center gap-1.5 text-sm text-gold underline-offset-4 hover:underline"
+                      >
+                        Escribir una reseña
                         <ExternalLink className="h-3.5 w-3.5" />
                       </a>
                     )}

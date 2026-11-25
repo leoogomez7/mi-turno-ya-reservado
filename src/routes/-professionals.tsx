@@ -78,6 +78,7 @@ const emptyStoreSettings: StoreSettings = {
   postalCode: "",
   description: "",
   googleMapsUrl: "",
+  googleReviewUrl: "",
   googleRating: null,
   googleReviewCount: 0,
   coverImage: "",
@@ -220,7 +221,7 @@ async function prepareStoreCover(file: File, positionX: number, positionY: numbe
   return prepareImageCrop(
     file,
     1440,
-    560,
+    224,
     positionX,
     positionY,
     zoom,
@@ -550,6 +551,7 @@ export function ProfessionalsManager() {
       },
       description: storeSettings.description,
       googleMapsUrl: storeSettings.googleMapsUrl,
+      googleReviewUrl: storeSettings.googleReviewUrl,
       coverImage,
     });
   }
@@ -604,7 +606,7 @@ export function ProfessionalsManager() {
     if (!imageEditor || !drag || drag.pointerId !== event.pointerId || !frame || !image) return;
 
     const frameRect = frame.getBoundingClientRect();
-    const aspectRatio = imageEditor.kind === "cover" ? 1440 / 560 : 1;
+    const aspectRatio = imageEditor.kind === "cover" ? 1440 / 224 : 1;
     const sourceRatio = image.naturalWidth / image.naturalHeight;
     const baseWidthRatio = sourceRatio > aspectRatio ? sourceRatio / aspectRatio : 1;
     const baseHeightRatio = sourceRatio < aspectRatio ? aspectRatio / sourceRatio : 1;
@@ -1137,7 +1139,7 @@ export function ProfessionalsManager() {
     setForm({ ...form, services });
   }
 
-  const imageFrameAspect = imageEditor?.kind === "cover" ? 1440 / 560 : 1;
+  const imageFrameAspect = imageEditor?.kind === "cover" ? 1440 / 224 : 1;
   const editorSourceAspect = imageEditor?.naturalWidth && imageEditor.naturalHeight
     ? imageEditor.naturalWidth / imageEditor.naturalHeight
     : imageFrameAspect;
@@ -1276,7 +1278,7 @@ export function ProfessionalsManager() {
                     disabled={savingStoreLogo || loadingImageToMove}
                     onClick={() => void openSavedImageEditor("logo", savedStoreLogo)}
                   >
-                    {loadingImageToMove ? "Cargando…" : "Mover"}
+                    {loadingImageToMove ? "Cargando…" : "Ajustar"}
                   </Button>
                 )}
                 <Button
@@ -1312,7 +1314,7 @@ export function ProfessionalsManager() {
                 <img
                   src={storeSettings.coverImage}
                   alt={`Portada de ${currentStoreName || "la sucursal"}`}
-                  className="aspect-18/7 w-full object-cover"
+                  className="aspect-45/7 w-full object-cover"
                 />
               ) : (
                 <div className="flex h-32 items-center justify-center bg-linear-to-r from-gold/10 via-background to-gold/10 text-sm text-muted-foreground">
@@ -1341,7 +1343,7 @@ export function ProfessionalsManager() {
                       disabled={savingStoreProfile || loadingImageToMove}
                       onClick={() => void openSavedImageEditor("cover", storeSettings.coverImage)}
                     >
-                      {loadingImageToMove ? "Cargando…" : "Mover"}
+                      {loadingImageToMove ? "Cargando…" : "Ajustar"}
                     </Button>
                   )}
                   <Button
@@ -1572,6 +1574,23 @@ export function ProfessionalsManager() {
                   <p className="mt-1 text-xs text-muted-foreground">
                     Se mostrará un enlace al lugar. Las estrellas y cantidad de reseñas se importan
                     con GOOGLE_MAPS_API_KEY configurada en el servidor.
+                  </p>
+                </Field>
+              </div>
+              <div className="sm:col-span-2">
+                <Field label="Escribir una reseña (opcional)">
+                  <Input
+                    type="url"
+                    disabled={loadingStoreSettings}
+                    value={storeSettings.googleReviewUrl}
+                    onChange={(event) =>
+                      setStoreSettings({ ...storeSettings, googleReviewUrl: event.target.value })
+                    }
+                    maxLength={2048}
+                    placeholder="https://g.page/r/.../review"
+                  />
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Enlace directo al formulario para dejar una reseña.
                   </p>
                 </Field>
               </div>
@@ -2579,7 +2598,7 @@ export function ProfessionalsManager() {
             <DialogContent className="w-[calc(100vw-2rem)] sm:max-w-3xl">
               <DialogHeader>
                 <DialogTitle>
-                  Mover {imageEditor?.kind === "cover" ? "portada" : "logo de la sucursal"}
+                  Ajustar {imageEditor?.kind === "cover" ? "portada" : "logo de la sucursal"}
                 </DialogTitle>
                 <DialogDescription>
                   Arrastrá la imagen para acomodarla. Usá el zoom para ajustar el encuadre.
@@ -2589,7 +2608,7 @@ export function ProfessionalsManager() {
                 <>
                   <div
                     ref={imageEditorFrameRef}
-                    className={`relative mx-auto w-full touch-none overflow-hidden border border-gold/40 bg-black ${imageEditor.kind === "cover" ? "aspect-18/7 rounded-xl" : "aspect-square max-w-sm rounded-full"}`}
+                    className={`relative mx-auto w-full touch-none overflow-hidden border border-gold/40 bg-black ${imageEditor.kind === "cover" ? "aspect-45/7 rounded-xl" : "aspect-square max-w-sm rounded-full"}`}
                     onPointerDown={handleImagePointerDown}
                     onPointerMove={handleImagePointerMove}
                     onPointerUp={handleImagePointerUp}
@@ -2648,7 +2667,7 @@ export function ProfessionalsManager() {
                   disabled={!imageEditor || movingImage}
                   onClick={() => void saveImageEditorPosition()}
                 >
-                  {movingImage ? "Moviendo…" : "Mover"}
+                  {movingImage ? "Guardando…" : "Guardar"}
                 </Button>
               </DialogFooter>
             </DialogContent>
