@@ -2470,34 +2470,32 @@ export default async function handler(request, response) {
           }
           let refundDestination = "";
           let refundDestinationType = "";
-          if (paymentMethod === "efectivo" || paymentMethod === "transferencia") {
-            refundDestinationType =
-              body.refundDestinationType === "cbu"
-                ? "cbu"
-                : body.refundDestinationType === "alias"
-                  ? "alias"
-                  : "";
-            refundDestination =
-              typeof body.refundDestination === "string" ? body.refundDestination.trim() : "";
-            if (refundDestinationType === "cbu") {
-              refundDestination = refundDestination.replace(/\s/g, "");
-              if (!/^\d{22}$/.test(refundDestination))
-                return response.status(400).json({ error: "Ingresá un CBU válido de 22 dígitos." });
-            } else if (refundDestinationType === "alias") {
-              if (!/^[\p{L}\d._-]{6,30}$/u.test(refundDestination))
-                return response
-                  .status(400)
-                  .json({ error: "Ingresá un alias válido de 6 a 30 caracteres." });
-            } else {
+          refundDestinationType =
+            body.refundDestinationType === "cbu"
+              ? "cbu"
+              : body.refundDestinationType === "alias"
+                ? "alias"
+                : "";
+          refundDestination =
+            typeof body.refundDestination === "string" ? body.refundDestination.trim() : "";
+          if (refundDestinationType === "cbu") {
+            refundDestination = refundDestination.replace(/\s/g, "");
+            if (!/^\d{22}$/.test(refundDestination))
+              return response.status(400).json({ error: "Ingresá un CBU válido de 22 dígitos." });
+          } else if (refundDestinationType === "alias") {
+            if (!/^[\p{L}\d._-]{6,30}$/u.test(refundDestination))
               return response
                 .status(400)
-                .json({ error: "Indicá si el dato para recibir la devolución es CBU o alias." });
-            }
-            booking.refundDestination = refundDestination;
-            booking.refundDestinationType = refundDestinationType;
-            if (refundDestinationType === "cbu") booking.refundCbu = refundDestination;
-            else delete booking.refundCbu;
+                .json({ error: "Ingresá un alias válido de 6 a 30 caracteres." });
+          } else {
+            return response
+              .status(400)
+              .json({ error: "Indicá si el dato para recibir la devolución es CBU o alias." });
           }
+          booking.refundDestination = refundDestination;
+          booking.refundDestinationType = refundDestinationType;
+          if (refundDestinationType === "cbu") booking.refundCbu = refundDestination;
+          else delete booking.refundCbu;
           booking.paymentCancellationStatus = "requested";
           booking.refundAmount = refundAmount;
           booking.refundRequestedAt = new Date().toISOString();

@@ -977,13 +977,13 @@ export function AgendaManager() {
                   ? "Confirmar devolución"
                   : "Datos de la devolución"}
               </DialogTitle>
-              {refundDialogBooking?.customer.paymentMethod !== "tarjeta o mercado pago" && (
-                <DialogDescription>
-                  {refundDialogBooking?.paymentCancellationStatus === "requested"
-                    ? "Revisá el importe y los datos de devolución. Al confirmar, avisaremos al cliente que el dinero ya fue devuelto."
-                    : "El turno ya está cancelado y su horario disponible."}
-                </DialogDescription>
-              )}
+              <DialogDescription>
+                {refundDialogBooking?.paymentCancellationStatus === "requested"
+                  ? refundDialogBooking.customer.paymentMethod === "tarjeta o mercado pago"
+                    ? "Gestioná la devolución por Mercado Pago o tarjeta. El CBU/alias informado es una alternativa por si hay algún inconveniente; confirmá cuando la devolución se haya realizado."
+                    : "Revisá el importe y los datos de devolución. Confirmá cuando la devolución se haya realizado."
+                  : "El turno ya está cancelado y su horario disponible."}
+              </DialogDescription>
             </DialogHeader>
             {refundDialogBooking && (
               <div className="space-y-2 rounded-xl border border-gold/30 bg-gold/5 p-4 text-sm">
@@ -1002,6 +1002,12 @@ export function AgendaManager() {
                     ).toLocaleString("es-AR")}
                   </span>
                 </p>
+                {refundDialogBooking.customer.paymentMethod === "tarjeta o mercado pago" && (
+                  <p className="text-muted-foreground">
+                    Devolución alternativa: usar el CBU o alias solo si no se puede completar por
+                    Mercado Pago o tarjeta.
+                  </p>
+                )}
                 {(refundDialogBooking.refundDestination || refundDialogBooking.refundCbu) && (
                   <div className="flex items-center justify-between gap-3">
                     <p className="min-w-0 break-all">

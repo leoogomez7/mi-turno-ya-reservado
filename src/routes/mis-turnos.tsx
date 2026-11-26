@@ -316,11 +316,7 @@ function MyBookingsPage() {
       );
       return;
     }
-    if (
-      (booking.customer.paymentMethod === "efectivo" ||
-        booking.customer.paymentMethod === "transferencia") &&
-      !isValidRefundDestination(refundDestinationType, refundDestination)
-    ) {
+    if (!isValidRefundDestination(refundDestinationType, refundDestination)) {
       toast.error(
         refundDestinationType === "cbu"
           ? "Ingresá un CBU válido de 22 dígitos."
@@ -339,13 +335,10 @@ function MyBookingsPage() {
     }
     setBusyBookingId(booking.id);
     try {
-      const needsDestination =
-        booking.customer.paymentMethod === "efectivo" ||
-        booking.customer.paymentMethod === "transferencia";
       const result = await cancelClientPayment(
         booking.id,
-        needsDestination ? refundDestinationType : undefined,
-        needsDestination ? refundDestination.trim() : undefined,
+        refundDestinationType,
+        refundDestination.trim(),
       );
       setBookings((current) =>
         current.map((item) => (item.id === booking.id ? result.booking : item)),
@@ -1605,56 +1598,45 @@ function MyBookingsPage() {
                   </p>
                 );
               })()}
-              {paymentBooking.customer.paymentMethod === "transferencia" ||
-              paymentBooking.customer.paymentMethod === "efectivo" ? (
-                <>
-                  <p>
-                    Ingresá el dato donde el profesional debe devolver el dinero. Indicá si es CBU o
-                    alias. Al enviar la solicitud, el turno se cancela y el horario queda
-                    disponible.
-                  </p>
-                  <label className="grid gap-2 text-muted-foreground">
-                    <span>Seleccionar CBU/Alias</span>
-                    <select
-                      value={refundDestinationType}
-                      onChange={(event) => {
-                        setRefundDestinationType(event.target.value as "cbu" | "alias");
-                        setRefundDestination("");
-                      }}
-                      className="w-full rounded-lg border border-border bg-background px-3 py-2 text-foreground"
-                    >
-                      <option value="cbu">CBU (22 dígitos)</option>
-                      <option value="alias">Alias</option>
-                    </select>
-                    <span>
-                      {refundDestinationType === "cbu"
-                        ? "CBU para recibir la devolución"
-                        : "Alias para recibir la devolución"}
-                    </span>
-                    <input
-                      value={refundDestination}
-                      onChange={(event) =>
-                        setRefundDestination(
-                          refundDestinationType === "cbu"
-                            ? event.target.value.replace(/\D/g, "").slice(0, 22)
-                            : event.target.value.slice(0, 30),
-                        )
-                      }
-                      inputMode={refundDestinationType === "cbu" ? "numeric" : "text"}
-                      autoComplete="off"
-                      placeholder={refundDestinationType === "cbu" ? "22 dígitos" : "ejemplo.alias"}
-                      className="w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-foreground"
-                      aria-label={`${refundDestinationType === "cbu" ? "CBU" : "Alias"} para la devolución`}
-                    />
-                  </label>
-                </>
-              ) : (
-                <p>
-                  El profesional gestionará la devolución de Mercado Pago o tarjeta. Al enviar la
-                  solicitud, el turno se cancela y el horario queda disponible; recibirás un aviso
-                  cuando confirme que hizo la devolución.
-                </p>
-              )}
+              <p>
+                {paymentBooking.customer.paymentMethod === "tarjeta o mercado pago"
+                  ? "La devolución se gestionará por Mercado Pago o tarjeta. Ingresá también un CBU o alias como alternativa por si surge algún inconveniente."
+                  : "Ingresá el dato donde el profesional debe devolver el dinero. Indicá si es CBU o alias."} Al enviar la solicitud, el turno se cancela y el horario queda disponible; recibirás un aviso cuando el profesional confirme la devolución.
+              </p>
+              <label className="grid gap-2 text-muted-foreground">
+                <span>Seleccionar CBU/Alias {paymentBooking.customer.paymentMethod === "tarjeta o mercado pago" ? "(alternativa)" : ""}</span>
+                <select
+                  value={refundDestinationType}
+                  onChange={(event) => {
+                    setRefundDestinationType(event.target.value as "cbu" | "alias");
+                    setRefundDestination("");
+                  }}
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-foreground"
+                >
+                  <option value="cbu">CBU (22 dígitos)</option>
+                  <option value="alias">Alias</option>
+                </select>
+                <span>
+                  {refundDestinationType === "cbu"
+                    ? "CBU para recibir la devolución"
+                    : "Alias para recibir la devolución"}
+                </span>
+                <input
+                  value={refundDestination}
+                  onChange={(event) =>
+                    setRefundDestination(
+                      refundDestinationType === "cbu"
+                        ? event.target.value.replace(/\D/g, "").slice(0, 22)
+                        : event.target.value.slice(0, 30),
+                    )
+                  }
+                  inputMode={refundDestinationType === "cbu" ? "numeric" : "text"}
+                  autoComplete="off"
+                  placeholder={refundDestinationType === "cbu" ? "22 dígitos" : "ejemplo.alias"}
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-foreground"
+                  aria-label={`${refundDestinationType === "cbu" ? "CBU" : "Alias"} para la devolución`}
+                />
+              </label>
               {(() => {
                 const minutesRemaining =
                   (Date.parse(`${paymentBooking.date}T${paymentBooking.time}:00-03:00`) -
@@ -1733,9 +1715,7 @@ function MyBookingsPage() {
                   >
                     Volver
                   </Button>
-                  {((paymentBooking.customer.paymentMethod !== "transferencia" &&
-                    paymentBooking.customer.paymentMethod !== "efectivo") ||
-                    isValidRefundDestination(refundDestinationType, refundDestination)) &&
+                  {isValidRefundDestination(refundDestinationType, refundDestination) &&
                     ((paymentBooking.status === "cancelled" &&
                       paymentBooking.cancelledBy === "professional") ||
                       Date.parse(`${paymentBooking.date}T${paymentBooking.time}:00-03:00`) -
