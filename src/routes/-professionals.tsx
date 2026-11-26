@@ -504,7 +504,25 @@ export function ProfessionalsManager() {
     }
   }
 
-  function addDiscountCoupon() {
+  async function persistDiscountCoupons(discountCoupons: StoreDiscountCoupon[]) {
+    setSavingPricingSettings(true);
+    try {
+      const saved = await updateStorePricingSettings({
+        discountCoupons,
+        paymentPriceAdjustments: storeSettings.paymentPriceAdjustments,
+      });
+      setStoreSettings((current) => ({ ...current, ...saved }));
+      toast.success("Cupones guardados automáticamente.");
+      return true;
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudieron guardar los cupones.");
+      return false;
+    } finally {
+      setSavingPricingSettings(false);
+    }
+  }
+
+  async function addDiscountCoupon() {
     if (storeSettings.discountCoupons.length >= 50) {
       toast.error("La sucursal puede tener hasta 50 cupones configurados.");
       return;
@@ -533,14 +551,25 @@ export function ProfessionalsManager() {
       );
       return;
     }
-    setStoreSettings((current) => ({
-      ...current,
-      discountCoupons: [
-        ...current.discountCoupons,
-        { code, discountType: newCouponType, discountValue: newCouponValue, active: true },
-      ],
-    }));
-    setNewCouponCode("");
+    const discountCoupons = [
+      ...storeSettings.discountCoupons,
+      { code, discountType: newCouponType, discountValue: newCouponValue, active: true },
+    ];
+    if (await persistDiscountCoupons(discountCoupons)) setNewCouponCode("");
+  }
+
+  function toggleDiscountCoupon(index: number) {
+    const discountCoupons = storeSettings.discountCoupons.map((coupon, couponIndex) =>
+      couponIndex === index ? { ...coupon, active: !coupon.active } : coupon,
+    );
+    void persistDiscountCoupons(discountCoupons);
+  }
+
+  function deleteDiscountCoupon(index: number) {
+    const discountCoupons = storeSettings.discountCoupons.filter(
+      (_, couponIndex) => couponIndex !== index,
+    );
+    void persistDiscountCoupons(discountCoupons);
   }
 
   function updatePaymentAdjustment(
@@ -2014,7 +2043,7 @@ export function ProfessionalsManager() {
                   un monto fijo y no supera el subtotal.
                 </p>
               </div>
-              <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
+              <div className="grid items-end gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(10rem,auto)_minmax(8rem,auto)_auto]">
                 <Field label="Código del cupón">
                   <Input
                     value={newCouponCode}
@@ -2046,20 +2075,21 @@ export function ProfessionalsManager() {
                     disabled={loadingStoreSettings || savingPricingSettings || !currentStoreCode}
                   />
                 </Field>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full sm:w-auto"
+                  disabled={
+                    loadingStoreSettings ||
+                    savingPricingSettings ||
+                    !currentStoreCode ||
+                    storeSettings.discountCoupons.length >= 50
+                  }
+                  onClick={() => void addDiscountCoupon()}
+                >
+                  <Plus className="mr-2 h-4 w-4" /> Agregar cupón
+                </Button>
               </div>
-              <Button
-                type="button"
-                variant="outline"
-                disabled={
-                  loadingStoreSettings ||
-                  savingPricingSettings ||
-                  !currentStoreCode ||
-                  storeSettings.discountCoupons.length >= 50
-                }
-                onClick={addDiscountCoupon}
-              >
-                <Plus className="mr-2 h-4 w-4" /> Agregar cupón
-              </Button>
               {storeSettings.discountCoupons.length > 0 ? (
                 <div className="space-y-2">
                   {storeSettings.discountCoupons.map((coupon, index) => (
@@ -2075,36 +2105,24 @@ export function ProfessionalsManager() {
                             : `$${coupon.discountValue.toLocaleString("es-AR")} de descuento`}
                         </p>
                       </div>
-                      <div className="flex items-center gap-3">
-                        <label className="flex items-center gap-2 text-sm">
-                          <input
-                            type="checkbox"
-                            checked={coupon.active}
-                            disabled={savingPricingSettings || loadingStoreSettings}
-                            onChange={(event) =>
-                              setStoreSettings((current) => ({
-                                ...current,
-                                discountCoupons: current.discountCoupons.map((item, itemIndex) =>
-                                  itemIndex === index ? { ...item, active: event.target.checked } : item,
-                                ),
-                              }))
-                            }
-                          />
-                          Activo
-                        </label>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          disabled={savingPricingSettings || loadingStoreSettings}
+                          onClick={() => toggleDiscountCoupon(index)}
+                        >
+                          {coupon.active ? "Desactivar" : "Activar"}
+                        </Button>
                         <Button
                           type="button"
                           size="sm"
                           variant="destructive"
                           disabled={savingPricingSettings || loadingStoreSettings}
-                          onClick={() =>
-                            setStoreSettings((current) => ({
-                              ...current,
-                              discountCoupons: current.discountCoupons.filter((_, itemIndex) => itemIndex !== index),
-                            }))
-                          }
+                          onClick={() => deleteDiscountCoupon(index)}
                         >
-                          Quitar
+                          Eliminar
                         </Button>
                       </div>
                     </div>
