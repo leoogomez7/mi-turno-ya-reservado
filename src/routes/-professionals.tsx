@@ -43,8 +43,12 @@ import {
   updateStoreContact,
   updateStoreLogo,
   updateStoreProfile,
+  updateStorePricingSettings,
   updateStoreSettings,
   type StoreSettings,
+  type PaymentPriceAdjustment,
+  type PaymentPriceAdjustments,
+  type StoreDiscountCoupon,
 } from "@/lib/cloud-sync";
 import { LoadingScreen } from "@/components/loading-screen";
 import { Calendar } from "@/components/ui/calendar";
@@ -92,6 +96,12 @@ const emptyStoreSettings: StoreSettings = {
   allowRefunds: true,
   refundPercent: 100,
   cancellationWindowMinutes: 30,
+  discountCoupons: [],
+  paymentPriceAdjustments: {
+    efectivo: { mode: "none", percent: 0 },
+    transferencia: { mode: "none", percent: 0 },
+    "tarjeta o mercado pago": { mode: "none", percent: 0 },
+  },
 };
 
 function ResponsiveTimePicker({
@@ -329,6 +339,10 @@ export function ProfessionalsManager() {
   const [loadingStoreSettings, setLoadingStoreSettings] = useState(true);
   const [savingSettings, setSavingSettings] = useState(false);
   const [savingCancellationPolicy, setSavingCancellationPolicy] = useState(false);
+  const [savingPricingSettings, setSavingPricingSettings] = useState(false);
+  const [newCouponCode, setNewCouponCode] = useState("");
+  const [newCouponType, setNewCouponType] = useState<StoreDiscountCoupon["discountType"]>("percent");
+  const [newCouponValue, setNewCouponValue] = useState(10);
   const [mercadoPagoPublicKey, setMercadoPagoPublicKey] = useState("");
   const [mercadoPagoAccessToken, setMercadoPagoAccessToken] = useState("");
   const [mercadoPagoPublicKeyConfigured, setMercadoPagoPublicKeyConfigured] = useState(false);
@@ -487,6 +501,83 @@ export function ProfessionalsManager() {
       );
     } finally {
       setSavingCancellationPolicy(false);
+    }
+  }
+
+  function addDiscountCoupon() {
+    if (storeSettings.discountCoupons.length >= 50) {
+      toast.error("La sucursal puede tener hasta 50 cupones configurados.");
+      return;
+    }
+    const code = newCouponCode.trim().toLocaleUpperCase("es-AR");
+    if (!/^[\p{L}\d_-]{3,32}$/u.test(code)) {
+      toast.error("El código debe tener entre 3 y 32 letras, números, guiones o guiones bajos.");
+      return;
+    }
+    if (storeSettings.discountCoupons.some((coupon) => coupon.code === code)) {
+      toast.error("Ya existe un cupón con ese código.");
+      return;
+    }
+    if (
+      !Number.isInteger(newCouponValue) ||
+      newCouponValue < 1 ||
+      (newCouponType === "percent" && newCouponValue > 100) ||
+      (newCouponType === "fixed" && newCouponValue > 100000000)
+    ) {
+      toast.error(
+        newCouponType === "percent"
+          ? "El porcentaje debe ser de 1 a 100."
+          : newCouponValue > 100000000
+            ? "El monto máximo de descuento es $100.000.000."
+            : "El descuento debe ser un monto entero mayor a cero.",
+      );
+      return;
+    }
+    setStoreSettings((current) => ({
+      ...current,
+      discountCoupons: [
+        ...current.discountCoupons,
+        { code, discountType: newCouponType, discountValue: newCouponValue, active: true },
+      ],
+    }));
+    setNewCouponCode("");
+  }
+
+  function updatePaymentAdjustment(
+    method: keyof PaymentPriceAdjustments,
+    patch: Partial<PaymentPriceAdjustment>,
+  ) {
+    setStoreSettings((current) => ({
+      ...current,
+      paymentPriceAdjustments: {
+        ...current.paymentPriceAdjustments,
+        [method]: { ...current.paymentPriceAdjustments[method], ...patch },
+      },
+    }));
+  }
+
+  async function savePricingSettings() {
+    const invalidAdjustment = Object.values(storeSettings.paymentPriceAdjustments).some(
+      (adjustment) => adjustment.mode !== "none" && adjustment.percent < 1,
+    );
+    if (invalidAdjustment) {
+      toast.error("Indicá un porcentaje entre 1 y 100 para cada ajuste activo.");
+      return;
+    }
+    setSavingPricingSettings(true);
+    try {
+      const saved = await updateStorePricingSettings({
+        discountCoupons: storeSettings.discountCoupons,
+        paymentPriceAdjustments: storeSettings.paymentPriceAdjustments,
+      });
+      setStoreSettings((current) => ({ ...current, ...saved }));
+      toast.success("Descuentos y ajustes de precios guardados.");
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "No se pudo guardar la configuración de precios.",
+      );
+    } finally {
+      setSavingPricingSettings(false);
     }
   }
 
@@ -1899,6 +1990,200 @@ export function ProfessionalsManager() {
               className="mt-5 bg-gold text-primary-foreground hover:bg-gold-soft"
             >
               {savingMercadoPagoCredentials ? "Guardando…" : "Guardar credenciales"}
+            </Button>
+          </section>
+
+          <section className="rounded-3xl border border-gold/30 bg-card p-6">
+            <div className="mb-5">
+              <p className="text-xs uppercase tracking-widest text-gold">Precios y promociones</p>
+              <h2 className="mt-1 font-display text-2xl font-semibold text-foreground">
+                Descuentos y ajustes
+              </h2>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Configurá cupones y diferencias porcentuales según el método de pago. Los ajustes
+                se aplican primero al precio de cada servicio; después se descuenta el cupón del
+                subtotal ajustado.
+              </p>
+            </div>
+
+            <div className="space-y-4 rounded-2xl border border-border bg-background/50 p-4">
+              <div>
+                <h3 className="font-semibold">Cupones de descuento</h3>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  El cliente ingresa el código al reservar. El descuento puede ser un porcentaje o
+                  un monto fijo y no supera el subtotal.
+                </p>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
+                <Field label="Código del cupón">
+                  <Input
+                    value={newCouponCode}
+                    onChange={(event) => setNewCouponCode(event.target.value.toLocaleUpperCase("es-AR"))}
+                    maxLength={32}
+                    placeholder="EJ: BIENVENIDA"
+                    disabled={loadingStoreSettings || savingPricingSettings || !currentStoreCode}
+                  />
+                </Field>
+                <Field label="Tipo de descuento">
+                  <select
+                    value={newCouponType}
+                    onChange={(event) => setNewCouponType(event.target.value as StoreDiscountCoupon["discountType"])}
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+                    disabled={loadingStoreSettings || savingPricingSettings || !currentStoreCode}
+                  >
+                    <option value="percent">Porcentaje</option>
+                    <option value="fixed">Monto fijo ($)</option>
+                  </select>
+                </Field>
+                <Field label={newCouponType === "percent" ? "Porcentaje (1–100%)" : "Monto ($)"}>
+                  <Input
+                    type="number"
+                    min="1"
+                    max={newCouponType === "percent" ? 100 : 100000000}
+                    step="1"
+                    value={newCouponValue}
+                    onChange={(event) => setNewCouponValue(Number(event.target.value))}
+                    disabled={loadingStoreSettings || savingPricingSettings || !currentStoreCode}
+                  />
+                </Field>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={
+                  loadingStoreSettings ||
+                  savingPricingSettings ||
+                  !currentStoreCode ||
+                  storeSettings.discountCoupons.length >= 50
+                }
+                onClick={addDiscountCoupon}
+              >
+                <Plus className="mr-2 h-4 w-4" /> Agregar cupón
+              </Button>
+              {storeSettings.discountCoupons.length > 0 ? (
+                <div className="space-y-2">
+                  {storeSettings.discountCoupons.map((coupon, index) => (
+                    <div
+                      key={coupon.code}
+                      className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card p-3"
+                    >
+                      <div>
+                        <p className="font-mono font-semibold text-gold">{coupon.code}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {coupon.discountType === "percent"
+                            ? `${coupon.discountValue}% de descuento`
+                            : `$${coupon.discountValue.toLocaleString("es-AR")} de descuento`}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <label className="flex items-center gap-2 text-sm">
+                          <input
+                            type="checkbox"
+                            checked={coupon.active}
+                            disabled={savingPricingSettings || loadingStoreSettings}
+                            onChange={(event) =>
+                              setStoreSettings((current) => ({
+                                ...current,
+                                discountCoupons: current.discountCoupons.map((item, itemIndex) =>
+                                  itemIndex === index ? { ...item, active: event.target.checked } : item,
+                                ),
+                              }))
+                            }
+                          />
+                          Activo
+                        </label>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="destructive"
+                          disabled={savingPricingSettings || loadingStoreSettings}
+                          onClick={() =>
+                            setStoreSettings((current) => ({
+                              ...current,
+                              discountCoupons: current.discountCoupons.filter((_, itemIndex) => itemIndex !== index),
+                            }))
+                          }
+                        >
+                          Quitar
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">Todavía no hay cupones configurados.</p>
+              )}
+            </div>
+
+            <div className="mt-5 space-y-4 rounded-2xl border border-border bg-background/50 p-4">
+              <div>
+                <h3 className="font-semibold">Ajuste por método de pago</h3>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Podés sumar un recargo o aplicar un descuento porcentual. “Sin ajuste” mantiene
+                  el precio publicado.
+                </p>
+              </div>
+              <div className="grid gap-4 md:grid-cols-3">
+                {([
+                  ["efectivo", "Efectivo"],
+                  ["transferencia", "Transferencia bancaria"],
+                  ["tarjeta o mercado pago", "Tarjeta / Mercado Pago"],
+                ] as const).map(([method, label]) => {
+                  const adjustment =
+                    storeSettings.paymentPriceAdjustments[method] ?? { mode: "none", percent: 0 };
+                  return (
+                    <div key={method} className="space-y-3 rounded-xl border border-border bg-card p-3">
+                      <h4 className="font-medium">{label}</h4>
+                      <Field label="Acción">
+                        <select
+                          value={adjustment.mode}
+                          onChange={(event) => {
+                            const mode = event.target.value as PaymentPriceAdjustment["mode"];
+                            updatePaymentAdjustment(method, {
+                              mode,
+                              ...(mode === "none" ? { percent: 0 } : {}),
+                            });
+                          }}
+                          className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+                          disabled={loadingStoreSettings || savingPricingSettings || !currentStoreCode}
+                        >
+                          <option value="none">Sin ajuste</option>
+                          <option value="discount">Descuento</option>
+                          <option value="surcharge">Recargo</option>
+                        </select>
+                      </Field>
+                      <Field label="Porcentaje (1–100%)">
+                        <Input
+                          type="number"
+                          min="1"
+                          max="100"
+                          step="1"
+                          value={adjustment.percent || ""}
+                          onChange={(event) =>
+                            updatePaymentAdjustment(method, {
+                              percent: Math.min(100, Math.max(0, Number(event.target.value))),
+                            })
+                          }
+                          disabled={
+                            loadingStoreSettings ||
+                            savingPricingSettings ||
+                            !currentStoreCode ||
+                            adjustment.mode === "none"
+                          }
+                        />
+                      </Field>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            <Button
+              type="button"
+              disabled={loadingStoreSettings || savingPricingSettings || !currentStoreCode}
+              onClick={() => void savePricingSettings()}
+              className="mt-5 bg-gold text-primary-foreground hover:bg-gold-soft"
+            >
+              {savingPricingSettings ? "Guardando…" : "Guardar descuentos y ajustes"}
             </Button>
           </section>
 

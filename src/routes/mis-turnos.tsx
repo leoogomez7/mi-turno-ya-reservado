@@ -861,6 +861,16 @@ function MyBookingsPage() {
                       <Badge variant="outline" className="border-gold/30 text-gold">
                         Pago · {paymentMethodLabel}
                       </Badge>
+                      {booking.paymentAdjustmentMode && booking.paymentAdjustmentMode !== "none" && (
+                        <Badge variant="outline" className="border-emerald-300 text-emerald-400">
+                          {booking.paymentAdjustmentMode === "discount" ? "Descuento" : "Recargo"} por pago · {booking.paymentAdjustmentPercent ?? 0}%
+                        </Badge>
+                      )}
+                      {booking.couponCode && (
+                        <Badge variant="outline" className="border-emerald-300 text-emerald-400">
+                          Cupón {booking.couponCode} · −${(booking.couponDiscountAmount ?? 0).toLocaleString("es-AR")}
+                        </Badge>
+                      )}
                       <Badge
                         variant="outline"
                         className={

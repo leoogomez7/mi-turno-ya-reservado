@@ -4,6 +4,20 @@ import type { AccountRole } from "@/lib/auth";
 
 type CloudSnapshot = { bookings: Booking[]; professionals: Professional[] };
 type ReservationStoreResult = { data: CloudSnapshot; stores: Store[] };
+export type StoreDiscountCoupon = {
+  code: string;
+  discountType: "percent" | "fixed";
+  discountValue: number;
+  active: boolean;
+};
+export type PaymentPriceAdjustment = {
+  mode: "none" | "discount" | "surcharge";
+  percent: number;
+};
+export type PaymentPriceAdjustments = Record<
+  "efectivo" | "transferencia" | "tarjeta o mercado pago",
+  PaymentPriceAdjustment
+>;
 export type StoreSettings = {
   address: string;
   street: string;
@@ -27,6 +41,8 @@ export type StoreSettings = {
   allowRefunds: boolean;
   refundPercent: number;
   cancellationWindowMinutes: number;
+  discountCoupons: StoreDiscountCoupon[];
+  paymentPriceAdjustments: PaymentPriceAdjustments;
 };
 export type StoreContactSettings = Pick<
   StoreSettings,
@@ -451,6 +467,22 @@ export async function updateStoreSettings(settings: StoreSettings) {
   return response.settings;
 }
 
+export async function updateStorePricingSettings(
+  pricing: Pick<StoreSettings, "discountCoupons" | "paymentPriceAdjustments">,
+) {
+  if (!tokenGetter)
+    throw new Error("Iniciá sesión como administrador para editar precios y descuentos.");
+  const response = await request<{ code: string; settings: StoreSettings }>("POST", {
+    action: "update-store-pricing",
+    pricing,
+  });
+  availableStores = availableStores.map((store) =>
+    store.code === response.code ? { ...store, settings: response.settings } : store,
+  );
+  window.dispatchEvent(new Event("mi-turno-ya:store-changed"));
+  return response.settings;
+}
+
 export async function updateStoreLogo(logo: string) {
   if (!tokenGetter)
     throw new Error("Iniciá sesión como administrador para editar el logo de la sucursal.");
@@ -845,9 +877,9 @@ export async function createPublicBooking(
     body: JSON.stringify({ action: "guest-booking", booking: createdBooking }),
     cache: "no-store",
   });
-  const result = (await response.json()) as { error?: string };
+  const result = (await response.json()) as { error?: string; booking?: Booking };
   if (!response.ok) throw new Error(result.error || "No se pudo guardar el turno.");
-  return createdBooking;
+  return result.booking ?? createdBooking;
 }
 
 export async function updateStoreCancellationPolicy(policy: StoreCancellationPolicy) {

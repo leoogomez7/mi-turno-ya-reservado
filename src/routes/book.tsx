@@ -32,6 +32,13 @@ import {
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { normalizeWhatsappNumber } from "@/lib/utils";
+import {
+  adjustedServicePrice,
+  calculateBookingPrice,
+  couponForCode,
+  normalizeCouponCode,
+  paymentAdjustmentFor,
+} from "@/lib/pricing";
 
 import { bookingStore, type Booking, type Customer } from "@/lib/booking-store";
 import {
@@ -211,6 +218,9 @@ export function BookPage() {
   const [serviceIds, setServiceIds] = useState<string[]>([]);
   const [date, setDate] = useState<Date | null>(null);
   const [time, setTime] = useState("");
+  const [couponInput, setCouponInput] = useState("");
+  const [appliedCouponCode, setAppliedCouponCode] = useState("");
+  const [couponError, setCouponError] = useState("");
   const [currentTime, setCurrentTime] = useState(() => Date.now());
 
   useEffect(() => {
@@ -652,6 +662,9 @@ export function BookPage() {
       setServiceIds([]);
       setDate(null);
       setTime("");
+      setCouponInput("");
+      setAppliedCouponCode("");
+      setCouponError("");
       setStepError(null);
       toast.success(`Seleccionaste ${store.name}.`);
       void navigate({
@@ -694,10 +707,43 @@ export function BookPage() {
     (total, service) => total + (selectedServiceIds.includes(service.id) ? service.duration : 0),
     0,
   );
-  const price = selectedServices.reduce(
-    (total, service) => total + (selectedServiceIds.includes(service.id) ? service.price : 0),
-    0,
+  const selectedServicePrices = selectedServices
+    .filter((service) => selectedServiceIds.includes(service.id))
+    .map((service) => service.price);
+  const appliedCoupon = couponForCode(storeSettings?.discountCoupons, appliedCouponCode);
+  const pricing = calculateBookingPrice(
+    selectedServicePrices,
+    customer.paymentMethod,
+    storeSettings?.paymentPriceAdjustments,
+    storeSettings?.discountCoupons,
+    appliedCoupon?.code ?? "",
   );
+  const price = pricing.totalPrice;
+  const bookingPricingFields = {
+    basePrice: pricing.basePrice,
+    couponCode: pricing.coupon?.code ?? "",
+    couponDiscountAmount: pricing.couponDiscountAmount,
+    paymentAdjustmentAmount: pricing.paymentAdjustmentAmount,
+    paymentAdjustmentMode: pricing.paymentAdjustmentMode,
+    paymentAdjustmentPercent: pricing.paymentAdjustmentPercent,
+  };
+
+  function applyCouponCode() {
+    const normalizedCode = normalizeCouponCode(couponInput);
+    if (!normalizedCode) {
+      setCouponError("Ingresá un código de cupón.");
+      return;
+    }
+    const coupon = couponForCode(storeSettings?.discountCoupons, normalizedCode);
+    if (!coupon) {
+      setAppliedCouponCode("");
+      setCouponError("El cupón no es válido o no está activo.");
+      return;
+    }
+    setAppliedCouponCode(coupon.code);
+    setCouponInput(coupon.code);
+    setCouponError("");
+  }
   const selectedSlotTimestamp = date && time ? getReservationSlotTimestamp(date, time) : NaN;
   const selectedSlotIsPast =
     Number.isFinite(selectedSlotTimestamp) && selectedSlotTimestamp <= currentTime;
@@ -928,6 +974,7 @@ Observaciones: ${customer.notes || "Ninguna"}`;
             time,
             duration,
             totalPrice: price,
+            ...bookingPricingFields,
             status: "confirmed",
             paymentStatus: "pending",
           });
@@ -958,6 +1005,7 @@ Observaciones: ${customer.notes || "Ninguna"}`;
             time,
             duration,
             totalPrice: price,
+            ...bookingPricingFields,
             status: "confirmed",
             paymentStatus: "pending",
           });
@@ -1014,6 +1062,7 @@ Observaciones: ${customer.notes || "Ninguna"}`;
           time,
           duration,
           totalPrice: price,
+          ...bookingPricingFields,
           status: "confirmed",
         });
         showReservationResult({ kind: "confirmed", date: format(date, "yyyy-MM-dd"), time });
@@ -1173,6 +1222,9 @@ Observaciones: ${customer.notes || "Ninguna"}`;
     setServiceIds([]);
     setDate(null);
     setTime("");
+    setCouponInput("");
+    setAppliedCouponCode("");
+    setCouponError("");
     goToStep(0);
   }
 
@@ -1433,6 +1485,10 @@ Observaciones: ${customer.notes || "Ninguna"}`;
               value={selectedServiceIds}
               onChange={selectServices}
               loading={reservationDataLoading}
+              paymentAdjustment={paymentAdjustmentFor(
+                customer.paymentMethod,
+                storeSettings?.paymentPriceAdjustments,
+              )}
             />
           )}
           {step === 3 && (
@@ -1464,6 +1520,26 @@ Observaciones: ${customer.notes || "Ninguna"}`;
                 time={time}
                 duration={duration}
                 price={price}
+                basePrice={pricing.basePrice}
+                adjustedSubtotal={pricing.adjustedSubtotal}
+                couponDiscountAmount={pricing.couponDiscountAmount}
+                paymentAdjustmentAmount={pricing.paymentAdjustmentAmount}
+                paymentAdjustmentMode={pricing.paymentAdjustmentMode}
+                paymentAdjustmentPercent={pricing.paymentAdjustmentPercent}
+                appliedCouponCode={pricing.coupon?.code ?? ""}
+                couponInput={couponInput}
+                couponError={couponError}
+                onCouponInputChange={(value) => {
+                  setCouponInput(value.toLocaleUpperCase("es-AR"));
+                  setAppliedCouponCode("");
+                  setCouponError("");
+                }}
+                onApplyCoupon={applyCouponCode}
+                onRemoveCoupon={() => {
+                  setAppliedCouponCode("");
+                  setCouponInput("");
+                  setCouponError("");
+                }}
               />
             ) : (
               <p className="py-8 text-center text-sm text-muted-foreground">
@@ -1984,11 +2060,13 @@ function StepServices({
   onChange,
   professional,
   loading,
+  paymentAdjustment,
 }: {
   value: string[];
   onChange: (v: string[]) => void;
   professional?: Professional;
   loading: boolean;
+  paymentAdjustment: ReturnType<typeof paymentAdjustmentFor>;
 }) {
   const professionalServices = professional?.services ?? [];
   const toggle = (id: string) =>
@@ -1998,7 +2076,9 @@ function StepServices({
     0,
   );
   const totalPrice = professionalServices.reduce(
-    (total, service) => total + (value.includes(service.id) ? service.price : 0),
+    (total, service) =>
+      total +
+      (value.includes(service.id) ? adjustedServicePrice(service.price, paymentAdjustment) : 0),
     0,
   );
 
@@ -2008,6 +2088,13 @@ function StepServices({
       <p className="mb-4 text-sm text-muted-foreground">
         Podés seleccionar varios. El tiempo se suma automáticamente.
       </p>
+      {paymentAdjustment.mode !== "none" && paymentAdjustment.percent > 0 && (
+        <p className="mb-4 rounded-lg border border-gold/30 bg-gold/5 px-3 py-2 text-sm text-gold">
+          {paymentAdjustment.mode === "discount"
+            ? `${paymentAdjustment.percent}% OFF aplicado por pagar con este método.`
+            : `Se agrega un ${paymentAdjustment.percent}% por pagar con este método.`}
+        </p>
+      )}
 
       <div className="grid gap-2 sm:grid-cols-2">
         {loading ? (
@@ -2024,6 +2111,7 @@ function StepServices({
         ) : (
           professionalServices.map((s) => {
             const selected = value.includes(s.id);
+            const displayedPrice = adjustedServicePrice(s.price, paymentAdjustment);
             return (
               <button
                 type="button"
@@ -2039,9 +2127,21 @@ function StepServices({
                   <div className="text-xs text-muted-foreground">{s.duration} min</div>
                 </div>
                 <div className="flex items-center gap-3">
-                  <span className="font-display text-base font-semibold text-gold">
-                    ${s.price.toLocaleString("es-AR")}
-                  </span>
+                  <div className="text-right">
+                    {displayedPrice !== s.price && (
+                      <span className="mr-2 text-xs text-muted-foreground line-through">
+                        ${s.price.toLocaleString("es-AR")}
+                      </span>
+                    )}
+                    <span className="font-display text-base font-semibold text-gold">
+                      ${displayedPrice.toLocaleString("es-AR")}
+                    </span>
+                    {paymentAdjustment.mode === "discount" && paymentAdjustment.percent > 0 && (
+                      <span className="ml-2 text-xs text-emerald-400">
+                        {paymentAdjustment.percent}% OFF
+                      </span>
+                    )}
+                  </div>
                   <div
                     className={cn(
                       "flex h-5 w-5 items-center justify-center rounded-md border",
@@ -2294,6 +2394,18 @@ function StepConfirm({
   time,
   duration,
   price,
+  basePrice,
+  adjustedSubtotal,
+  couponDiscountAmount,
+  paymentAdjustmentAmount,
+  paymentAdjustmentMode,
+  paymentAdjustmentPercent,
+  appliedCouponCode,
+  couponInput,
+  couponError,
+  onCouponInputChange,
+  onApplyCoupon,
+  onRemoveCoupon,
 }: {
   professional?: Professional;
   storeName: string;
@@ -2308,6 +2420,18 @@ function StepConfirm({
   time: string;
   duration: number;
   price: number;
+  basePrice: number;
+  adjustedSubtotal: number;
+  couponDiscountAmount: number;
+  paymentAdjustmentAmount: number;
+  paymentAdjustmentMode: "none" | "discount" | "surcharge";
+  paymentAdjustmentPercent: number;
+  appliedCouponCode: string;
+  couponInput: string;
+  couponError: string;
+  onCouponInputChange: (value: string) => void;
+  onApplyCoupon: () => void;
+  onRemoveCoupon: () => void;
 }) {
   const serviceNames = serviceIds
     .map((id) => professional?.services.find((service) => service.id === id)?.name)
@@ -2373,6 +2497,64 @@ function StepConfirm({
         <Row label="Método de pago" value={paymentMethodLabel(customer.paymentMethod)} />
         <Row label="Duración" value={`${duration} min`} icon={Clock} />
         {customer.notes && <Row label="Observaciones" value={customer.notes} />}
+      </div>
+      <div className="mt-5 space-y-3 rounded-xl border border-border bg-background/50 p-4">
+        <div>
+          <p className="font-medium">¿Tenés un cupón de descuento?</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            El descuento se calcula sobre el subtotal después del ajuste por método de pago.
+          </p>
+        </div>
+        {appliedCouponCode ? (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3">
+            <span className="text-sm text-emerald-300">
+              Cupón <strong className="font-mono">{appliedCouponCode}</strong> aplicado
+            </span>
+            <Button type="button" size="sm" variant="outline" onClick={onRemoveCoupon}>
+              Quitar cupón
+            </Button>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Input
+              value={couponInput}
+              onChange={(event) => onCouponInputChange(event.target.value)}
+              maxLength={32}
+              placeholder="Ingresá tu código"
+              aria-label="Código de descuento"
+            />
+            <Button type="button" variant="outline" onClick={onApplyCoupon}>
+              Aplicar
+            </Button>
+          </div>
+        )}
+        {couponError && <p role="alert" className="text-sm text-red-300">{couponError}</p>}
+      </div>
+      <div className="mt-5 space-y-2 rounded-xl border border-border bg-background/40 p-4 text-sm">
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-muted-foreground">Subtotal de servicios</span>
+          <span>${basePrice.toLocaleString("es-AR")}</span>
+        </div>
+        {paymentAdjustmentMode !== "none" && paymentAdjustmentPercent > 0 && (
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-muted-foreground">
+              {paymentAdjustmentMode === "discount" ? "Descuento" : "Recargo"} por método de pago ({paymentAdjustmentPercent}%)
+            </span>
+            <span className={paymentAdjustmentMode === "discount" ? "text-emerald-400" : "text-foreground"}>
+              {paymentAdjustmentMode === "discount" ? "−" : "+"}${Math.abs(paymentAdjustmentAmount).toLocaleString("es-AR")}
+            </span>
+          </div>
+        )}
+        <div className="flex items-center justify-between gap-3 border-t border-border pt-2">
+          <span className="text-muted-foreground">Subtotal ajustado</span>
+          <span>${adjustedSubtotal.toLocaleString("es-AR")}</span>
+        </div>
+        {couponDiscountAmount > 0 && (
+          <div className="flex items-center justify-between gap-3 text-emerald-400">
+            <span>Descuento del cupón {appliedCouponCode}</span>
+            <span>−${couponDiscountAmount.toLocaleString("es-AR")}</span>
+          </div>
+        )}
       </div>
       <div className="mt-6 flex items-center justify-between rounded-xl border border-gold/30 bg-gold/5 px-5 py-4">
         <span className="text-sm uppercase tracking-wider text-muted-foreground">Precio total</span>

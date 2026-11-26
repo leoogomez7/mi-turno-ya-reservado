@@ -508,6 +508,15 @@ function parseStoreSettings(value) {
         source.cancellationWindowMinutes <= 10080
           ? source.cancellationWindowMinutes
           : 30,
+      discountCoupons: Array.isArray(source.discountCoupons) ? source.discountCoupons : [],
+      paymentPriceAdjustments:
+        source.paymentPriceAdjustments && typeof source.paymentPriceAdjustments === "object"
+          ? source.paymentPriceAdjustments
+          : {
+              efectivo: { mode: "none", percent: 0 },
+              transferencia: { mode: "none", percent: 0 },
+              "tarjeta o mercado pago": { mode: "none", percent: 0 },
+            },
     };
   } catch {
     return {
@@ -534,6 +543,12 @@ function parseStoreSettings(value) {
       allowRefunds: true,
       refundPercent: 100,
       cancellationWindowMinutes: 30,
+      discountCoupons: [],
+      paymentPriceAdjustments: {
+        efectivo: { mode: "none", percent: 0 },
+        transferencia: { mode: "none", percent: 0 },
+        "tarjeta o mercado pago": { mode: "none", percent: 0 },
+      },
     };
   }
 }
@@ -626,6 +641,58 @@ function validateStoreSettings(value) {
   settings.allowRefunds = allowRefunds;
   settings.refundPercent = refundPercent;
   settings.cancellationWindowMinutes = cancellationWindowMinutes;
+  const discountCoupons = value.discountCoupons ?? [];
+  if (!Array.isArray(discountCoupons) || discountCoupons.length > 50) return null;
+  const couponCodes = new Set();
+  settings.discountCoupons = [];
+  for (const coupon of discountCoupons) {
+    if (!coupon || typeof coupon !== "object" || Array.isArray(coupon)) return null;
+    const code = typeof coupon.code === "string" ? coupon.code.trim().toLocaleUpperCase("es-AR") : "";
+    if (
+      !/^[\p{L}\d_-]{3,32}$/u.test(code) ||
+      couponCodes.has(code) ||
+      !["percent", "fixed"].includes(coupon.discountType) ||
+      !Number.isInteger(coupon.discountValue) ||
+      coupon.discountValue < 1 ||
+      (coupon.discountType === "percent" && coupon.discountValue > 100) ||
+      (coupon.discountType === "fixed" && coupon.discountValue > 100000000) ||
+      typeof coupon.active !== "boolean"
+    )
+      return null;
+    couponCodes.add(code);
+    settings.discountCoupons.push({
+      code,
+      discountType: coupon.discountType,
+      discountValue: coupon.discountValue,
+      active: coupon.active,
+    });
+  }
+  const paymentPriceAdjustments = value.paymentPriceAdjustments ?? {};
+  if (
+    !paymentPriceAdjustments ||
+    typeof paymentPriceAdjustments !== "object" ||
+    Array.isArray(paymentPriceAdjustments)
+  )
+    return null;
+  settings.paymentPriceAdjustments = {};
+  for (const method of ["efectivo", "transferencia", "tarjeta o mercado pago"]) {
+    const adjustment = paymentPriceAdjustments[method] ?? { mode: "none", percent: 0 };
+    if (
+      !adjustment ||
+      typeof adjustment !== "object" ||
+      !["none", "discount", "surcharge"].includes(adjustment.mode) ||
+      !Number.isInteger(adjustment.percent) ||
+      adjustment.percent < 0 ||
+      adjustment.percent > 100 ||
+      (adjustment.mode !== "none" && adjustment.percent < 1) ||
+      (adjustment.mode === "none" && adjustment.percent !== 0)
+    )
+      return null;
+    settings.paymentPriceAdjustments[method] = {
+      mode: adjustment.mode,
+      percent: adjustment.percent,
+    };
+  }
   const streetAddress = [settings.street, settings.height].filter(Boolean).join(" ");
   const cityPostalCode = [settings.city, settings.postalCode].filter(Boolean).join(" ");
   settings.address = [streetAddress, cityPostalCode, settings.province].filter(Boolean).join(", ");
@@ -753,6 +820,64 @@ function snapshotCancellationPolicy(policy) {
     refundPercent: policy.refundPercent,
     cancellationWindowMinutes: policy.cancellationWindowMinutes,
   };
+}
+
+function calculateBookingPricing(servicePrices, paymentMethod, settings, couponCode = "") {
+  const methods = ["efectivo", "transferencia", "tarjeta o mercado pago"];
+  const configured = settings.paymentPriceAdjustments ?? {};
+  const adjustment = methods.includes(paymentMethod)
+    ? configured[paymentMethod] ?? { mode: "none", percent: 0 }
+    : { mode: "none", percent: 0 };
+  const basePrice = servicePrices.reduce((sum, price) => sum + Math.round(Number(price)), 0);
+  const adjustedSubtotal = servicePrices.reduce((sum, price) => {
+    const numericPrice = Number(price);
+    if (adjustment.mode === "discount")
+      return sum + Math.max(0, Math.round(numericPrice * (1 - adjustment.percent / 100)));
+    if (adjustment.mode === "surcharge")
+      return sum + Math.round(numericPrice * (1 + adjustment.percent / 100));
+    return sum + Math.round(numericPrice);
+  }, 0);
+  const normalizedCode = typeof couponCode === "string" ? couponCode.trim().toLocaleUpperCase("es-AR") : "";
+  const coupon = normalizedCode
+    ? (settings.discountCoupons ?? []).find(
+        (item) => item.active && item.code.toLocaleUpperCase("es-AR") === normalizedCode,
+      )
+    : null;
+  if (normalizedCode && !coupon) return { error: "El cupón no es válido o ya no está activo." };
+  const couponDiscountAmount = coupon
+    ? Math.min(
+        adjustedSubtotal,
+        coupon.discountType === "percent"
+          ? Math.round((adjustedSubtotal * coupon.discountValue) / 100)
+          : coupon.discountValue,
+      )
+    : 0;
+  return {
+    basePrice,
+    adjustedSubtotal,
+    couponCode: coupon?.code ?? "",
+    couponDiscountAmount,
+    paymentAdjustmentAmount: adjustedSubtotal - basePrice,
+    paymentAdjustmentMode: adjustment.mode,
+    paymentAdjustmentPercent: adjustment.percent,
+    totalPrice: Math.max(0, adjustedSubtotal - couponDiscountAmount),
+    pricingPolicyAtBooking: {
+      discountCoupons: settings.discountCoupons,
+      paymentPriceAdjustments: settings.paymentPriceAdjustments,
+    },
+  };
+}
+
+function applyBookingPricing(booking, servicePrices, settings) {
+  const pricing = calculateBookingPricing(
+    servicePrices,
+    booking.customer?.paymentMethod,
+    settings,
+    booking.couponCode ?? "",
+  );
+  if (pricing.error) return pricing;
+  Object.assign(booking, pricing);
+  return pricing;
 }
 
 function normalizeIssuer() {
@@ -1395,7 +1520,13 @@ async function updateAdminBooking(db, user, body) {
       booking.barberId = barberId;
       booking.serviceIds = serviceIds;
       booking.duration = services.reduce((total, service) => total + Number(service.duration), 0);
-      booking.totalPrice = services.reduce((total, service) => total + Number(service.price), 0);
+      const pricing = applyBookingPricing(
+        booking,
+        services.map((service) => service.price),
+        booking.pricingPolicyAtBooking ?? { discountCoupons: [], paymentPriceAdjustments: {} },
+      );
+      if (pricing.error)
+        throw Object.assign(new Error(pricing.error), { statusCode: 409 });
       const availabilityError = await validateBookingAvailability(
         transaction,
         booking,
@@ -1689,8 +1820,25 @@ async function validateBookingAvailability(db, booking, storeCode, bookingId = "
   );
   if (services.some((service) => !service)) return "Uno de los servicios ya no está disponible.";
   const expectedDuration = services.reduce((sum, service) => sum + Number(service.duration), 0);
-  const expectedPrice = services.reduce((sum, service) => sum + Number(service.price), 0);
-  if (booking.duration !== expectedDuration || booking.totalPrice !== expectedPrice)
+  const submittedPrice = booking.totalPrice;
+  const pricingPolicy = booking.pricingPolicyAtBooking ?? {
+    discountCoupons: [],
+    paymentPriceAdjustments: {
+      efectivo: { mode: "none", percent: 0 },
+      transferencia: { mode: "none", percent: 0 },
+      "tarjeta o mercado pago": { mode: "none", percent: 0 },
+    },
+  };
+  const pricing = applyBookingPricing(
+    booking,
+    services.map((service) => service.price),
+    pricingPolicy,
+  );
+  if (
+    pricing.error ||
+    booking.duration !== expectedDuration ||
+    submittedPrice !== pricing.totalPrice
+  )
     return "El precio o la duración cambió. Volvé a elegir el servicio.";
 
   const schedule = scheduleForDate(professional, booking.date);
@@ -2536,7 +2684,29 @@ export default async function handler(request, response) {
             return response.status(400).json({ error: "Método de pago inválido." });
           }
           const previousMethod = booking.customer.paymentMethod;
-          booking.customer.paymentMethod = paymentMethod;
+          const professionalResult = await db.execute({
+            sql: "SELECT value FROM professionals WHERE id = ?",
+            args: [storedRecordId(booking.storeCode, booking.barberId)],
+          });
+          if (!professionalResult.rows[0])
+            return response.status(409).json({ error: "No encontramos los servicios del turno." });
+          const professional = JSON.parse(String(professionalResult.rows[0].value));
+          const services = booking.serviceIds.map((serviceId) =>
+            professional.services?.find((service) => service.id === serviceId),
+          );
+          if (services.some((service) => !service))
+            return response.status(409).json({ error: "Uno de los servicios ya no está disponible." });
+          const candidate = {
+            ...booking,
+            customer: { ...booking.customer, paymentMethod },
+          };
+          const pricing = applyBookingPricing(
+            candidate,
+            services.map((service) => service.price),
+            booking.pricingPolicyAtBooking ?? { discountCoupons: [], paymentPriceAdjustments: {} },
+          );
+          if (pricing.error) return response.status(409).json({ error: pricing.error });
+          Object.assign(booking, candidate);
           booking.status = "confirmed";
           booking.paymentStatus = "pending";
           delete booking.paymentReportedAt;
@@ -2674,19 +2844,23 @@ export default async function handler(request, response) {
               (total, service) => total + Number(service.duration),
               0,
             );
-            const totalPrice = services.reduce(
-              (total, service) => total + Number(service.price),
-              0,
-            );
             const candidate = {
               ...booking,
               barberId,
               serviceIds,
               duration,
-              totalPrice,
               date,
               time,
             };
+            const pricing = applyBookingPricing(
+              candidate,
+              services.map((service) => service.price),
+              booking.pricingPolicyAtBooking ?? { discountCoupons: [], paymentPriceAdjustments: {} },
+            );
+            if (pricing.error) {
+              await transaction.rollback();
+              return response.status(409).json({ error: pricing.error });
+            }
             const availabilityError = await validateBookingAvailability(
               transaction,
               candidate,
@@ -3664,6 +3838,49 @@ export default async function handler(request, response) {
           .json({ error: "No se pudieron guardar los datos de la sucursal." });
       }
     }
+    if (user && body?.action === "update-store-pricing") {
+      try {
+        const roleResult = await db.execute({
+          sql: "SELECT role, store_code FROM account_roles WHERE user_id = ?",
+          args: [user.id],
+        });
+        const storeCode = normalizeStoreCode(roleResult.rows[0]?.store_code);
+        if (roleResult.rows[0]?.role !== "admin" || !user.emailVerified || !storeCode)
+          return response.status(403).json({
+            error: "Solo un administrador puede configurar descuentos y ajustes de precios.",
+          });
+        const storeResult = await db.execute({
+          sql: "SELECT settings FROM stores WHERE code = ?",
+          args: [storeCode],
+        });
+        if (!storeResult.rows[0])
+          return response.status(404).json({ error: "No encontramos la sucursal." });
+        const currentSettings = parseStoreSettings(storeResult.rows[0].settings);
+        const pricing =
+          body.pricing && typeof body.pricing === "object" && !Array.isArray(body.pricing)
+            ? body.pricing
+            : {};
+        const settings = validateStoreSettings({
+          ...currentSettings,
+          discountCoupons: pricing.discountCoupons,
+          paymentPriceAdjustments: pricing.paymentPriceAdjustments,
+        });
+        if (!settings)
+          return response.status(400).json({
+            error: "Revisá los códigos, descuentos y ajustes porcentuales configurados.",
+          });
+        await db.execute({
+          sql: "UPDATE stores SET settings = ? WHERE code = ?",
+          args: [JSON.stringify(settings), storeCode],
+        });
+        return response.status(200).json({ code: storeCode, settings });
+      } catch (error) {
+        console.error("No se pudieron guardar descuentos y ajustes de precio", error);
+        return response.status(500).json({
+          error: "No se pudieron guardar los descuentos y ajustes de precio.",
+        });
+      }
+    }
     if (user && body?.action === "update-store-profile") {
       try {
         const roleResult = await db.execute({
@@ -3877,8 +4094,9 @@ export default async function handler(request, response) {
           .status(403)
           .json({ error: "Esta sucursal no tiene un plan activo para aceptar reservas." });
       booking.storeCode = storeCode;
+      const storeSettings = parseStoreSettings(storeResult.rows[0].settings);
       booking.cancellationPolicyAtBooking = snapshotCancellationPolicy(
-        parseStoreSettings(storeResult.rows[0].settings),
+        storeSettings,
       );
       if (!professionalResult.rows[0])
         return response
@@ -3896,10 +4114,19 @@ export default async function handler(request, response) {
       if (services.some((service) => !service))
         return response.status(400).json({ error: "Uno de los servicios ya no está disponible." });
       const expectedDuration = services.reduce((sum, service) => sum + Number(service.duration), 0);
-      const expectedPrice = services.reduce((sum, service) => sum + Number(service.price), 0);
-      if (booking.duration !== expectedDuration || booking.totalPrice !== expectedPrice) {
+      const submittedPrice = booking.totalPrice;
+      const pricing = applyBookingPricing(
+        booking,
+        services.map((service) => service.price),
+        storeSettings,
+      );
+      if (
+        pricing.error ||
+        booking.duration !== expectedDuration ||
+        submittedPrice !== pricing.totalPrice
+      ) {
         return response.status(400).json({
-          error: "El precio o la duración del turno ya cambió. Volvé a seleccionar el servicio.",
+          error: pricing.error || "El precio o la duración del turno ya cambió. Volvé a seleccionar el servicio.",
         });
       }
 
@@ -4077,6 +4304,8 @@ export default async function handler(request, response) {
         }
         if (body.collection === "bookings")
           record.cancellationPolicyAtBooking = priorRecord.cancellationPolicyAtBooking;
+        if (body.collection === "bookings")
+          record.pricingPolicyAtBooking = priorRecord.pricingPolicyAtBooking;
         if (
           body.collection === "bookings" &&
           role === "admin" &&
@@ -4091,9 +4320,12 @@ export default async function handler(request, response) {
         }
       }
       if (body.collection === "bookings" && !storedRecord.rows[0]) {
-        record.cancellationPolicyAtBooking = snapshotCancellationPolicy(
-          await getStoreCancellationPolicy(db, storeCode),
-        );
+        const storeSettings = await getStoreCancellationPolicy(db, storeCode);
+        record.cancellationPolicyAtBooking = snapshotCancellationPolicy(storeSettings);
+        record.pricingPolicyAtBooking = {
+          discountCoupons: storeSettings.discountCoupons,
+          paymentPriceAdjustments: storeSettings.paymentPriceAdjustments,
+        };
       }
       if (body.collection === "bookings" && role !== "admin") {
         if (normalizeStoreCode(record.storeCode) !== storeCode)
@@ -4128,6 +4360,13 @@ export default async function handler(request, response) {
             "time",
             "duration",
             "totalPrice",
+            "basePrice",
+            "couponCode",
+            "couponDiscountAmount",
+            "paymentAdjustmentAmount",
+            "paymentAdjustmentMode",
+            "paymentAdjustmentPercent",
+            "pricingPolicyAtBooking",
             "status",
             "cancelledBy",
             "paymentReportedAt",

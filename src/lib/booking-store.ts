@@ -50,6 +50,24 @@ export interface Booking {
   refundRequestedAt?: string;
   refundConfirmedAt?: string;
   cancellationPolicyAtBooking?: BookingCancellationPolicy;
+  basePrice?: number;
+  couponCode?: string;
+  couponDiscountAmount?: number;
+  paymentAdjustmentAmount?: number;
+  paymentAdjustmentMode?: "none" | "discount" | "surcharge";
+  paymentAdjustmentPercent?: number;
+  pricingPolicyAtBooking?: {
+    discountCoupons: Array<{
+      code: string;
+      discountType: "percent" | "fixed";
+      discountValue: number;
+      active: boolean;
+    }>;
+    paymentPriceAdjustments: Record<
+      "efectivo" | "transferencia" | "tarjeta o mercado pago",
+      { mode: "none" | "discount" | "surcharge"; percent: number }
+    >;
+  };
   appointmentConfirmation?: "confirmed" | "pending";
   cancellationToken?: string;
   createdAt: string;
@@ -131,7 +149,7 @@ export const bookingStore = {
       createdAt: new Date().toISOString(),
     };
     await write([...read(), booking], booking.storeCode);
-    return booking;
+    return read().find((item) => item.id === booking.id) ?? booking;
   },
   async update(id: string, patch: Partial<Booking>) {
     if (!read().some((booking) => booking.id === id)) throw new Error("No encontramos ese turno.");
