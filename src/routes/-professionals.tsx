@@ -520,7 +520,15 @@ export function ProfessionalsManager() {
         paymentPriceAdjustments: storeSettings.paymentPriceAdjustments,
       });
       setStoreSettings((current) => ({ ...current, ...saved }));
-      toast.success("Cupones guardados automáticamente.");
+      toast.success(
+        !operation
+          ? "Cupón agregado y guardado."
+          : operation.action === "activate"
+            ? `Cupón ${operation.code} activado.`
+            : operation.action === "deactivate"
+              ? `Cupón ${operation.code} desactivado.`
+              : `Cupón ${operation.code} eliminado.`,
+      );
       return true;
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "No se pudieron guardar los cupones.");
@@ -2103,7 +2111,8 @@ export function ProfessionalsManager() {
                   }
                   onClick={() => void addDiscountCoupon()}
                 >
-                  <Plus className="mr-2 h-4 w-4" /> Agregar cupón
+                  <Plus className="mr-2 h-4 w-4" />
+                  {savingPricingSettings ? "Agregando…" : "Agregar cupón"}
                 </Button>
               </div>
               {storeSettings.discountCoupons.length > 0 ? (
