@@ -340,6 +340,10 @@ export function ProfessionalsManager() {
   const [savingSettings, setSavingSettings] = useState(false);
   const [savingCancellationPolicy, setSavingCancellationPolicy] = useState(false);
   const [savingPricingSettings, setSavingPricingSettings] = useState(false);
+  const [couponOperation, setCouponOperation] = useState<{
+    code: string;
+    action: "activate" | "deactivate" | "delete";
+  } | null>(null);
   const [newCouponCode, setNewCouponCode] = useState("");
   const [newCouponType, setNewCouponType] = useState<StoreDiscountCoupon["discountType"]>("percent");
   const [newCouponValue, setNewCouponValue] = useState(10);
@@ -504,8 +508,12 @@ export function ProfessionalsManager() {
     }
   }
 
-  async function persistDiscountCoupons(discountCoupons: StoreDiscountCoupon[]) {
+  async function persistDiscountCoupons(
+    discountCoupons: StoreDiscountCoupon[],
+    operation?: { code: string; action: "activate" | "deactivate" | "delete" },
+  ) {
     setSavingPricingSettings(true);
+    setCouponOperation(operation ?? null);
     try {
       const saved = await updateStorePricingSettings({
         discountCoupons,
@@ -519,6 +527,7 @@ export function ProfessionalsManager() {
       return false;
     } finally {
       setSavingPricingSettings(false);
+      setCouponOperation(null);
     }
   }
 
@@ -559,17 +568,24 @@ export function ProfessionalsManager() {
   }
 
   function toggleDiscountCoupon(index: number) {
+    const coupon = storeSettings.discountCoupons[index];
+    if (!coupon) return;
     const discountCoupons = storeSettings.discountCoupons.map((coupon, couponIndex) =>
       couponIndex === index ? { ...coupon, active: !coupon.active } : coupon,
     );
-    void persistDiscountCoupons(discountCoupons);
+    void persistDiscountCoupons(discountCoupons, {
+      code: coupon.code,
+      action: coupon.active ? "deactivate" : "activate",
+    });
   }
 
   function deleteDiscountCoupon(index: number) {
+    const coupon = storeSettings.discountCoupons[index];
+    if (!coupon) return;
     const discountCoupons = storeSettings.discountCoupons.filter(
       (_, couponIndex) => couponIndex !== index,
     );
-    void persistDiscountCoupons(discountCoupons);
+    void persistDiscountCoupons(discountCoupons, { code: coupon.code, action: "delete" });
   }
 
   function updatePaymentAdjustment(
@@ -2121,19 +2137,34 @@ export function ProfessionalsManager() {
                           type="button"
                           size="sm"
                           variant="outline"
-                          disabled={savingPricingSettings || loadingStoreSettings}
+                          disabled={
+                            savingPricingSettings || loadingStoreSettings || couponOperation !== null
+                          }
                           onClick={() => toggleDiscountCoupon(index)}
                         >
-                          {coupon.active ? "Desactivar" : "Activar"}
+                          {couponOperation?.code === coupon.code &&
+                          couponOperation.action === "deactivate"
+                            ? "Desactivando…"
+                            : couponOperation?.code === coupon.code &&
+                                couponOperation.action === "activate"
+                              ? "Activando…"
+                              : coupon.active
+                                ? "Desactivar"
+                                : "Activar"}
                         </Button>
                         <Button
                           type="button"
                           size="sm"
                           variant="destructive"
-                          disabled={savingPricingSettings || loadingStoreSettings}
+                          disabled={
+                            savingPricingSettings || loadingStoreSettings || couponOperation !== null
+                          }
                           onClick={() => deleteDiscountCoupon(index)}
                         >
-                          Eliminar
+                          {couponOperation?.code === coupon.code &&
+                          couponOperation.action === "delete"
+                            ? "Eliminando…"
+                            : "Eliminar"}
                         </Button>
                       </div>
                     </div>
