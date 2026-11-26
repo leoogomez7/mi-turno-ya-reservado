@@ -60,6 +60,8 @@ import {
   isCloudReady,
   loadReservationStore,
   selectStore,
+  validateStoreCoupon,
+  type StoreDiscountCoupon,
   type Store,
 } from "@/lib/cloud-sync";
 
@@ -221,6 +223,10 @@ export function BookPage() {
   const [couponInput, setCouponInput] = useState("");
   const [appliedCouponCode, setAppliedCouponCode] = useState("");
   const [couponError, setCouponError] = useState("");
+  const [verifiedCoupon, setVerifiedCoupon] = useState<StoreDiscountCoupon | null>(null);
+  const [couponStoreCode, setCouponStoreCode] = useState("");
+  const [serverActiveCoupons, setServerActiveCoupons] = useState<StoreDiscountCoupon[] | null>(null);
+  const [validatingCoupon, setValidatingCoupon] = useState(false);
   const [currentTime, setCurrentTime] = useState(() => Date.now());
 
   useEffect(() => {
@@ -449,6 +455,15 @@ export function BookPage() {
   }, [cloudDataReady, navigate, routeStoreCode, routeStoreSlug, selectedStoreCode, stores, step]);
 
   useEffect(() => {
+    setCouponInput("");
+    setAppliedCouponCode("");
+    setCouponError("");
+    setVerifiedCoupon(null);
+    setCouponStoreCode("");
+    setServerActiveCoupons(null);
+  }, [selectedStoreCode]);
+
+  useEffect(() => {
     if (!cloudDataReady || !selectedStoreCode) return;
     if (loadedReservationStoreCode.current === selectedStoreCode) return;
     let cancelled = false;
@@ -665,6 +680,9 @@ export function BookPage() {
       setCouponInput("");
       setAppliedCouponCode("");
       setCouponError("");
+      setVerifiedCoupon(null);
+      setCouponStoreCode("");
+      setServerActiveCoupons(null);
       setStepError(null);
       toast.success(`Seleccionaste ${store.name}.`);
       void navigate({
@@ -710,12 +728,23 @@ export function BookPage() {
   const selectedServicePrices = selectedServices
     .filter((service) => selectedServiceIds.includes(service.id))
     .map((service) => service.price);
-  const appliedCoupon = couponForCode(storeSettings?.discountCoupons, appliedCouponCode);
+  const pricingCoupons = (storeSettings?.discountCoupons ?? []).filter(
+    (coupon) =>
+      !verifiedCoupon ||
+      couponStoreCode !== selectedStoreCode ||
+      normalizeCouponCode(coupon.code) !== normalizeCouponCode(verifiedCoupon.code),
+  );
+  if (verifiedCoupon && couponStoreCode === selectedStoreCode)
+    pricingCoupons.push(verifiedCoupon);
+  const appliedCoupon =
+    couponStoreCode === selectedStoreCode && verifiedCoupon?.code === appliedCouponCode
+      ? verifiedCoupon
+      : couponForCode(pricingCoupons, appliedCouponCode);
   const pricing = calculateBookingPrice(
     selectedServicePrices,
     customer.paymentMethod,
     storeSettings?.paymentPriceAdjustments,
-    storeSettings?.discountCoupons,
+    pricingCoupons,
     appliedCoupon?.code ?? "",
   );
   const price = pricing.totalPrice;
@@ -728,21 +757,52 @@ export function BookPage() {
     paymentAdjustmentPercent: pricing.paymentAdjustmentPercent,
   };
 
-  function applyCouponCode() {
-    const normalizedCode = normalizeCouponCode(couponInput);
+  async function applyCouponCode(code = couponInput) {
+    const normalizedCode = normalizeCouponCode(code);
     if (!normalizedCode) {
       setCouponError("Ingresá un código de cupón.");
       return;
     }
-    const coupon = couponForCode(storeSettings?.discountCoupons, normalizedCode);
-    if (!coupon) {
-      setAppliedCouponCode("");
-      setCouponError("El cupón no es válido o no está activo.");
+    if (!selectedStoreCode) {
+      setCouponError("Seleccioná la sucursal donde querés usar el cupón.");
       return;
     }
-    setAppliedCouponCode(coupon.code);
-    setCouponInput(coupon.code);
+    setValidatingCoupon(true);
     setCouponError("");
+    try {
+      const result = await validateStoreCoupon(normalizedCode, selectedStoreCode);
+      if (result.storeCode !== selectedStoreCode) {
+        setAppliedCouponCode("");
+        setVerifiedCoupon(null);
+        setCouponError("La sucursal cambió. Volvé a validar el cupón.");
+        return;
+      }
+      setServerActiveCoupons(result.activeCoupons);
+      if (!result.valid || !result.coupon) {
+        setAppliedCouponCode("");
+        setVerifiedCoupon(null);
+        const validCodes = result.activeCoupons.map((coupon) => coupon.code).join(", ");
+        setCouponError(
+          validCodes
+            ? `El código ${normalizedCode} no está activo en ${selectedStore?.name ?? selectedStoreCode}. Cupones de esta sucursal: ${validCodes}.`
+            : `${selectedStore?.name ?? selectedStoreCode} no tiene cupones activos configurados.`,
+        );
+        return;
+      }
+      setVerifiedCoupon(result.coupon);
+      setCouponStoreCode(result.storeCode);
+      setAppliedCouponCode(result.coupon.code);
+      setCouponInput(result.coupon.code);
+      setCouponError("");
+    } catch (error) {
+      setAppliedCouponCode("");
+      setVerifiedCoupon(null);
+      setCouponError(
+        error instanceof Error ? error.message : "No se pudo validar el cupón para esta sucursal.",
+      );
+    } finally {
+      setValidatingCoupon(false);
+    }
   }
   const selectedSlotTimestamp = date && time ? getReservationSlotTimestamp(date, time) : NaN;
   const selectedSlotIsPast =
@@ -1225,6 +1285,9 @@ Observaciones: ${customer.notes || "Ninguna"}`;
     setCouponInput("");
     setAppliedCouponCode("");
     setCouponError("");
+    setVerifiedCoupon(null);
+    setCouponStoreCode("");
+    setServerActiveCoupons(null);
     goToStep(0);
   }
 
@@ -1532,11 +1595,20 @@ Observaciones: ${customer.notes || "Ninguna"}`;
                 onCouponInputChange={(value) => {
                   setCouponInput(value.toLocaleUpperCase("es-AR"));
                   setAppliedCouponCode("");
+                  setVerifiedCoupon(null);
+                  setCouponStoreCode("");
                   setCouponError("");
                 }}
                 onApplyCoupon={applyCouponCode}
+                availableCoupons={
+                  serverActiveCoupons ??
+                  (storeSettings?.discountCoupons ?? []).filter((coupon) => coupon.active)
+                }
+                validatingCoupon={validatingCoupon}
                 onRemoveCoupon={() => {
                   setAppliedCouponCode("");
+                  setVerifiedCoupon(null);
+                  setCouponStoreCode("");
                   setCouponInput("");
                   setCouponError("");
                 }}
@@ -2403,6 +2475,8 @@ function StepConfirm({
   appliedCouponCode,
   couponInput,
   couponError,
+  availableCoupons,
+  validatingCoupon,
   onCouponInputChange,
   onApplyCoupon,
   onRemoveCoupon,
@@ -2429,8 +2503,10 @@ function StepConfirm({
   appliedCouponCode: string;
   couponInput: string;
   couponError: string;
+  availableCoupons: NonNullable<Store["settings"]["discountCoupons"]>;
+  validatingCoupon: boolean;
   onCouponInputChange: (value: string) => void;
-  onApplyCoupon: () => void;
+  onApplyCoupon: (code?: string) => void | Promise<void>;
   onRemoveCoupon: () => void;
 }) {
   const serviceNames = serviceIds
@@ -2515,20 +2591,60 @@ function StepConfirm({
             </Button>
           </div>
         ) : (
-          <div className="flex flex-col gap-2 sm:flex-row">
-            <Input
-              value={couponInput}
-              onChange={(event) => onCouponInputChange(event.target.value)}
-              maxLength={32}
-              placeholder="Ingresá tu código"
-              aria-label="Código de descuento"
-            />
-            <Button type="button" variant="outline" onClick={onApplyCoupon}>
-              Aplicar
-            </Button>
-          </div>
+          <>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Input
+                value={couponInput}
+                onChange={(event) => onCouponInputChange(event.target.value)}
+                maxLength={32}
+                placeholder="Ingresá tu código"
+                aria-label="Código de descuento"
+                disabled={validatingCoupon}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                disabled={validatingCoupon}
+                onClick={() => void onApplyCoupon()}
+              >
+                {validatingCoupon ? "Validando…" : "Aplicar"}
+              </Button>
+            </div>
+            {availableCoupons.length ? (
+              <div className="flex flex-wrap items-center gap-2 text-xs">
+                <span className="text-muted-foreground">Cupones disponibles:</span>
+                {availableCoupons.map((coupon) => (
+                  <Button
+                    key={coupon.code}
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-7 border-gold/30 px-2 text-gold"
+                    disabled={validatingCoupon}
+                    onClick={() => void onApplyCoupon(coupon.code)}
+                  >
+                    {coupon.code} · {coupon.discountType === "percent"
+                      ? `${coupon.discountValue}% OFF`
+                      : `$${coupon.discountValue.toLocaleString("es-AR")} OFF`}
+                  </Button>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Esta sucursal no tiene cupones activos. El profesional debe agregarlos y guardar la
+                configuración en /configuracion.
+              </p>
+            )}
+          </>
         )}
-        {couponError && <p role="alert" className="text-sm text-red-300">{couponError}</p>}
+        {couponError && (
+          <p role="alert" className="text-sm text-red-300">
+            {couponError}{" "}
+            {availableCoupons.length > 0 && (
+              <>Revisá el código; los disponibles son {availableCoupons.map((coupon) => coupon.code).join(", ")}.</>
+            )}
+          </p>
+        )}
       </div>
       <div className="mt-5 space-y-2 rounded-xl border border-border bg-background/40 p-4 text-sm">
         <div className="flex items-center justify-between gap-3">

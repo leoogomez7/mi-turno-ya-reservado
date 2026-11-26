@@ -483,6 +483,19 @@ export async function updateStorePricingSettings(
   return response.settings;
 }
 
+export async function validateStoreCoupon(code: string, requestedStoreCode: string) {
+  return request<{
+    valid: boolean;
+    storeCode: string;
+    coupon?: StoreDiscountCoupon;
+    activeCoupons: StoreDiscountCoupon[];
+  }>(
+    "POST",
+    { action: "validate-store-coupon", code },
+    requestedStoreCode,
+  );
+}
+
 export async function updateStoreLogo(logo: string) {
   if (!tokenGetter)
     throw new Error("Iniciá sesión como administrador para editar el logo de la sucursal.");

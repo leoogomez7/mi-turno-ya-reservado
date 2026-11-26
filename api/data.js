@@ -2046,6 +2046,42 @@ export default async function handler(request, response) {
     return response.status(400).json({ error: "El cuerpo JSON no es válido." });
   }
   if (request.method === "POST") {
+    if (body?.action === "validate-store-coupon") {
+      try {
+        const storeCode = normalizeStoreCode(request.headers["x-store-code"]);
+        const code =
+          typeof body.code === "string" ? body.code.trim().toLocaleUpperCase("es-AR") : "";
+        if (!storeCode)
+          return response.status(400).json({ error: "Elegí una sucursal antes de validar el cupón." });
+        if (!/^[\p{L}\d_-]{3,32}$/u.test(code))
+          return response.status(200).json({
+            valid: false,
+            storeCode,
+            coupon: null,
+            activeCoupons: [],
+          });
+        const storeResult = await db.execute({
+          sql: "SELECT settings, subscription_expires_at FROM stores WHERE code = ?",
+          args: [storeCode],
+        });
+        if (!storeResult.rows[0] || !isSubscriptionActive(storeResult.rows[0].subscription_expires_at))
+          return response.status(404).json({ error: "La sucursal no está disponible para reservas." });
+        const settings = parseStoreSettings(storeResult.rows[0].settings);
+        const activeCoupons = settings.discountCoupons.filter((coupon) => coupon.active);
+        const coupon = activeCoupons.find(
+          (item) => item.code.toLocaleUpperCase("es-AR") === code,
+        );
+        return response.status(200).json({
+          valid: Boolean(coupon),
+          storeCode,
+          coupon: coupon ?? null,
+          activeCoupons,
+        });
+      } catch (error) {
+        console.error("No se pudo validar el cupón de la sucursal", error);
+        return response.status(500).json({ error: "No se pudo validar el cupón." });
+      }
+    }
     if (user && body?.action === "permanently-delete-archived-bookings") {
       try {
         const result = await permanentlyDeleteArchivedBookings(db, user, body.bookingIds);
