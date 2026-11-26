@@ -6,9 +6,11 @@ import {
   CalendarDays,
   Clock3,
   Copy,
+  ExternalLink,
   Plus,
   Scissors,
   Search,
+  Star,
   Trash2,
   UserRound,
 } from "lucide-react";
@@ -61,6 +63,7 @@ import {
   restoreArchivedBookings,
   updateClientBooking,
   updateClientPaymentMethod,
+  getAvailableStores,
   type Store,
 } from "@/lib/cloud-sync";
 import { toast } from "sonner";
@@ -75,7 +78,8 @@ function MyBookingsPage() {
   const { isAuthenticated, isLoading, role, user } = useAppAuth();
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [professionals, setProfessionals] = useState<Professional[]>([]);
-  const [stores, setStores] = useState<Pick<Store, "code" | "name" | "settings">[]>([]);
+  const [stores, setStores] = useState<Pick<Store, "code" | "name" | "settings" | "logo">[]>([]);
+  const [viewingStore, setViewingStore] = useState<Store | null>(null);
   const [occupiedSlots, setOccupiedSlots] = useState<
     Pick<Booking, "id" | "storeCode" | "barberId" | "date" | "time" | "duration" | "status">[]
   >([]);
@@ -612,6 +616,18 @@ function MyBookingsPage() {
     );
   }
 
+  function openStoreDetails(code: string) {
+    const storedStore = stores.find((store) => store.code === code);
+    const fullStore = getAvailableStores().find((store) => store.code === code);
+    if (fullStore) {
+      setViewingStore(fullStore);
+    } else if (storedStore) {
+      setViewingStore(storedStore);
+    } else {
+      toast.error("No se pudo cargar la información de esta sucursal.");
+    }
+  }
+
   const archivedBookings = bookings
     .filter(
       (booking) =>
@@ -779,6 +795,8 @@ function MyBookingsPage() {
                   policy?.noRefunds ||
                   policy?.allowRefunds === false ||
                   (policy?.refundPercent ?? 100) <= 0;
+                const refundPercent = policy?.refundPercent ?? 100;
+                const refundWindowMinutes = policy?.cancellationWindowMinutes ?? 30;
                 const isActiveBooking =
                   booking.status === "confirmed" || booking.status === "pending-payment";
                 const hasPaymentReport =
@@ -830,22 +848,33 @@ function MyBookingsPage() {
                         <div className="text-sm text-muted-foreground">
                           {serviceNames || "Servicio"} · {booking.duration} min
                         </div>
-                        <div className="text-xs font-medium text-gold">Sucursal: {storeName}</div>
+                        <button
+                          type="button"
+                          className="text-xs font-medium text-gold underline-offset-4 hover:underline"
+                          onClick={() => openStoreDetails(booking.storeCode)}
+                        >
+                          Sucursal: {storeName}
+                        </button>
                       </div>
                     </div>
                     <div className="mx-auto w-fit rounded-lg border border-gold/20 bg-gold/5 px-3 py-2 text-center font-display text-lg font-semibold text-gold xl:col-start-3 xl:row-start-1 xl:mx-0 xl:text-lg">
                       ${booking.totalPrice.toLocaleString("es-AR")}
                     </div>
                     <div className="flex w-full flex-col items-center gap-1 text-xs text-muted-foreground xl:col-start-4 xl:items-start xl:justify-self-start">
-                      {booking.status !== "cancelled" &&
-                        booking.status !== "completed" &&
-                        booking.status !== "no-show" && (
-                          <Badge variant="outline" className={statusClass}>
-                            {statusLabel}
-                          </Badge>
-                        )}
                       <Badge variant="outline" className="border-gold/30 text-gold">
                         Pago · {paymentMethodLabel}
+                      </Badge>
+                      <Badge
+                        variant="outline"
+                        className={
+                          refundNotAllowed
+                            ? "border-red-300 text-red-300"
+                            : "border-gold/30 text-gold"
+                        }
+                      >
+                        {refundNotAllowed
+                          ? "Política devolución - No"
+                          : `Política devolución - ${refundPercent}% - Hasta ${refundWindowMinutes} minutos`}
                       </Badge>
                       {(booking.status === "pending-payment" ||
                         booking.paymentStatus === "pending" ||
@@ -1287,6 +1316,13 @@ function MyBookingsPage() {
                       : booking.customer.paymentMethod === "efectivo"
                         ? "Efectivo"
                         : "No especificado";
+                const policy = cancellationPolicyFor(booking);
+                const refundNotAllowed =
+                  policy?.noRefunds ||
+                  policy?.allowRefunds === false ||
+                  (policy?.refundPercent ?? 100) <= 0;
+                const refundPercent = policy?.refundPercent ?? 100;
+                const refundWindowMinutes = policy?.cancellationWindowMinutes ?? 30;
                 return (
                   <article
                     key={booking.id}
@@ -1305,10 +1341,24 @@ function MyBookingsPage() {
                       {format(appointmentDate, "EEEE d 'de' MMMM, yyyy", { locale: es })} ·{" "}
                       {booking.time}
                     </p>
-                    <p className="mt-1 font-medium text-gold">Sucursal: {storeName}</p>
+                    <button
+                      type="button"
+                      className="mt-1 font-medium text-gold underline-offset-4 hover:underline"
+                      onClick={() => openStoreDetails(booking.storeCode)}
+                    >
+                      Sucursal: {storeName}
+                    </button>
                     <p className="mt-1 text-muted-foreground">
                       Pago: {paymentMethod} · ${booking.totalPrice.toLocaleString("es-AR")}
                     </p>
+                    <Badge
+                      variant="outline"
+                      className={`mt-2 ${refundNotAllowed ? "border-red-300 text-red-300" : "border-gold/30 text-gold"}`}
+                    >
+                      {refundNotAllowed
+                        ? "Política devolución - No"
+                        : `Política devolución - ${refundPercent}% - Hasta ${refundWindowMinutes} minutos`}
+                    </Badge>
                     <div className="mt-3 flex flex-wrap justify-end gap-2">
                       <Button
                         type="button"
@@ -1348,6 +1398,107 @@ function MyBookingsPage() {
               Cerrar
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={viewingStore !== null}
+        onOpenChange={(open) => !open && setViewingStore(null)}
+      >
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+          {viewingStore && (
+            <>
+              <DialogHeader>
+                <DialogTitle>{viewingStore.name}</DialogTitle>
+                <DialogDescription>
+                  Información de la sucursal · Código de reserva: {viewingStore.code}
+                </DialogDescription>
+              </DialogHeader>
+              {viewingStore.settings.coverImage && (
+                <img
+                  src={viewingStore.settings.coverImage}
+                  alt={`Portada de ${viewingStore.name}`}
+                  className="aspect-240/43 w-full rounded-xl object-cover"
+                />
+              )}
+              <div className="flex min-w-0 items-center gap-4">
+                {viewingStore.logo && (
+                  <img
+                    src={viewingStore.logo}
+                    alt={`Logo de ${viewingStore.name}`}
+                    className="h-16 w-16 shrink-0 rounded-full border border-gold/30 bg-background object-contain p-1"
+                  />
+                )}
+                <div className="flex flex-wrap items-center gap-3">
+                  {viewingStore.settings.googleMapsUrl && (
+                    <a
+                      href={viewingStore.settings.googleMapsUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1.5 text-sm text-gold underline-offset-4 hover:underline"
+                    >
+                      {typeof viewingStore.settings.googleRating === "number" && (
+                        <span className="inline-flex items-center gap-1 font-semibold">
+                          <Star className="h-4 w-4 fill-current" />
+                          {viewingStore.settings.googleRating.toFixed(1)}
+                        </span>
+                      )}
+                      Ver ubicación
+                      {viewingStore.settings.googleReviewCount > 0 && (
+                        <span>({viewingStore.settings.googleReviewCount} reseñas)</span>
+                      )}
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </a>
+                  )}
+                  {viewingStore.settings.googleReviewUrl && (
+                    <a
+                      href={viewingStore.settings.googleReviewUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1.5 text-sm text-gold underline-offset-4 hover:underline"
+                    >
+                      Escribir una reseña <ExternalLink className="h-3.5 w-3.5" />
+                    </a>
+                  )}
+                </div>
+              </div>
+              <div className="grid gap-4 border-t border-border pt-4 sm:grid-cols-2">
+                {professionals.some(
+                  (professional) => professional.storeCode === viewingStore.code,
+                ) && (
+                  <div>
+                    <p className="text-xs uppercase tracking-wider text-muted-foreground">
+                      Equipo
+                    </p>
+                    <p className="mt-1 font-medium">
+                      {professionals
+                        .filter((professional) => professional.storeCode === viewingStore.code)
+                        .map((professional) => professional.name.trim())
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </p>
+                  </div>
+                )}
+                {viewingStore.settings.address && (
+                  <div>
+                    <p className="text-xs uppercase tracking-wider text-muted-foreground">
+                      Ubicación
+                    </p>
+                    <p className="mt-1 text-sm">{viewingStore.settings.address}</p>
+                  </div>
+                )}
+                {viewingStore.settings.description && (
+                  <div className="sm:col-span-2">
+                    <p className="text-xs uppercase tracking-wider text-muted-foreground">
+                      Sobre la sucursal
+                    </p>
+                    <p className="mt-1 whitespace-pre-line text-sm">
+                      {viewingStore.settings.description}
+                    </p>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
         </DialogContent>
       </Dialog>
       <Dialog

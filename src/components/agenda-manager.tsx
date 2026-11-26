@@ -696,6 +696,8 @@ export function AgendaManager() {
                   cancellationPolicy?.noRefunds ||
                   cancellationPolicy?.allowRefunds === false ||
                   (cancellationPolicy?.refundPercent ?? 100) <= 0;
+                const refundPercent = cancellationPolicy?.refundPercent ?? 100;
+                const refundWindowMinutes = cancellationPolicy?.cancellationWindowMinutes ?? 30;
                 return (
                   <div
                     key={booking.id}
@@ -776,14 +778,21 @@ export function AgendaManager() {
                       <Badge variant="outline" className="border-gold/30 text-gold">
                         Pago · {paymentMethodLabel}
                       </Badge>
+                      <Badge
+                        variant="outline"
+                        className={
+                          refundNotAllowed
+                            ? "border-red-300 text-red-300"
+                            : "border-gold/30 text-gold"
+                        }
+                      >
+                        {refundNotAllowed
+                          ? "Política devolución - No"
+                          : `Política devolución - ${refundPercent}% - Hasta ${refundWindowMinutes} minutos`}
+                      </Badge>
                       {booking.isTest && (
                         <Badge variant="outline" className="border-emerald-300 text-emerald-400">
                           Turno de prueba
-                        </Badge>
-                      )}
-                      {booking.status === "confirmed" && (
-                        <Badge variant="outline" className="border-gold/30 text-gold">
-                          Reservado
                         </Badge>
                       )}
                       {(booking.status === "pending-payment" ||
