@@ -2098,8 +2098,13 @@ export function ProfessionalsManager() {
                       className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card p-3"
                     >
                       <div>
+                        <p className="font-mono font-semibold text-gold">{coupon.code}</p>
                         <div className="flex flex-wrap items-center gap-2">
-                          <p className="font-mono font-semibold text-gold">{coupon.code}</p>
+                          <p className="text-xs text-muted-foreground">
+                          {coupon.discountType === "percent"
+                            ? `${coupon.discountValue}% de descuento`
+                            : `$${coupon.discountValue.toLocaleString("es-AR")} de descuento`}
+                          </p>
                           <span
                             className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${
                               coupon.active
@@ -2110,11 +2115,6 @@ export function ProfessionalsManager() {
                             {coupon.active ? "Activo" : "Inactivo"}
                           </span>
                         </div>
-                        <p className="text-xs text-muted-foreground">
-                          {coupon.discountType === "percent"
-                            ? `${coupon.discountValue}% de descuento`
-                            : `$${coupon.discountValue.toLocaleString("es-AR")} de descuento`}
-                        </p>
                       </div>
                       <div className="flex items-center gap-2">
                         <Button
