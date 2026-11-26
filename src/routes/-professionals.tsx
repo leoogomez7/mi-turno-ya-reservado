@@ -2098,7 +2098,18 @@ export function ProfessionalsManager() {
                       className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card p-3"
                     >
                       <div>
-                        <p className="font-mono font-semibold text-gold">{coupon.code}</p>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-mono font-semibold text-gold">{coupon.code}</p>
+                          <span
+                            className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${
+                              coupon.active
+                                ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-300"
+                                : "border-muted-foreground/30 bg-muted/30 text-muted-foreground"
+                            }`}
+                          >
+                            {coupon.active ? "Activo" : "Inactivo"}
+                          </span>
+                        </div>
                         <p className="text-xs text-muted-foreground">
                           {coupon.discountType === "percent"
                             ? `${coupon.discountValue}% de descuento`
