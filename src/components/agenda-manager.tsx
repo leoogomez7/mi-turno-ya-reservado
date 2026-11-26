@@ -668,7 +668,7 @@ export function AgendaManager() {
             <p className="text-sm text-muted-foreground">
               {visibleBookings.length
                 ? "No encontramos turnos con esa búsqueda."
-                : "No hay turnos agendados todavía."}
+                : "No hay turnos reservados."}
             </p>
           ) : (
             <div className="space-y-2">

@@ -609,7 +609,11 @@ function MyBookingsPage() {
     );
   }
 
-  function openStoreDetails(code: string) {
+  function openStoreDetails(code?: string) {
+    if (!code) {
+      toast.error("No se encontró el código de esta sucursal.");
+      return;
+    }
     const storedStore = stores.find((store) => store.code === code);
     const fullStore = getAvailableStores().find((store) => store.code === code);
     if (fullStore) {
@@ -741,7 +745,7 @@ function MyBookingsPage() {
             <p className="text-sm text-muted-foreground">
               {visibleBookings.length
                 ? "No encontramos turnos con esa búsqueda."
-                : "Todavía no hay turnos asociados a esta cuenta."}
+                : "No hay turnos reservados."}
             </p>
           ) : (
             <div className="space-y-2">
