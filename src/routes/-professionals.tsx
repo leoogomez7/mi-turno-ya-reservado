@@ -342,7 +342,7 @@ export function ProfessionalsManager() {
   const [savingPricingSettings, setSavingPricingSettings] = useState(false);
   const [couponOperation, setCouponOperation] = useState<{
     code: string;
-    action: "activate" | "deactivate" | "delete";
+    action: "add" | "activate" | "deactivate" | "delete";
   } | null>(null);
   const [newCouponCode, setNewCouponCode] = useState("");
   const [newCouponType, setNewCouponType] = useState<StoreDiscountCoupon["discountType"]>("percent");
@@ -510,7 +510,7 @@ export function ProfessionalsManager() {
 
   async function persistDiscountCoupons(
     discountCoupons: StoreDiscountCoupon[],
-    operation?: { code: string; action: "activate" | "deactivate" | "delete" },
+    operation?: { code: string; action: "add" | "activate" | "deactivate" | "delete" },
   ) {
     setSavingPricingSettings(true);
     setCouponOperation(operation ?? null);
@@ -523,7 +523,9 @@ export function ProfessionalsManager() {
       toast.success(
         !operation
           ? "Cupón agregado y guardado."
-          : operation.action === "activate"
+          : operation.action === "add"
+            ? "Cupón agregado y guardado."
+            : operation.action === "activate"
             ? `Cupón ${operation.code} activado.`
             : operation.action === "deactivate"
               ? `Cupón ${operation.code} desactivado.`
@@ -572,7 +574,8 @@ export function ProfessionalsManager() {
       ...storeSettings.discountCoupons,
       { code, discountType: newCouponType, discountValue: newCouponValue, active: true },
     ];
-    if (await persistDiscountCoupons(discountCoupons)) setNewCouponCode("");
+    if (await persistDiscountCoupons(discountCoupons, { code, action: "add" }))
+      setNewCouponCode("");
   }
 
   function toggleDiscountCoupon(index: number) {
@@ -2112,7 +2115,7 @@ export function ProfessionalsManager() {
                   onClick={() => void addDiscountCoupon()}
                 >
                   <Plus className="mr-2 h-4 w-4" />
-                  {savingPricingSettings ? "Agregando…" : "Agregar cupón"}
+                  {couponOperation?.action === "add" ? "Agregando…" : "Agregar cupón"}
                 </Button>
               </div>
               {storeSettings.discountCoupons.length > 0 ? (
