@@ -1861,7 +1861,9 @@ function MyBookingsPage() {
                     disabled={busyBookingId !== null || !!paymentBooking.paymentReportedAt}
                     onClick={() => void reportPayment(paymentBooking)}
                   >
-                    Indicar pago realizado
+                    {busyBookingId === paymentBooking.id
+                      ? "Procesando..."
+                      : "Indicar pago realizado"}
                   </Button>
                   {paymentBooking.customer.paymentMethod !== "efectivo" && (
                     <Button
