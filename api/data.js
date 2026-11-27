@@ -92,6 +92,9 @@ function requiresRefundResolution(booking) {
   ) {
     return false;
   }
+  if (booking.cancelledBy === "professional") return true;
+  if (booking.cancelledBy === "client")
+    return booking.clientCancellationRefundEligible === true;
   const policy = booking.cancellationPolicyAtBooking;
   return (
     !policy ||
@@ -101,7 +104,16 @@ function requiresRefundResolution(booking) {
 
 function canDeleteBooking(booking) {
   if (hasPendingRefund(booking)) return false;
-  if (Boolean(booking.paymentReportedAt) && booking.paymentStatus !== "approved") return false;
+  const cancelledWithoutRefundEligibility =
+    booking.status === "cancelled" &&
+    booking.cancelledBy === "client" &&
+    booking.clientCancellationRefundEligible !== true;
+  if (
+    Boolean(booking.paymentReportedAt) &&
+    booking.paymentStatus !== "approved" &&
+    !cancelledWithoutRefundEligibility
+  )
+    return false;
 
   if (booking.status === "cancelled") {
     return !requiresRefundResolution(booking);
@@ -3197,14 +3209,13 @@ export default async function handler(request, response) {
           const policy =
             validateCancellationPolicy(booking.cancellationPolicyAtBooking) ??
             (await getStoreCancellationPolicy(db, booking.storeCode));
-          if (policy.noRefunds || !policy.allowRefunds) {
+          if (!cancelledByProfessional && (policy.noRefunds || !policy.allowRefunds)) {
             return response.status(403).json({
               error: "La política de esta sucursal no permite cancelar ni devolver pagos.",
             });
           }
-          const refundAmount = Math.round(
-            (Number(booking.totalPrice) * policy.refundPercent) / 100,
-          );
+          const refundPercent = cancelledByProfessional ? 100 : policy.refundPercent;
+          const refundAmount = Math.round((Number(booking.totalPrice) * refundPercent) / 100);
           if (refundAmount <= 0) {
             return response.status(403).json({
               error: "La política de esta sucursal no permite devolver dinero por este pago.",
@@ -3260,6 +3271,7 @@ export default async function handler(request, response) {
           else delete booking.refundCbu;
           booking.paymentCancellationStatus = "requested";
           booking.refundAmount = refundAmount;
+          if (!cancelledByProfessional) booking.clientCancellationRefundEligible = true;
           booking.refundRequestedAt = new Date().toISOString();
           booking.paymentCancellationRequestedAt = booking.refundRequestedAt;
           booking.status = "cancelled";
@@ -3271,7 +3283,7 @@ export default async function handler(request, response) {
             booking,
             "payment_refund_requested",
             "Devolución solicitada",
-            `${booking.customer.fullName} solicita devolver $${refundAmount.toLocaleString("es-AR")} (${policy.refundPercent}% del pago). Método: ${paymentMethod}.${destinationMessage}`,
+            `${booking.customer.fullName} solicita devolver $${refundAmount.toLocaleString("es-AR")} (${refundPercent}% del pago). Método: ${paymentMethod}.${destinationMessage}`,
           );
           await persistBookingUpdate(db, bookingId, previousBookingValue, booking, notice);
           return response.status(200).json({ booking, cancellationStatus: "requested" });
@@ -3526,8 +3538,26 @@ export default async function handler(request, response) {
             error: "No se puede cancelar un turno que ya comenzó o cuya fecha no es válida.",
           });
         }
+        let clientCancellationRefundEligible = false;
+        if (booking.paymentStatus === "approved") {
+          const policy =
+            validateCancellationPolicy(booking.cancellationPolicyAtBooking) ??
+            (await getStoreCancellationPolicy(db, booking.storeCode));
+          clientCancellationRefundEligible =
+            !policy.noRefunds &&
+            policy.allowRefunds &&
+            policy.refundPercent > 0 &&
+            appointmentAt - Date.now() >= policy.cancellationWindowMinutes * 60 * 1000;
+          if (clientCancellationRefundEligible) {
+            return response.status(409).json({
+              error:
+                "Este turno permite solicitar una devolución. Iniciá la solicitud antes de cancelar.",
+            });
+          }
+        }
         booking.status = "cancelled";
         booking.cancelledBy = "client";
+        booking.clientCancellationRefundEligible = clientCancellationRefundEligible;
         delete booking.cancellationToken;
         const notice = notificationForAdmin(
           booking,

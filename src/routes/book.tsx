@@ -284,6 +284,7 @@ export function BookPage() {
   const [validatingCoupon, setValidatingCoupon] = useState(false);
   const [currentTime, setCurrentTime] = useState(() => Date.now());
   const [claimingSlot, setClaimingSlot] = useState(false);
+  const [claimingSlotTime, setClaimingSlotTime] = useState<string | null>(null);
   const [blockedSlotKeys, setBlockedSlotKeys] = useState<Set<string>>(() => new Set());
   const slotHoldRef = useRef<{
     holdId: string;
@@ -547,7 +548,11 @@ export function BookPage() {
     if (loadedReservationStoreCode.current === selectedStoreCode) return;
     let cancelled = false;
     setStoreLoading(true);
-    void loadReservationStore(selectedStoreCode, isAuthenticated ? auth.getIdToken : undefined)
+    void loadReservationStore(
+      selectedStoreCode,
+      isAuthenticated ? auth.getIdToken : undefined,
+      true,
+    )
       .then(({ data, stores: loadedStores }) => {
         if (cancelled) return;
         loadedReservationStoreCode.current = selectedStoreCode;
@@ -675,7 +680,11 @@ export function BookPage() {
     const refresh = () => {
       if (cancelled || document.hidden || refreshInFlight) return;
       refreshInFlight = true;
-      void loadReservationStore(selectedStoreCode, isAuthenticated ? auth.getIdToken : undefined)
+      void loadReservationStore(
+        selectedStoreCode,
+        isAuthenticated ? auth.getIdToken : undefined,
+        true,
+      )
         .then(({ data, stores: loadedStores }) => {
           if (cancelled) return;
           setReservationProfessionals(data.professionals);
@@ -918,6 +927,7 @@ export function BookPage() {
     if (slotClaimInFlight.current) return;
     slotClaimInFlight.current = true;
     setClaimingSlot(true);
+    setClaimingSlotTime(slot);
     const previousHold = slotHoldRef.current ?? readReservationSlotHold();
     const holdId = previousHold?.holdId ?? crypto.randomUUID();
     const dateKey = format(date, "yyyy-MM-dd");
@@ -976,6 +986,7 @@ export function BookPage() {
     } finally {
       slotClaimInFlight.current = false;
       setClaimingSlot(false);
+      setClaimingSlotTime(null);
     }
   }
 
@@ -1045,6 +1056,7 @@ export function BookPage() {
       const { data, stores: loadedStores } = await loadReservationStore(
         selectedStoreCode,
         isAuthenticated ? auth.getIdToken : undefined,
+        true,
       );
       setReservationProfessionals(data.professionals);
       setReservationBookings(data.bookings);
@@ -1776,6 +1788,7 @@ Observaciones: ${customer.notes || "Ninguna"}`;
               onSelectTime={handleSlotSelect}
               blockedSlots={blockedSlotKeys}
               claimingSlot={claimingSlot}
+              claimingSlotTime={claimingSlotTime}
               barberId={barberId}
               duration={duration}
               currentTime={currentTime}
@@ -2469,6 +2482,7 @@ function StepDateTime({
   storeCode,
   blockedSlots,
   claimingSlot,
+  claimingSlotTime,
   currentTime,
 }: {
   date: Date | null;
@@ -2483,6 +2497,7 @@ function StepDateTime({
   storeCode: string;
   blockedSlots: Set<string>;
   claimingSlot: boolean;
+  claimingSlotTime: string | null;
   currentTime: number;
 }) {
   const today = startOfToday();
@@ -2562,7 +2577,6 @@ function StepDateTime({
 
   function isSlotAvailable(slot: string): boolean {
     return (
-      !claimingSlot &&
       !blockedSlots.has(reservationSlotKey(storeCode, barberId, dateKey, duration, slot)) &&
       !isSlotPast(slot) &&
       fitsSelectedDuration(slot) &&
@@ -2639,12 +2653,12 @@ function StepDateTime({
             const slotPast = isSlotPast(s);
             const avail = isSlotAvailable(s);
             const remaining = remainingForSlot(s);
-            const selected = time === s;
+            const selected = claimingSlot ? claimingSlotTime === s : time === s;
             return (
               <button
                 type="button"
                 key={s}
-                disabled={!avail}
+                disabled={claimingSlot || !avail}
                 onClick={() => onSelectTime(s)}
                 className={cn(
                   "flex flex-col items-center rounded-lg border px-2 py-2 text-sm font-medium transition",
@@ -2660,7 +2674,7 @@ function StepDateTime({
                     ? "Fuera de horario"
                     : !durationFits
                       ? "Se sobrepasa el turno"
-                      : claimingSlot
+                      : claimingSlotTime === s
                         ? "Reservando..."
                         : blockedSlots.has(
                             reservationSlotKey(storeCode, barberId, dateKey, duration, s),

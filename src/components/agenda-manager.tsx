@@ -687,11 +687,18 @@ export function AgendaManager() {
                 const cancellationPolicy =
                   booking.cancellationPolicyAtBooking ??
                   getAvailableStores().find((store) => store.code === booking.storeCode)?.settings;
+                const professionalCancellationNeedsRefund =
+                  booking.status === "cancelled" &&
+                  booking.cancelledBy === "professional" &&
+                  booking.paymentStatus === "approved";
                 const refundNotAllowed =
-                  cancellationPolicy?.noRefunds ||
-                  cancellationPolicy?.allowRefunds === false ||
-                  (cancellationPolicy?.refundPercent ?? 100) <= 0;
-                const refundPercent = cancellationPolicy?.refundPercent ?? 100;
+                  !professionalCancellationNeedsRefund &&
+                  (cancellationPolicy?.noRefunds ||
+                    cancellationPolicy?.allowRefunds === false ||
+                    (cancellationPolicy?.refundPercent ?? 100) <= 0);
+                const refundPercent = professionalCancellationNeedsRefund
+                  ? 100
+                  : (cancellationPolicy?.refundPercent ?? 100);
                 const refundWindowMinutes = cancellationPolicy?.cancellationWindowMinutes ?? 30;
                 return (
                   <div
@@ -791,7 +798,9 @@ export function AgendaManager() {
                             : "border-gold/30 text-gold"
                         }
                       >
-                        {refundNotAllowed
+                        {professionalCancellationNeedsRefund
+                          ? "Devolución 100% por cancelación del profesional"
+                          : refundNotAllowed
                           ? "Política devolución - No"
                           : `Política devolución - ${refundPercent}% - Hasta ${refundWindowMinutes} minutos`}
                       </Badge>

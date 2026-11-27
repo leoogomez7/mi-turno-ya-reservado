@@ -337,9 +337,10 @@ function MyBookingsPage() {
       booking.status === "cancelled" && booking.cancelledBy === "professional";
     const policy = cancellationPolicyFor(booking);
     if (
-      policy?.noRefunds ||
-      policy?.allowRefunds === false ||
-      (policy?.refundPercent ?? 100) <= 0
+      !cancelledByProfessional &&
+      (policy?.noRefunds ||
+        policy?.allowRefunds === false ||
+        (policy?.refundPercent ?? 100) <= 0)
     ) {
       toast.error("La política de esta sucursal no permite devolver pagos.");
       return;
@@ -845,11 +846,18 @@ function MyBookingsPage() {
                         ? "Tarjeta o Mercado Pago"
                         : "No especificado";
                 const policy = cancellationPolicyFor(booking);
+                const cancelledByProfessional =
+                  booking.status === "cancelled" && booking.cancelledBy === "professional";
+                const professionalCancellationNeedsRefund =
+                  cancelledByProfessional && booking.paymentStatus === "approved";
                 const refundNotAllowed =
-                  policy?.noRefunds ||
-                  policy?.allowRefunds === false ||
-                  (policy?.refundPercent ?? 100) <= 0;
-                const refundPercent = policy?.refundPercent ?? 100;
+                  !professionalCancellationNeedsRefund &&
+                  (policy?.noRefunds ||
+                    policy?.allowRefunds === false ||
+                    (policy?.refundPercent ?? 100) <= 0);
+                const refundPercent = professionalCancellationNeedsRefund
+                  ? 100
+                  : (policy?.refundPercent ?? 100);
                 const refundWindowMinutes = policy?.cancellationWindowMinutes ?? 30;
                 const isActiveBooking =
                   booking.status === "confirmed" || booking.status === "pending-payment";
@@ -871,11 +879,9 @@ function MyBookingsPage() {
                   );
                 const canRequestPaymentCancellation =
                   (isActiveBooking ||
-                    (booking.status === "cancelled" && booking.cancelledBy === "professional")) &&
+                    cancelledByProfessional) &&
                   booking.paymentStatus === "approved" &&
-                  !policy?.noRefunds &&
-                  policy?.allowRefunds !== false &&
-                  (policy?.refundPercent ?? 100) > 0 &&
+                  !refundNotAllowed &&
                   (booking.cancelledBy === "professional" || !refundRequestTooLate) &&
                   ["efectivo", "transferencia", "tarjeta o mercado pago"].includes(
                     booking.customer.paymentMethod ?? "",
@@ -936,7 +942,9 @@ function MyBookingsPage() {
                             : "border-gold/30 text-gold"
                         }
                       >
-                        {refundNotAllowed
+                        {professionalCancellationNeedsRefund
+                          ? "Devolución 100% por cancelación del profesional"
+                          : refundNotAllowed
                           ? "Política devolución - No"
                           : `Política devolución - ${refundPercent}% - Hasta ${refundWindowMinutes} minutos`}
                       </Badge>
@@ -1384,11 +1392,18 @@ function MyBookingsPage() {
                         ? "Efectivo"
                         : "No especificado";
                 const policy = cancellationPolicyFor(booking);
+                const cancelledByProfessional =
+                  booking.status === "cancelled" && booking.cancelledBy === "professional";
+                const professionalCancellationNeedsRefund =
+                  cancelledByProfessional && booking.paymentStatus === "approved";
                 const refundNotAllowed =
-                  policy?.noRefunds ||
-                  policy?.allowRefunds === false ||
-                  (policy?.refundPercent ?? 100) <= 0;
-                const refundPercent = policy?.refundPercent ?? 100;
+                  !professionalCancellationNeedsRefund &&
+                  (policy?.noRefunds ||
+                    policy?.allowRefunds === false ||
+                    (policy?.refundPercent ?? 100) <= 0);
+                const refundPercent = professionalCancellationNeedsRefund
+                  ? 100
+                  : (policy?.refundPercent ?? 100);
                 const refundWindowMinutes = policy?.cancellationWindowMinutes ?? 30;
                 return (
                   <article
@@ -1422,7 +1437,9 @@ function MyBookingsPage() {
                       variant="outline"
                       className={`mt-2 ${refundNotAllowed ? "border-red-300 text-red-300" : "border-gold/30 text-gold"}`}
                     >
-                      {refundNotAllowed
+                      {professionalCancellationNeedsRefund
+                        ? "Devolución 100% por cancelación del profesional"
+                        : refundNotAllowed
                         ? "Política devolución - No"
                         : `Política devolución - ${refundPercent}% - Hasta ${refundWindowMinutes} minutos`}
                     </Badge>
@@ -1692,11 +1709,17 @@ function MyBookingsPage() {
             <div className="space-y-3 rounded-xl border border-gold/30 bg-gold/5 p-4 text-sm">
               {(() => {
                 const policy = cancellationPolicyFor(paymentBooking);
-                const percent = policy?.refundPercent ?? 100;
+                const cancelledByProfessional =
+                  paymentBooking.status === "cancelled" &&
+                  paymentBooking.cancelledBy === "professional";
+                const percent = cancelledByProfessional ? 100 : (policy?.refundPercent ?? 100);
                 const amount = Math.round((paymentBooking.totalPrice * percent) / 100);
                 return (
                   <p className="font-medium text-gold">
-                    Política de devolución: {percent}% · Importe estimado: $
+                    {cancelledByProfessional
+                      ? "Devolución por cancelación del profesional"
+                      : "Política de devolución"}
+                    : {percent}% · Importe estimado: $
                     {amount.toLocaleString("es-AR")}.
                   </p>
                 );
@@ -1704,7 +1727,11 @@ function MyBookingsPage() {
               <p>
                 {paymentBooking.customer.paymentMethod === "tarjeta o mercado pago"
                   ? "La devolución se gestionará por Mercado Pago o tarjeta. Ingresá también un CBU o alias como alternativa por si surge algún inconveniente."
-                  : "Ingresá el dato donde el profesional debe devolver el dinero. Indicá si es CBU o alias."} Al enviar la solicitud, el turno se cancela y el horario queda disponible; recibirás un aviso cuando el profesional confirme la devolución.
+                  : "Ingresá el dato donde el profesional debe devolver el dinero. Indicá si es CBU o alias."}{" "}
+                {paymentBooking.status === "cancelled" &&
+                paymentBooking.cancelledBy === "professional"
+                  ? "Como el profesional canceló el turno, corresponde devolver el 100% del importe."
+                  : "Al enviar la solicitud, el turno se cancela y el horario queda disponible; recibirás un aviso cuando el profesional confirme la devolución."}
               </p>
               <label className="grid gap-2 text-muted-foreground">
                 <span>Seleccionar CBU/Alias {paymentBooking.customer.paymentMethod === "tarjeta o mercado pago" ? "(alternativa)" : ""}</span>
@@ -1834,7 +1861,10 @@ function MyBookingsPage() {
                       >
                         {busyBookingId === paymentBooking.id
                           ? "Cancelando y avisando…"
-                          : "Cancelar turno y solicitar devolución"}
+                          : paymentBooking.status === "cancelled" &&
+                              paymentBooking.cancelledBy === "professional"
+                            ? "Solicitar devolución completa"
+                            : "Cancelar turno y solicitar devolución"}
                       </Button>
                     )}
                 </>

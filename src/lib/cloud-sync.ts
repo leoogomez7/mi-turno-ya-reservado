@@ -404,7 +404,7 @@ export async function selectStore(
   if (activeAccount !== accountKey)
     throw new Error("La sesión cambió. Recargá los datos antes de elegir una sucursal.");
   const sessionAtRequest = cloudSessionRevision;
-  const result = await loadReservationStore(nextCode, getToken ?? tokenGetter);
+  const result = await loadReservationStore(nextCode, getToken ?? tokenGetter, true);
   if (sessionAtRequest !== cloudSessionRevision || activeAccount !== accountKey)
     throw new Error("La sesión cambió mientras se cargaba la sucursal.");
   storeCode = nextCode;
@@ -845,10 +845,16 @@ export function getCachedReservationStore(storeCode: string) {
 export function loadReservationStore(
   storeCode: string,
   getToken?: () => Promise<string | undefined>,
+  forceRefresh = false,
 ) {
   const normalizedCode = storeCode.trim().toUpperCase();
   const cached = reservationStoreCache.get(normalizedCode);
-  if (cached && (cached.result && Date.now() - cached.loadedAt <= 30_000)) {
+  if (
+    !forceRefresh &&
+    cached &&
+    cached.result &&
+    Date.now() - cached.loadedAt <= 30_000
+  ) {
     return Promise.resolve(cached.result);
   }
   if (cached && !cached.result) return cached.promise;
@@ -882,7 +888,9 @@ export function loadReservationStore(
   reservationStoreCache.set(normalizedCode, { promise, result: null, loadedAt: 0 });
   void promise.then(
     (result) => {
-      reservationStoreCache.set(normalizedCode, { promise, result, loadedAt: Date.now() });
+      if (reservationStoreCache.get(normalizedCode)?.promise === promise) {
+        reservationStoreCache.set(normalizedCode, { promise, result, loadedAt: Date.now() });
+      }
     },
     () => {
       if (reservationStoreCache.get(normalizedCode)?.promise === promise) {

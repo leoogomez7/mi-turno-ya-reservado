@@ -33,6 +33,7 @@ export interface Booking {
   totalPrice: number;
   status: "pending-payment" | "confirmed" | "cancelled" | "completed" | "no-show";
   cancelledBy?: "client" | "professional";
+  clientCancellationRefundEligible?: boolean;
   clientArchivedAt?: string;
   adminArchivedAt?: string;
   clientRestoredAt?: string;
@@ -90,6 +91,9 @@ export function requiresRefundResolution(booking: Booking) {
   ) {
     return false;
   }
+  if (booking.cancelledBy === "professional") return true;
+  if (booking.cancelledBy === "client")
+    return booking.clientCancellationRefundEligible === true;
   const policy = booking.cancellationPolicyAtBooking;
   return (
     !policy ||
@@ -99,7 +103,16 @@ export function requiresRefundResolution(booking: Booking) {
 
 export function canDeleteBooking(booking: Booking) {
   if (hasPendingRefund(booking)) return false;
-  if (Boolean(booking.paymentReportedAt) && booking.paymentStatus !== "approved") return false;
+  const cancelledWithoutRefundEligibility =
+    booking.status === "cancelled" &&
+    booking.cancelledBy === "client" &&
+    booking.clientCancellationRefundEligible !== true;
+  if (
+    Boolean(booking.paymentReportedAt) &&
+    booking.paymentStatus !== "approved" &&
+    !cancelledWithoutRefundEligibility
+  )
+    return false;
 
   if (booking.status === "cancelled") {
     return !requiresRefundResolution(booking);
