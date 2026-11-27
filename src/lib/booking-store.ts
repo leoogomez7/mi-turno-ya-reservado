@@ -126,6 +126,7 @@ export function canDeleteBooking(booking: Booking) {
   if (
     hasUnresolvedPaymentReport(booking) &&
     booking.paymentStatus !== "approved" &&
+    booking.paymentCancellationStatus !== "refunded" &&
     !cancelledWithoutRefundEligibility
   )
     return false;
