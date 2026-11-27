@@ -3098,6 +3098,36 @@ export default async function handler(request, response) {
     }
     if (
       user &&
+      body?.action === "get-admin-bookings"
+    ) {
+      try {
+        if (!user.emailVerified)
+          return response
+            .status(403)
+            .json({ error: "Verificá tu correo para consultar los turnos." });
+        const account = await db.execute({
+          sql: "SELECT role, store_code FROM account_roles WHERE user_id = ?",
+          args: [user.id],
+        });
+        const storeCode = normalizeStoreCode(account.rows[0]?.store_code);
+        if (account.rows[0]?.role !== "admin" || !storeCode)
+          return response
+            .status(403)
+            .json({ error: "Solo un profesional puede consultar los turnos de la sucursal." });
+        const result = await db.execute({
+          sql: "SELECT value FROM bookings WHERE upper(json_extract(value, '$.storeCode')) = ? ORDER BY updated_at DESC",
+          args: [storeCode],
+        });
+        return response.status(200).json({
+          bookings: result.rows.map((row) => JSON.parse(String(row.value))),
+        });
+      } catch (error) {
+        console.error("No se pudieron actualizar los turnos de la agenda", error);
+        return response.status(500).json({ error: "No se pudieron actualizar los turnos." });
+      }
+    }
+    if (
+      user &&
       [
         "get-client-bookings",
         "confirm-client-booking",

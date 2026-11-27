@@ -56,6 +56,7 @@ import {
   getAvailableStores,
   permanentlyDeleteArchivedBooking,
   permanentlyDeleteArchivedBookings,
+  refreshAdminBookings,
   refreshCloudData,
   restoreArchivedBooking,
   restoreArchivedBookings,
@@ -141,7 +142,7 @@ export function AgendaManager() {
     const refresh = () => {
       if (!active || document.hidden || refreshInFlight) return;
       refreshInFlight = true;
-      void refreshCloudData()
+      void refreshAdminBookings()
         .catch(() => undefined)
         .finally(() => {
           refreshInFlight = false;

@@ -125,10 +125,10 @@ async function request<T>(
   body?: unknown,
   requestedStoreCode?: string,
   requestTokenGetter: (() => Promise<string | undefined>) | undefined = tokenGetter,
+  isWrite = method !== "GET",
 ): Promise<T> {
   const requestStoreCode =
     requestedStoreCode === undefined ? storeCode : requestedStoreCode.trim().toUpperCase();
-  const isWrite = method !== "GET";
   if (isWrite) {
     activeCloudWrites += 1;
     cloudMutationRevision += 1;
@@ -238,6 +238,33 @@ export async function refreshCloudData() {
   } finally {
     if (cloudRefreshInFlight === refreshPromise) cloudRefreshInFlight = null;
   }
+}
+
+export async function refreshAdminBookings() {
+  if (!activeAccount || !initialized || activeRole !== "admin") return;
+  const accountAtRequest = activeAccount;
+  const sessionRevisionAtRequest = cloudSessionRevision;
+  const snapshotRevisionAtRequest = snapshotRevision;
+  const mutationRevisionAtRequest = cloudMutationRevision;
+  const result = await request<{ bookings: Booking[] }>(
+    "POST",
+    { action: "get-admin-bookings" },
+    undefined,
+    undefined,
+    false,
+  );
+  if (!Array.isArray(result.bookings))
+    throw new Error("Se devolvió una respuesta incompleta. No se actualizaron los turnos.");
+  if (
+    accountAtRequest !== activeAccount ||
+    sessionRevisionAtRequest !== cloudSessionRevision ||
+    snapshotRevisionAtRequest !== snapshotRevision ||
+    mutationRevisionAtRequest !== cloudMutationRevision ||
+    activeCloudWrites > 0
+  )
+    return;
+  if (JSON.stringify(snapshot.bookings) === JSON.stringify(result.bookings)) return;
+  setSnapshot({ ...snapshot, bookings: result.bookings });
 }
 
 export function clearCloudSession() {
