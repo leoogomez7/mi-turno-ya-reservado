@@ -472,7 +472,9 @@ export function AgendaManager() {
     setCancellingBookingId(booking.id);
     try {
       await bookingStore.update(booking.id, { status: "cancelled", cancelledBy: "professional" });
-      toast.success("Turno cancelado. El cliente recibirá una notificación.");
+      toast.success(
+        "Turno cancelado. Si la política permite una devolución, el cliente podrá solicitarla desde Mis turnos.",
+      );
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "No se pudo cancelar el turno.");
     } finally {
@@ -917,9 +919,7 @@ export function AgendaManager() {
                               </Button>
                             )}
                           {isActiveBooking &&
-                            !booking.paymentCancellationStatus &&
-                            booking.paymentStatus !== "approved" &&
-                            !booking.paymentReportedAt && (
+                            !booking.paymentCancellationStatus && (
                               <Button
                                 size="sm"
                                 variant="destructive"

@@ -373,7 +373,9 @@ function MyBookingsPage() {
       setPaymentBooking(null);
       setRefundDestination("");
       toast.success(
-        "Turno cancelado, horario liberado y solicitud de devolución enviada al profesional.",
+        cancelledByProfessional
+          ? "Solicitud de devolución enviada al profesional."
+          : "Turno cancelado, horario liberado y solicitud de devolución enviada al profesional.",
       );
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "No se pudo cancelar el pago.");

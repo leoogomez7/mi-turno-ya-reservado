@@ -2929,7 +2929,7 @@ export default async function handler(request, response) {
           booking.refundRequestedAt = new Date().toISOString();
           booking.paymentCancellationRequestedAt = booking.refundRequestedAt;
           booking.status = "cancelled";
-          booking.cancelledBy = "client";
+          booking.cancelledBy = cancelledByProfessional ? "professional" : "client";
           await db.execute({
             sql: "UPDATE bookings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
             args: [JSON.stringify(booking), bookingId],
