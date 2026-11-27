@@ -689,6 +689,11 @@ export function AgendaManager() {
                         : "No especificado";
                 const isActiveBooking =
                   booking.status === "confirmed" || booking.status === "pending-payment";
+                const reviewCancelledClientPayment =
+                  booking.status === "cancelled" &&
+                  booking.cancelledBy === "client" &&
+                  booking.clientCancellationRefundEligible === true &&
+                  hasUnresolvedPaymentReport(booking);
                 const appointmentAt = Date.parse(`${booking.date}T${booking.time}:00-03:00`);
                 const appointmentAlreadyStarted =
                   !Number.isFinite(appointmentAt) || appointmentAt <= currentTime;
@@ -745,6 +750,12 @@ export function AgendaManager() {
                         {booking.customer.email && (
                           <span className="block break-all">{booking.customer.email}</span>
                         )}
+                        {booking.customer.notes?.trim() && (
+                          <span className="mt-1 block whitespace-pre-wrap break-words">
+                            <span className="font-medium text-foreground">Observaciones: </span>
+                            {booking.customer.notes.trim()}
+                          </span>
+                        )}
                       </div>
                       <div className="mx-auto w-fit rounded-lg border border-gold/20 bg-gold/5 px-3 py-2 text-center font-display text-lg font-semibold text-gold">
                         ${booking.totalPrice.toLocaleString("es-AR")}
@@ -777,6 +788,12 @@ export function AgendaManager() {
                           )}
                           {booking.customer.email && (
                             <span className="block break-all">{booking.customer.email}</span>
+                          )}
+                          {booking.customer.notes?.trim() && (
+                            <span className="mt-1 block whitespace-pre-wrap break-words">
+                              <span className="font-medium text-foreground">Observaciones: </span>
+                              {booking.customer.notes.trim()}
+                            </span>
                           )}
                         </div>
                       </div>
@@ -897,7 +914,7 @@ export function AgendaManager() {
                       )}
                     </div>
                     <div className="flex w-full flex-wrap justify-center gap-2 xl:col-start-5 xl:grid xl:grid-cols-3">
-                      {booking.status !== "cancelled" && (
+                      {(booking.status !== "cancelled" || reviewCancelledClientPayment) && (
                         <>
                           {!booking.paymentCancellationStatus &&
                             booking.paymentStatus !== "approved" &&
@@ -1328,7 +1345,11 @@ export function AgendaManager() {
                           ? { paymentReportDecision: "not-paid" }
                           : { status: "cancelled" },
                         selectedBooking.paymentReportedAt
-                          ? "Pago indicado como no recibido; ahora podés cancelar el turno."
+                          ? selectedBooking.status === "cancelled" &&
+                            selectedBooking.cancelledBy === "client" &&
+                            selectedBooking.clientCancellationRefundEligible === true
+                            ? "Pago indicado como no recibido; el cliente debe confirmar la información antes de borrar."
+                            : "Pago indicado como no recibido; ahora podés cancelar el turno."
                           : "Pago no recibido; turno cancelado y horario liberado",
                       )
                     }

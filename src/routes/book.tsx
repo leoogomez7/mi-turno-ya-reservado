@@ -59,10 +59,12 @@ import {
   isCloudInitialized,
   isCloudReady,
   claimBookingSlot,
+  getBookingSlotHolds,
   loadReservationStore,
   releaseBookingSlot,
   selectStore,
   validateStoreCoupon,
+  type BookingSlotHold,
   type StoreDiscountCoupon,
   type Store,
 } from "@/lib/cloud-sync";
@@ -195,14 +197,28 @@ function readReservationSlotHold() {
   try {
     const saved = window.sessionStorage.getItem(RESERVATION_SLOT_HOLD_SESSION_KEY);
     if (!saved) return null;
-    const hold = JSON.parse(saved) as { holdId?: string; storeCode?: string };
+    const hold = JSON.parse(saved) as {
+      holdId?: string;
+      storeCode?: string;
+      barberId?: string;
+      date?: string;
+      time?: string;
+      duration?: number;
+    };
     if (
       typeof hold.holdId === "string" &&
       /^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i.test(hold.holdId) &&
       typeof hold.storeCode === "string" &&
       hold.storeCode
     ) {
-      return { holdId: hold.holdId, storeCode: hold.storeCode };
+      return {
+        holdId: hold.holdId,
+        storeCode: hold.storeCode,
+        barberId: hold.barberId,
+        date: hold.date,
+        time: hold.time,
+        duration: hold.duration,
+      };
     }
   } catch {
     clearStoredReservationSlotHold();
@@ -210,11 +226,18 @@ function readReservationSlotHold() {
   return null;
 }
 
-function saveReservationSlotHold(holdId: string, storeCode: string) {
+function saveReservationSlotHold(
+  holdId: string,
+  storeCode: string,
+  barberId: string,
+  date: string,
+  time: string,
+  duration: number,
+) {
   try {
     window.sessionStorage.setItem(
       RESERVATION_SLOT_HOLD_SESSION_KEY,
-      JSON.stringify({ holdId, storeCode }),
+      JSON.stringify({ holdId, storeCode, barberId, date, time, duration }),
     );
   } catch (error) {
     console.error("No se pudo guardar la reserva temporal en esta sesión", error);
@@ -286,6 +309,10 @@ export function BookPage() {
   const [claimingSlot, setClaimingSlot] = useState(false);
   const [claimingSlotTime, setClaimingSlotTime] = useState<string | null>(null);
   const [blockedSlotKeys, setBlockedSlotKeys] = useState<Set<string>>(() => new Set());
+  const [reservationSlotHolds, setReservationSlotHolds] = useState<BookingSlotHold[]>([]);
+  const [slotHoldsLoadedKey, setSlotHoldsLoadedKey] = useState("");
+  const [slotHoldsFetchedAt, setSlotHoldsFetchedAt] = useState(0);
+  const [slotHoldsError, setSlotHoldsError] = useState("");
   const slotHoldRef = useRef<{
     holdId: string;
     storeCode: string;
@@ -711,6 +738,59 @@ export function BookPage() {
     };
   }, [auth.getIdToken, isAuthenticated, selectedStoreCode, step]);
 
+  const reservationDateKey = date ? format(date, "yyyy-MM-dd") : "";
+  const slotHoldsQueryKey =
+    step === 3 && selectedStoreCode && barberId && reservationDateKey
+      ? `${selectedStoreCode}:${barberId}:${reservationDateKey}`
+      : "";
+
+  useEffect(() => {
+    if (!slotHoldsQueryKey || !selectedStoreCode || !barberId || !reservationDateKey) {
+      setReservationSlotHolds([]);
+      setSlotHoldsLoadedKey("");
+      setSlotHoldsFetchedAt(0);
+      setSlotHoldsError("");
+      return;
+    }
+
+    let cancelled = false;
+    let refreshInFlight = false;
+    const refresh = async () => {
+      if (cancelled || document.hidden || refreshInFlight) return;
+      refreshInFlight = true;
+      try {
+        const holds = await getBookingSlotHolds(selectedStoreCode, barberId, reservationDateKey);
+        if (cancelled) return;
+        setReservationSlotHolds(holds);
+        setSlotHoldsLoadedKey(slotHoldsQueryKey);
+        setSlotHoldsFetchedAt(Date.now());
+        setSlotHoldsError("");
+      } catch (error) {
+        if (cancelled) return;
+        setSlotHoldsLoadedKey("");
+        setSlotHoldsError(
+          error instanceof Error ? error.message : "No se pudo actualizar la disponibilidad.",
+        );
+      } finally {
+        refreshInFlight = false;
+      }
+    };
+
+    void refresh();
+    const intervalId = window.setInterval(() => void refresh(), 1000);
+    const onVisibilityChange = () => {
+      if (!document.hidden) void refresh();
+    };
+    window.addEventListener("focus", onVisibilityChange);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", onVisibilityChange);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [barberId, reservationDateKey, selectedStoreCode, slotHoldsQueryKey]);
+
   const activeStores = stores.filter((store) =>
     Boolean(store.subscriptionExpiresAt && Date.parse(store.subscriptionExpiresAt) > Date.now()),
   );
@@ -910,6 +990,7 @@ export function BookPage() {
     if (!hold) return;
     slotHoldRef.current = null;
     clearStoredReservationSlotHold();
+    setReservationSlotHolds((current) => current.filter((entry) => entry.holdId !== hold.holdId));
     try {
       await releaseBookingSlot(hold.storeCode, hold.holdId);
     } catch (error) {
@@ -919,6 +1000,30 @@ export function BookPage() {
       );
     }
   }
+
+  useEffect(() => {
+    if (!reservationDraftHydrated || !storeSelectionHydrated || slotClaimInFlight.current) return;
+    const hold = slotHoldRef.current ?? readReservationSlotHold();
+    if (!hold) return;
+    const selectedDate = date ? format(date, "yyyy-MM-dd") : "";
+    const selectionMatchesHold =
+      (step === 3 || step === 4) &&
+      hold.storeCode === selectedStoreCode &&
+      hold.barberId === barberId &&
+      hold.date === selectedDate &&
+      hold.time === time &&
+      hold.duration === duration;
+    if (!selectionMatchesHold) void releaseCurrentSlotHold();
+  }, [
+    barberId,
+    date,
+    duration,
+    reservationDraftHydrated,
+    selectedStoreCode,
+    step,
+    storeSelectionHydrated,
+    time,
+  ]);
 
   async function claimSelectedSlot(slot = time) {
     if (!date || !selectedProfessional || !selectedStoreCode || !slot || duration <= 0) {
@@ -946,7 +1051,7 @@ export function BookPage() {
         time: slot,
         duration,
       };
-      saveReservationSlotHold(holdId, selectedStoreCode);
+      saveReservationSlotHold(holdId, selectedStoreCode, barberId, dateKey, slot, duration);
       setBlockedSlotKeys((current) => {
         const next = new Set(current);
         next.delete(slotKey);
@@ -991,6 +1096,12 @@ export function BookPage() {
   }
 
   async function handleSlotSelect(slot: string) {
+    if (slot === time) {
+      await releaseCurrentSlotHold();
+      setTime("");
+      setStepError(null);
+      return;
+    }
     try {
       await claimSelectedSlot(slot);
     } catch (error) {
@@ -1776,6 +1887,14 @@ Observaciones: ${customer.notes || "Ninguna"}`;
             <StepDateTime
               professional={selectedProfessional}
               bookings={reservationBookings}
+              slotHolds={reservationSlotHolds}
+              slotHoldsReady={
+                slotHoldsLoadedKey === slotHoldsQueryKey &&
+                Boolean(slotHoldsQueryKey) &&
+                Date.now() - slotHoldsFetchedAt < 1500
+              }
+              slotHoldsError={slotHoldsError}
+              ownHoldId={slotHoldRef.current?.holdId ?? readReservationSlotHold()?.holdId ?? ""}
               storeCode={selectedStoreCode}
               date={date}
               time={time}
@@ -2479,6 +2598,10 @@ function StepDateTime({
   duration,
   professional,
   bookings,
+  slotHolds,
+  slotHoldsReady,
+  slotHoldsError,
+  ownHoldId,
   storeCode,
   blockedSlots,
   claimingSlot,
@@ -2494,6 +2617,10 @@ function StepDateTime({
   duration: number;
   professional?: Professional;
   bookings: Booking[];
+  slotHolds: BookingSlotHold[];
+  slotHoldsReady: boolean;
+  slotHoldsError: string;
+  ownHoldId: string;
   storeCode: string;
   blockedSlots: Set<string>;
   claimingSlot: boolean;
@@ -2563,20 +2690,41 @@ function StepDateTime({
       const bookingStart = bookingHours * 60 + bookingMinutes;
       return start < bookingStart + booking.duration && bookingStart < end;
     });
+    const overlappingHolds = slotHolds.filter((hold) => {
+      if (
+        hold.holdId === ownHoldId ||
+        hold.date !== dateKey ||
+        hold.barberId !== barberId ||
+        hold.expiresAt <= Date.now()
+      )
+        return false;
+      const [holdHours, holdMinutes] = hold.time.split(":").map(Number);
+      const holdStart = holdHours * 60 + holdMinutes;
+      return start < holdStart + hold.duration && holdStart < end;
+    });
     let maximumOverlapping = 0;
     for (let minute = start; minute < end; minute += 15) {
-      const overlapping = overlappingBookings.filter((booking) => {
+      const overlappingBookingsAtMinute = overlappingBookings.filter((booking) => {
         const [bookingHours, bookingMinutes] = booking.time.split(":").map(Number);
         const bookingStart = bookingHours * 60 + bookingMinutes;
         return minute < bookingStart + booking.duration && bookingStart < minute + 15;
       }).length;
-      maximumOverlapping = Math.max(maximumOverlapping, overlapping);
+      const overlappingHoldsAtMinute = overlappingHolds.filter((hold) => {
+        const [holdHours, holdMinutes] = hold.time.split(":").map(Number);
+        const holdStart = holdHours * 60 + holdMinutes;
+        return minute < holdStart + hold.duration && holdStart < minute + 15;
+      }).length;
+      maximumOverlapping = Math.max(
+        maximumOverlapping,
+        overlappingBookingsAtMinute + overlappingHoldsAtMinute,
+      );
     }
     return Math.max(0, slotCapacity - maximumOverlapping);
   }
 
   function isSlotAvailable(slot: string): boolean {
     return (
+      slotHoldsReady &&
       !blockedSlots.has(reservationSlotKey(storeCode, barberId, dateKey, duration, slot)) &&
       !isSlotPast(slot) &&
       fitsSelectedDuration(slot) &&
@@ -2636,6 +2784,10 @@ function StepDateTime({
       </Label>
       {!date ? (
         <p className="text-sm text-muted-foreground">Elegí primero una fecha.</p>
+      ) : !slotHoldsReady ? (
+        <p role="status" className="text-sm text-muted-foreground">
+          {slotHoldsError || "Actualizando disponibilidad en tiempo real..."}
+        </p>
       ) : slots.length === 0 ? (
         <p className="text-sm text-muted-foreground">
           No hay horarios disponibles para esta fecha. Elegí otro día o revisá la disponibilidad del

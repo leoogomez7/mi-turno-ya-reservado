@@ -112,6 +112,15 @@ function requiresRefundResolution(booking) {
 
 function canDeleteBooking(booking) {
   if (hasPendingRefund(booking)) return false;
+  if (
+    booking.status === "cancelled" &&
+    booking.cancelledBy === "client" &&
+    booking.clientCancellationRefundEligible === true &&
+    booking.paymentReportDecision === "not-paid" &&
+    !booking.clientPaymentReportAcknowledgedAt
+  ) {
+    return false;
+  }
   const cancelledWithoutRefundEligibility =
     booking.status === "cancelled" &&
     booking.cancelledBy === "client" &&
@@ -138,8 +147,6 @@ function canDeleteBooking(booking) {
 }
 
 function canArchiveBooking(booking) {
-  if (hasPendingRefund(booking) || requiresRefundResolution(booking)) return false;
-  if (booking.status === "cancelled" && booking.cancelledBy === "client") return true;
   return canDeleteBooking(booking);
 }
 
@@ -1698,6 +1705,13 @@ async function updateAdminBooking(db, user, body) {
     }
 
     const booking = { ...previous, ...patch };
+    const cancelledClientPaymentReport =
+      previous.status === "cancelled" &&
+      previous.cancelledBy === "client" &&
+      previous.clientCancellationRefundEligible === true &&
+      Boolean(previous.paymentReportedAt) &&
+      previous.paymentStatus !== "approved" &&
+      previous.paymentReportDecision !== "not-paid";
     if (
       patch.paymentReportDecision !== undefined &&
       !["paid", "not-paid"].includes(patch.paymentReportDecision)
@@ -1710,18 +1724,20 @@ async function updateAdminBooking(db, user, body) {
       if (
         Object.keys(patch).length !== 1 ||
         (!previous.paymentReportedAt && previous.paymentReportDecision !== "not-paid") ||
-        !["confirmed", "pending-payment"].includes(previous.status)
+        (!["confirmed", "pending-payment"].includes(previous.status) &&
+          !cancelledClientPaymentReport)
       ) {
         throw Object.assign(new Error("No hay un pago informado pendiente de revisión."), {
           statusCode: 409,
         });
       }
       if (patch.paymentReportDecision === "paid") {
-        booking.status = "confirmed";
+        if (!cancelledClientPaymentReport) booking.status = "confirmed";
         booking.paymentStatus = "approved";
       } else {
         booking.paymentStatus = "pending";
         delete booking.paymentReportedAt;
+        delete booking.clientPaymentReportAcknowledgedAt;
       }
     }
     const validStatuses = new Set([
@@ -2543,6 +2559,42 @@ export default async function handler(request, response) {
     return response.status(400).json({ error: "El cuerpo JSON no es válido." });
   }
   if (request.method === "POST") {
+    if (body?.action === "get-booking-slot-holds") {
+      const storeCode = normalizeStoreCode(request.headers["x-store-code"]);
+      const barberId = typeof body.barberId === "string" ? body.barberId.trim() : "";
+      const date = typeof body.date === "string" ? body.date : "";
+      if (!storeCode || !barberId || barberId.length > 200 || !/^\d{4}-\d{2}-\d{2}$/.test(date))
+        return response.status(400).json({ error: "La consulta de disponibilidad no es válida." });
+      try {
+        const now = Date.now();
+        const result = await db.execute({
+          sql: `SELECT booking_slot_holds.hold_id, booking_slot_holds.barber_id,
+              booking_slot_holds.date, booking_slot_holds.time, booking_slot_holds.duration,
+              booking_slot_holds.expires_at
+            FROM booking_slot_holds
+            INNER JOIN stores ON stores.code = booking_slot_holds.store_code
+            WHERE booking_slot_holds.store_code = ?
+              AND booking_slot_holds.barber_id = ?
+              AND booking_slot_holds.date = ?
+              AND booking_slot_holds.expires_at > ?
+              AND stores.subscription_expires_at > ?`,
+          args: [storeCode, barberId, date, now, new Date(now).toISOString()],
+        });
+        return response.status(200).json({
+          holds: result.rows.map((row) => ({
+            holdId: String(row.hold_id),
+            barberId: String(row.barber_id),
+            date: String(row.date),
+            time: String(row.time),
+            duration: Number(row.duration),
+            expiresAt: Number(row.expires_at),
+          })),
+        });
+      } catch (error) {
+        console.error("No se pudieron actualizar los horarios reservados temporalmente", error);
+        return response.status(500).json({ error: "No se pudo actualizar la disponibilidad." });
+      }
+    }
     if (body?.action === "claim-booking-slot" || body?.action === "release-booking-slot") {
       const storeCode = normalizeStoreCode(request.headers["x-store-code"]);
       if (!storeCode)
@@ -3132,6 +3184,7 @@ export default async function handler(request, response) {
         "get-client-bookings",
         "confirm-client-booking",
         "report-client-payment",
+        "acknowledge-client-payment-not-paid",
         "update-client-booking",
         "cancel-client-booking",
         "delete-client-booking",
@@ -3274,11 +3327,44 @@ export default async function handler(request, response) {
           return response.status(200).json({ booking });
         }
 
+        if (body.action === "acknowledge-client-payment-not-paid") {
+          if (
+            booking.status !== "cancelled" ||
+            booking.cancelledBy !== "client" ||
+            booking.clientCancellationRefundEligible !== true ||
+            booking.paymentReportDecision !== "not-paid" ||
+            booking.paymentStatus === "approved" ||
+            booking.paymentReportedAt ||
+            booking.clientPaymentReportAcknowledgedAt
+          ) {
+            return response.status(409).json({
+              error: "No hay una decisión de pago pendiente de confirmar.",
+            });
+          }
+          booking.clientPaymentReportAcknowledgedAt = new Date().toISOString();
+          const notice = notificationForAdmin(
+            booking,
+            "client_confirmed_no_payment",
+            "Cliente confirmó que no pagó",
+            `${booking.customer.fullName} confirmó que no realizó el pago informado.`,
+          );
+          await persistBookingUpdate(db, bookingId, previousBookingValue, booking, notice);
+          return response.status(200).json({ booking });
+        }
+
         if (body.action === "cancel-client-payment") {
           const cancelledByProfessional =
             booking.status === "cancelled" && booking.cancelledBy === "professional";
+          const cancelledClientPaymentAfterReview =
+            booking.status === "cancelled" &&
+            booking.cancelledBy === "client" &&
+            booking.clientCancellationRefundEligible === true &&
+            booking.paymentReportDecision === "paid" &&
+            booking.paymentStatus === "approved" &&
+            Boolean(booking.paymentReportedAt);
           if (
             !cancelledByProfessional &&
+            !cancelledClientPaymentAfterReview &&
             !["confirmed", "pending-payment"].includes(booking.status)
           ) {
             return response.status(409).json({ error: "Este turno ya no está activo." });
@@ -3319,6 +3405,7 @@ export default async function handler(request, response) {
               : Number.NaN;
           if (
             !cancelledByProfessional &&
+            !cancelledClientPaymentAfterReview &&
             (!Number.isFinite(appointmentAt) ||
               appointmentAt - Date.now() < policy.cancellationWindowMinutes * 60 * 1000)
           ) {
@@ -3630,7 +3717,11 @@ export default async function handler(request, response) {
           });
         }
         let clientCancellationRefundEligible = false;
-        if (booking.paymentStatus === "approved") {
+        const hasUnresolvedReportedPayment =
+          Boolean(booking.paymentReportedAt) &&
+          booking.paymentStatus !== "approved" &&
+          booking.paymentReportDecision !== "not-paid";
+        if (booking.paymentStatus === "approved" || hasUnresolvedReportedPayment) {
           const policy =
             validateCancellationPolicy(booking.cancellationPolicyAtBooking) ??
             (await getStoreCancellationPolicy(db, booking.storeCode));
@@ -3639,7 +3730,7 @@ export default async function handler(request, response) {
             policy.allowRefunds &&
             policy.refundPercent > 0 &&
             appointmentAt - Date.now() >= policy.cancellationWindowMinutes * 60 * 1000;
-          if (clientCancellationRefundEligible) {
+          if (booking.paymentStatus === "approved" && clientCancellationRefundEligible) {
             return response.status(409).json({
               error:
                 "Este turno permite solicitar una devolución. Iniciá la solicitud antes de cancelar.",

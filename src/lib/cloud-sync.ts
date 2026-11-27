@@ -4,6 +4,14 @@ import type { AccountRole } from "@/lib/auth";
 
 type CloudSnapshot = { bookings: Booking[]; professionals: Professional[] };
 type ReservationStoreResult = { data: CloudSnapshot; stores: Store[] };
+export type BookingSlotHold = {
+  holdId: string;
+  barberId: string;
+  date: string;
+  time: string;
+  duration: number;
+  expiresAt: number;
+};
 export type StoreDiscountCoupon = {
   code: string;
   discountType: "percent" | "fixed";
@@ -648,6 +656,13 @@ export async function reportClientPayment(bookingId: string) {
   return request<{ booking: Booking }>("POST", { action: "report-client-payment", bookingId });
 }
 
+export async function acknowledgeClientPaymentNotPaid(bookingId: string) {
+  return request<{ booking: Booking }>("POST", {
+    action: "acknowledge-client-payment-not-paid",
+    bookingId,
+  });
+}
+
 export async function cancelClientPayment(
   bookingId: string,
   refundDestinationType?: "cbu" | "alias",
@@ -971,6 +986,17 @@ export async function claimBookingSlot(
 
 export async function releaseBookingSlot(storeCode: string, holdId: string) {
   return request<{ ok: boolean }>("POST", { action: "release-booking-slot", holdId }, storeCode);
+}
+
+export async function getBookingSlotHolds(storeCode: string, barberId: string, date: string) {
+  const result = await request<{ holds: BookingSlotHold[] }>(
+    "POST",
+    { action: "get-booking-slot-holds", barberId, date },
+    storeCode,
+    undefined,
+    false,
+  );
+  return result.holds;
 }
 
 export async function updateStoreCancellationPolicy(policy: StoreCancellationPolicy) {
