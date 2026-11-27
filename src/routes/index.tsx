@@ -36,7 +36,7 @@ function RootRedirect() {
 
   return (
     <div className="min-h-screen bg-gradient-dark">
-      <SiteHeader openAuthDialogOnMount />
+      <SiteHeader />
       <main className="mx-auto flex min-h-[calc(100vh-5rem)] w-full max-w-5xl items-center justify-center px-4 py-12">
         <section className="w-full max-w-2xl rounded-3xl border border-gold/30 bg-card p-8 text-center shadow-2xl sm:p-12">
           <p className="text-xs uppercase tracking-[0.3em] text-gold">Mi Turno Ya Reservado</p>

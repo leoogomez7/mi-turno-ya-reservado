@@ -40,9 +40,9 @@ function preloadStatsCharts() {
   void import("@/components/admin-charts");
 }
 
-export function SiteHeader({ openAuthDialogOnMount = false }: { openAuthDialogOnMount?: boolean }) {
+export function SiteHeader() {
   const [open, setOpen] = useState(false);
-  const [authDialogOpen, setAuthDialogOpen] = useState(openAuthDialogOnMount);
+  const [authDialogOpen, setAuthDialogOpen] = useState(false);
   const [registrationDialogOpen, setRegistrationDialogOpen] = useState(false);
   const { isAuthenticated, user, role, login, register, logout } = useAppAuth();
   const location = useLocation();

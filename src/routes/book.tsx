@@ -147,6 +147,41 @@ function stepForPath(pathname: string) {
   return STEP_BY_SEGMENT[lastSegment] ?? 0;
 }
 
+function useReservationFavicon(storeLogo?: string) {
+  useEffect(() => {
+    const favicons = Array.from(
+      document.querySelectorAll<HTMLLinkElement>(
+        'link[rel="icon"], link[rel="shortcut icon"]',
+      ),
+    );
+    if (!favicons.length) return;
+
+    const originals = favicons.map((favicon) => ({
+      favicon,
+      href: favicon.getAttribute("href"),
+      type: favicon.getAttribute("type"),
+      sizes: favicon.getAttribute("sizes"),
+    }));
+    if (storeLogo)
+      favicons.forEach((favicon) => {
+        favicon.setAttribute("href", storeLogo);
+        favicon.removeAttribute("type");
+        favicon.removeAttribute("sizes");
+      });
+
+    return () => {
+      originals.forEach(({ favicon, href, type, sizes }) => {
+        if (href === null) favicon.removeAttribute("href");
+        else favicon.setAttribute("href", href);
+        if (type === null) favicon.removeAttribute("type");
+        else favicon.setAttribute("type", type);
+        if (sizes === null) favicon.removeAttribute("sizes");
+        else favicon.setAttribute("sizes", sizes);
+      });
+    };
+  }, [storeLogo]);
+}
+
 const EMPTY_CUSTOMER: Customer = {
   fullName: "",
   phone: "",
@@ -810,6 +845,8 @@ export function BookPage() {
   const storeEmployees = reservationProfessionals
     .map((professional) => professional.name.trim())
     .filter(Boolean);
+
+  useReservationFavicon(selectedStore?.logo);
 
   useEffect(() => {
     if (selectedStore && routeStoreSlug) document.title = selectedStore.name;
