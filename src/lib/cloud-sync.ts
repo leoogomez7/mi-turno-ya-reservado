@@ -97,6 +97,7 @@ let availableStores: Store[] = [];
 let snapshotRevision = 0;
 let cloudSessionRevision = 0;
 let activeCloudWrites = 0;
+let cloudMutationRevision = 0;
 let cloudRefreshInFlight: Promise<void> | null = null;
 const reservationStoreCache = new Map<
   string,
@@ -129,19 +130,29 @@ async function request<T>(
   if (!token && method === "PUT") throw new Error("No se obtuvo una sesión válida de Kinde.");
   const requestStoreCode =
     requestedStoreCode === undefined ? storeCode : requestedStoreCode.trim().toUpperCase();
-  const response = await fetch("/api/data", {
-    method,
-    headers: {
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(body ? { "Content-Type": "application/json" } : {}),
-      ...(requestStoreCode ? { "X-Store-Code": requestStoreCode } : {}),
-    },
-    ...(body ? { body: JSON.stringify(body) } : {}),
-    cache: "no-store",
-  });
-  const result = (await response.json()) as T & { error?: string };
-  if (!response.ok) throw new Error(result.error || "No se pudo sincronizar con la base de datos.");
-  return result;
+  const isWrite = method !== "GET";
+  if (isWrite) {
+    activeCloudWrites += 1;
+    cloudMutationRevision += 1;
+  }
+  try {
+    const response = await fetch("/api/data", {
+      method,
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(body ? { "Content-Type": "application/json" } : {}),
+        ...(requestStoreCode ? { "X-Store-Code": requestStoreCode } : {}),
+      },
+      ...(body ? { body: JSON.stringify(body) } : {}),
+      cache: "no-store",
+    });
+    const result = (await response.json()) as T & { error?: string };
+    if (!response.ok)
+      throw new Error(result.error || "No se pudo sincronizar con la base de datos.");
+    return result;
+  } finally {
+    if (isWrite) activeCloudWrites -= 1;
+  }
 }
 
 async function writeRecords(
@@ -213,9 +224,10 @@ export async function bootstrapCloudData(
 }
 
 export async function refreshCloudData() {
-  if (!activeAccount || !initialized) return;
+  if (!activeAccount || !initialized || activeCloudWrites > 0) return;
   if (cloudRefreshInFlight) return cloudRefreshInFlight;
   const revisionAtRequest = snapshotRevision;
+  const mutationRevisionAtRequest = cloudMutationRevision;
   const sessionAtRequest = cloudSessionRevision;
   const accountAtRequest = activeAccount;
   const refreshPromise = (async () => {
@@ -226,7 +238,13 @@ export async function refreshCloudData() {
       sessionAtRequest !== cloudSessionRevision ||
       accountAtRequest !== activeAccount ||
       revisionAtRequest !== snapshotRevision ||
+      mutationRevisionAtRequest !== cloudMutationRevision ||
       activeCloudWrites > 0
+    )
+      return;
+    if (
+      JSON.stringify(snapshot) === JSON.stringify(result.data) &&
+      JSON.stringify(availableStores) === JSON.stringify(result.stores)
     )
       return;
     availableStores = result.stores;

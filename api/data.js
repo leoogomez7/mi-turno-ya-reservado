@@ -1466,6 +1466,22 @@ async function updateAdminBooking(db, user, body) {
       throw Object.assign(new Error("El estado del turno no es válido."), { statusCode: 400 });
     }
     if (
+      patch.status === "cancelled" &&
+      ["confirmed", "pending-payment"].includes(previous.status)
+    ) {
+      const appointmentAt =
+        /^\d{4}-\d{2}-\d{2}$/.test(previous.date) &&
+        /^([01]\d|2[0-3]):[0-5]\d$/.test(previous.time)
+          ? Date.parse(`${previous.date}T${previous.time}:00-03:00`)
+          : Number.NaN;
+      if (!Number.isFinite(appointmentAt) || appointmentAt <= Date.now()) {
+        throw Object.assign(
+          new Error("No se puede cancelar un turno que ya comenzó o cuya fecha no es válida."),
+          { statusCode: 409 },
+        );
+      }
+    }
+    if (
       patch.paymentStatus !== undefined &&
       !["pending", "approved"].includes(patch.paymentStatus)
     ) {
@@ -2950,15 +2966,7 @@ export default async function handler(request, response) {
         }
 
         const method = booking.customer?.paymentMethod;
-        const policy =
-          validateCancellationPolicy(booking.cancellationPolicyAtBooking) ??
-          (await getStoreCancellationPolicy(db, booking.storeCode));
-        const refundNotAllowed =
-          policy.noRefunds || !policy.allowRefunds || policy.refundPercent <= 0;
-        const paymentCanBeCancelledWithoutRefund =
-          refundNotAllowed || (booking.paymentStatus !== "approved" && !booking.paymentReportedAt);
         const canCancel =
-          paymentCanBeCancelledWithoutRefund &&
           !booking.paymentCancellationStatus &&
           ["efectivo", "transferencia", "tarjeta o mercado pago"].includes(method);
         if (!canCancel || !["confirmed", "pending-payment"].includes(booking.status)) {
@@ -2983,7 +2991,7 @@ export default async function handler(request, response) {
           booking,
           "booking_cancelled_by_client",
           "Turno cancelado por el cliente",
-          `${booking.customer.fullName} canceló su turno. El profesional puede eliminarlo desde la agenda si lo desea.`,
+          `${booking.customer.fullName} canceló su turno. El horario quedó disponible.${booking.paymentStatus === "approved" ? " No se inició una solicitud de devolución." : ""}`,
         );
         if (notice) await db.execute(notice);
         return response.status(200).json({ booking });

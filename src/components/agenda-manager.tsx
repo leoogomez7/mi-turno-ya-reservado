@@ -134,21 +134,6 @@ export function AgendaManager() {
   }, [bookings, currentTime]);
 
   useEffect(() => {
-    let lastRefreshAt = 0;
-    const refresh = () => {
-      if (Date.now() - lastRefreshAt < 30_000) return;
-      lastRefreshAt = Date.now();
-      void refreshCloudData().catch(() => undefined);
-    };
-    const intervalId = window.setInterval(refresh, 60_000);
-    window.addEventListener("focus", refresh);
-    return () => {
-      window.clearInterval(intervalId);
-      window.removeEventListener("focus", refresh);
-    };
-  }, []);
-
-  useEffect(() => {
     if (!selectedBooking?.id || editMode !== "turno") return;
     let active = true;
     let refreshInFlight = false;
@@ -479,6 +464,11 @@ export function AgendaManager() {
 
   async function cancelBooking(booking: Booking) {
     if (cancellingBookingId || booking.status === "cancelled") return;
+    const appointmentAt = Date.parse(`${booking.date}T${booking.time}:00-03:00`);
+    if (!Number.isFinite(appointmentAt) || appointmentAt <= Date.now()) {
+      toast.error("No se puede cancelar un turno que ya comenzó o cuya fecha no es válida.");
+      return;
+    }
     setCancellingBookingId(booking.id);
     try {
       await bookingStore.update(booking.id, { status: "cancelled", cancelledBy: "professional" });
@@ -689,6 +679,9 @@ export function AgendaManager() {
                         : "No especificado";
                 const isActiveBooking =
                   booking.status === "confirmed" || booking.status === "pending-payment";
+                const appointmentAt = Date.parse(`${booking.date}T${booking.time}:00-03:00`);
+                const appointmentAlreadyStarted =
+                  !Number.isFinite(appointmentAt) || appointmentAt <= currentTime;
                 const cancellationPolicy =
                   booking.cancellationPolicyAtBooking ??
                   getAvailableStores().find((store) => store.code === booking.storeCode)?.settings;
@@ -910,6 +903,7 @@ export function AgendaManager() {
                               </Button>
                             )}
                           {isActiveBooking &&
+                            !appointmentAlreadyStarted &&
                             !booking.paymentCancellationStatus &&
                             booking.paymentStatus !== "approved" &&
                             !booking.paymentReportedAt && (

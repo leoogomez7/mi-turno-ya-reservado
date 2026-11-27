@@ -20,7 +20,9 @@ import { useAppAuth } from "@/lib/auth-context";
 import {
   bootstrapCloudData,
   clearCloudSession,
+  isCloudInitialized,
   loadReservationStore,
+  refreshCloudData,
   saveAccountRole,
 } from "@/lib/cloud-sync";
 
@@ -254,6 +256,32 @@ function CloudDataBootstrap({ children }: { children: ReactNode }) {
       cancelled = true;
     };
   }, [configured, getIdToken, isAuthenticated, isLoading, setVerifiedRole, user?.email, attempt]);
+
+  useEffect(() => {
+    const account = isAuthenticated ? (user?.email?.trim().toLowerCase() ?? "") : "guest";
+    if (isLoading || !account || readyFor !== account || !isCloudInitialized()) return;
+
+    let active = true;
+    let refreshInFlight = false;
+    const refresh = () => {
+      if (!active || document.hidden || refreshInFlight) return;
+      refreshInFlight = true;
+      void refreshCloudData()
+        .catch(() => undefined)
+        .finally(() => {
+          refreshInFlight = false;
+        });
+    };
+    const intervalId = window.setInterval(refresh, 5000);
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      active = false;
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [isAuthenticated, isLoading, readyFor, user?.email]);
 
   const owner = isAuthenticated ? (user?.email?.trim().toLowerCase() ?? "") : "guest";
   const ready = !isLoading && readyFor === owner;

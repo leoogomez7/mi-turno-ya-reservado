@@ -186,7 +186,7 @@ function MyBookingsPage() {
 
   const reload = useCallback((force = false) => {
     if (bookingsReloadInFlight.current) return bookingsReloadInFlight.current;
-    if (!force && Date.now() - lastBookingsReloadAt.current < 30_000) return Promise.resolve();
+    if (!force && Date.now() - lastBookingsReloadAt.current < 5_000) return Promise.resolve();
     const request = (async () => {
       try {
         const result = await getClientBookings();
@@ -217,12 +217,23 @@ function MyBookingsPage() {
 
   useEffect(() => {
     if (!isAuthenticated || role !== "client") return;
-    void reload();
-    const onFocus = () => {
-      void reload();
+    const refresh = () => {
+      if (document.hidden) return;
+      void reload(true);
     };
-    window.addEventListener("focus", onFocus);
-    return () => window.removeEventListener("focus", onFocus);
+    refresh();
+    const intervalId = window.setInterval(refresh, 5000);
+    window.addEventListener("focus", refresh);
+    window.addEventListener("bookings:changed", refresh);
+    window.addEventListener("mi-turno-ya:cloud-ready", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", refresh);
+      window.removeEventListener("bookings:changed", refresh);
+      window.removeEventListener("mi-turno-ya:cloud-ready", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
   }, [isAuthenticated, reload, role]);
 
   useEffect(() => {
@@ -361,7 +372,9 @@ function MyBookingsPage() {
       );
       setPaymentBooking(null);
       setRefundDestination("");
-      toast.success("Solicitud de devolución enviada. El profesional confirmará la devolución.");
+      toast.success(
+        "Turno cancelado, horario liberado y solicitud de devolución enviada al profesional.",
+      );
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "No se pudo cancelar el pago.");
     } finally {
@@ -442,6 +455,24 @@ function MyBookingsPage() {
 
   async function cancelBooking(booking: Booking) {
     if (busyBookingId) return;
+    const policy = cancellationPolicyFor(booking);
+    const refundCanBeRequested =
+      booking.paymentStatus === "approved" &&
+      !policy?.noRefunds &&
+      policy?.allowRefunds !== false &&
+      (policy?.refundPercent ?? 100) > 0 &&
+      ["efectivo", "transferencia", "tarjeta o mercado pago"].includes(
+        booking.customer.paymentMethod ?? "",
+      ) &&
+      Date.parse(`${booking.date}T${booking.time}:00-03:00`) - Date.now() >=
+        (policy?.cancellationWindowMinutes ?? 30) * 60 * 1000;
+    if (refundCanBeRequested) {
+      setRefundDestination("");
+      setRefundDestinationType("cbu");
+      setPaymentBooking(booking);
+      setShowTransferDetails(false);
+      return;
+    }
     setBusyBookingId(booking.id);
     setCancelingBookingId(booking.id);
     try {
@@ -449,13 +480,8 @@ function MyBookingsPage() {
       setBookings((current) =>
         current.map((item) => (item.id === booking.id ? result.booking : item)),
       );
-      const policy = cancellationPolicyFor(result.booking);
-      const refundNotAllowed =
-        policy?.noRefunds || policy?.allowRefunds === false || (policy?.refundPercent ?? 100) <= 0;
       toast.success(
-        refundNotAllowed
-          ? "Turno cancelado. No se realizará una devolución y el profesional recibió el aviso."
-          : "Turno cancelado. El profesional podrá verlo en su agenda.",
+        "Turno cancelado. El horario quedó disponible y el profesional recibió el aviso.",
       );
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "No se pudo cancelar el turno.");
@@ -825,7 +851,6 @@ function MyBookingsPage() {
                   isActiveBooking &&
                   !appointmentAlreadyStarted &&
                   !booking.paymentCancellationStatus &&
-                  (!hasPaymentReport || refundNotAllowed) &&
                   ["efectivo", "transferencia", "tarjeta o mercado pago"].includes(
                     booking.customer.paymentMethod ?? "",
                   );
@@ -969,21 +994,24 @@ function MyBookingsPage() {
                               Indicar pago
                             </Button>
                           )}
-                        {canRequestPaymentCancellation && !booking.paymentCancellationStatus && (
-                          <Button
-                            size="sm"
-                            className="min-w-0 whitespace-normal px-2 text-center leading-tight bg-gold text-primary-foreground hover:bg-gold-soft"
-                            disabled={busyBookingId !== null}
-                            onClick={() => {
-                              setRefundDestination("");
-                              setRefundDestinationType("cbu");
-                              setPaymentBooking(booking);
-                              setShowTransferDetails(false);
-                            }}
-                          >
-                            Solicitar devolución
-                          </Button>
-                        )}
+                        {canRequestPaymentCancellation &&
+                          !booking.paymentCancellationStatus &&
+                          booking.status === "cancelled" &&
+                          booking.cancelledBy === "professional" && (
+                            <Button
+                              size="sm"
+                              className="min-w-0 whitespace-normal px-2 text-center leading-tight bg-gold text-primary-foreground hover:bg-gold-soft"
+                              disabled={busyBookingId !== null}
+                              onClick={() => {
+                                setRefundDestination("");
+                                setRefundDestinationType("cbu");
+                                setPaymentBooking(booking);
+                                setShowTransferDetails(false);
+                              }}
+                            >
+                              Solicitar devolución
+                            </Button>
+                          )}
                         {isActiveBooking &&
                           booking.paymentStatus !== "approved" &&
                           !hasPaymentReport &&
@@ -1571,7 +1599,7 @@ function MyBookingsPage() {
                 : paymentBooking?.paymentCancellationStatus
                   ? "Solicitud enviada"
                   : paymentBooking?.paymentStatus === "approved"
-                    ? "Solicitar devolución"
+                    ? "Cancelar turno y solicitar devolución"
                     : "Confirmar pago"}
             </DialogTitle>
             <DialogDescription>
@@ -1580,7 +1608,7 @@ function MyBookingsPage() {
                 : paymentBooking?.paymentCancellationStatus
                   ? "La solicitud quedó registrada. El turno está cancelado y el horario disponible; el profesional confirmará la devolución."
                   : paymentBooking?.paymentStatus === "approved"
-                    ? "Revisá la información antes de solicitar la devolución. El turno se cancelará y el horario quedará disponible."
+                    ? "Al enviar la solicitud, el turno se cancelará y el horario quedará disponible. El profesional recibirá el aviso para gestionar la devolución."
                     : "Revisá el método de pago elegido y seleccioná cómo querés continuar."}
             </DialogDescription>
           </DialogHeader>
@@ -1790,8 +1818,8 @@ function MyBookingsPage() {
                         onClick={() => void cancelPayment(paymentBooking)}
                       >
                         {busyBookingId === paymentBooking.id
-                          ? "Enviando solicitud…"
-                          : "Solicitar devolución"}
+                          ? "Cancelando y avisando…"
+                          : "Cancelar turno y solicitar devolución"}
                       </Button>
                     )}
                 </>
