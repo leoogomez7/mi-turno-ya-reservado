@@ -3014,7 +3014,7 @@ function StepConfirm({
               Cupón <strong className="font-mono">{appliedCouponCode}</strong> aplicado
             </span>
             <Button type="button" size="sm" variant="outline" onClick={onRemoveCoupon}>
-              Quitar cupón
+              Eliminar cupón
             </Button>
           </div>
         ) : (

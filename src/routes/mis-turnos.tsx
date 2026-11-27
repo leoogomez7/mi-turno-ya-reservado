@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
@@ -806,11 +806,11 @@ function MyBookingsPage() {
               <p className="text-xs uppercase tracking-widest text-gold">Reservar</p>
               <h1 className="mt-1 font-display text-2xl font-semibold">Mis turnos</h1>
             </div>
-            <div className="flex shrink-0 flex-nowrap gap-2">
+            <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap">
               <Button
                 type="button"
                 variant="outline"
-                className="h-9 min-w-0 whitespace-nowrap px-2 text-[11px] sm:px-4 sm:text-sm"
+                className="h-9 min-w-0 w-full whitespace-nowrap px-2 text-[11px] sm:w-auto sm:px-4 sm:text-sm"
                 onClick={() => setArchiveDialogOpen(true)}
               >
                 Turnos borrados/antiguos
@@ -818,7 +818,7 @@ function MyBookingsPage() {
               <Button
                 type="button"
                 variant="destructive"
-                className="h-9 min-w-0 whitespace-nowrap px-2 text-[11px] sm:px-4 sm:text-sm"
+                className="col-span-2 h-9 min-w-0 w-full whitespace-nowrap px-2 text-[11px] sm:col-span-1 sm:w-auto sm:px-4 sm:text-sm"
                 disabled={
                   deletingVisibleBookings ||
                   busyBookingId !== null ||
@@ -830,6 +830,12 @@ function MyBookingsPage() {
                   ? "Borrando turnos..."
                   : `Borrar turnos (${eligibleVisibleBookings.length})`}
               </Button>
+              <Link
+                to="/reserva"
+                className="inline-flex h-9 min-w-0 w-full items-center justify-center whitespace-nowrap rounded-md bg-gold px-2 text-[11px] font-medium text-primary-foreground transition-colors hover:bg-gold-soft sm:h-10 sm:w-auto sm:px-4 sm:text-sm"
+              >
+                Nuevo turno
+              </Link>
             </div>
           </div>
           <label className="relative mb-4 block">
