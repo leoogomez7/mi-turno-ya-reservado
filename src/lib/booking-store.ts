@@ -42,6 +42,7 @@ export interface Booking {
   adminPermanentlyDeletedAt?: string;
   paymentStatus?: "pending" | "approved";
   paymentReportedAt?: string;
+  paymentReportDecision?: "paid" | "not-paid";
   paymentCancellationStatus?: "requested" | "cancelled" | "refunded";
   paymentCancellationRequestedAt?: string;
   refundCbu?: string;
@@ -84,7 +85,18 @@ export function hasPendingRefund(booking: Booking) {
 }
 
 export function hasPaymentReportedOrApproved(booking: Booking) {
-  return booking.paymentStatus === "approved" || Boolean(booking.paymentReportedAt);
+  return (
+    booking.paymentStatus === "approved" ||
+    (Boolean(booking.paymentReportedAt) && booking.paymentReportDecision !== "not-paid")
+  );
+}
+
+export function hasUnresolvedPaymentReport(booking: Booking) {
+  return (
+    Boolean(booking.paymentReportedAt) &&
+    booking.paymentStatus !== "approved" &&
+    booking.paymentReportDecision !== "not-paid"
+  );
 }
 
 export function requiresRefundResolution(booking: Booking) {
@@ -112,9 +124,8 @@ export function canDeleteBooking(booking: Booking) {
     booking.cancelledBy === "client" &&
     booking.clientCancellationRefundEligible !== true;
   if (
-    Boolean(booking.paymentReportedAt) &&
+    hasUnresolvedPaymentReport(booking) &&
     booking.paymentStatus !== "approved" &&
-    booking.paymentCancellationStatus !== "refunded" &&
     !cancelledWithoutRefundEligibility
   )
     return false;

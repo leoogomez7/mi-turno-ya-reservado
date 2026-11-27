@@ -84,6 +84,13 @@ function hasPendingRefund(booking) {
   );
 }
 
+function hasPaymentReportedOrApproved(booking) {
+  return (
+    booking.paymentStatus === "approved" ||
+    (Boolean(booking.paymentReportedAt) && booking.paymentReportDecision !== "not-paid")
+  );
+}
+
 function requiresRefundResolution(booking) {
   if (
     booking.status !== "cancelled" ||
@@ -92,7 +99,7 @@ function requiresRefundResolution(booking) {
     return false;
   }
   if (booking.cancelledBy === "professional")
-    return booking.paymentStatus === "approved" || Boolean(booking.paymentReportedAt);
+    return hasPaymentReportedOrApproved(booking);
   if (booking.paymentStatus !== "approved") return false;
   if (booking.cancelledBy === "client")
     return booking.clientCancellationRefundEligible === true;
@@ -112,6 +119,7 @@ function canDeleteBooking(booking) {
   if (
     Boolean(booking.paymentReportedAt) &&
     booking.paymentStatus !== "approved" &&
+    booking.paymentReportDecision !== "not-paid" &&
     booking.paymentCancellationStatus !== "refunded" &&
     !cancelledWithoutRefundEligibility
   )
@@ -1603,6 +1611,16 @@ function describeAdminBookingChange(previous, next) {
       `El profesional modificó el turno para ${next.date} a las ${next.time}.`,
     ];
   }
+  if (
+    previous.paymentReportDecision !== "not-paid" &&
+    next.paymentReportDecision === "not-paid"
+  ) {
+    return [
+      "payment_not_received",
+      "Pago no recibido",
+      "El profesional indicó que no recibió el pago informado para tu turno.",
+    ];
+  }
   if (previous.status !== next.status && next.status === "cancelled") {
     return ["booking_cancelled", "Turno cancelado", "El profesional canceló tu turno."];
   }
@@ -1646,6 +1664,7 @@ async function updateAdminBooking(db, user, body) {
   const allowedFields = new Set([
     "status",
     "paymentStatus",
+    "paymentReportDecision",
     "cancelledBy",
     "barberId",
     "serviceIds",
@@ -1679,6 +1698,32 @@ async function updateAdminBooking(db, user, body) {
     }
 
     const booking = { ...previous, ...patch };
+    if (
+      patch.paymentReportDecision !== undefined &&
+      !["paid", "not-paid"].includes(patch.paymentReportDecision)
+    ) {
+      throw Object.assign(new Error("La decisión del pago no es válida."), {
+        statusCode: 400,
+      });
+    }
+    if (patch.paymentReportDecision !== undefined) {
+      if (
+        Object.keys(patch).length !== 1 ||
+        (!previous.paymentReportedAt && previous.paymentReportDecision !== "not-paid") ||
+        !["confirmed", "pending-payment"].includes(previous.status)
+      ) {
+        throw Object.assign(new Error("No hay un pago informado pendiente de revisión."), {
+          statusCode: 409,
+        });
+      }
+      if (patch.paymentReportDecision === "paid") {
+        booking.status = "confirmed";
+        booking.paymentStatus = "approved";
+      } else {
+        booking.paymentStatus = "pending";
+        delete booking.paymentReportedAt;
+      }
+    }
     const validStatuses = new Set([
       "pending-payment",
       "confirmed",
@@ -1693,6 +1738,16 @@ async function updateAdminBooking(db, user, body) {
       patch.status === "cancelled" &&
       ["confirmed", "pending-payment"].includes(previous.status)
     ) {
+      if (
+        previous.paymentReportedAt &&
+        previous.paymentStatus !== "approved" &&
+        previous.paymentReportDecision !== "not-paid"
+      ) {
+        throw Object.assign(
+          new Error("Primero revisá el pago informado por el cliente e indicá si fue recibido."),
+          { statusCode: 409 },
+        );
+      }
       const appointmentAt =
         /^\d{4}-\d{2}-\d{2}$/.test(previous.date) &&
         /^([01]\d|2[0-3]):[0-5]\d$/.test(previous.time)
@@ -3178,6 +3233,7 @@ export default async function handler(request, response) {
               .json({ error: "Este turno no está pendiente de informar un pago." });
           }
           booking.paymentReportedAt = new Date().toISOString();
+          delete booking.paymentReportDecision;
           const notice = notificationForAdmin(
             booking,
             "payment_reported",
@@ -3199,7 +3255,7 @@ export default async function handler(request, response) {
           }
           if (
             booking.paymentStatus !== "approved" &&
-            !(cancelledByProfessional && booking.paymentReportedAt)
+            !(cancelledByProfessional && hasPaymentReportedOrApproved(booking))
           ) {
             return response.status(409).json({
               error:
@@ -3614,7 +3670,7 @@ export default async function handler(request, response) {
         }
         if (
           booking.paymentCancellationStatus !== "requested" ||
-          booking.paymentStatus !== "approved" ||
+          !hasPaymentReportedOrApproved(booking) ||
           booking.status !== "cancelled"
         ) {
           return response
@@ -5251,6 +5307,7 @@ export default async function handler(request, response) {
             "status",
             "cancelledBy",
             "paymentReportedAt",
+            "paymentReportDecision",
             "paymentCancellationStatus",
             "paymentCancellationRequestedAt",
             "refundCbu",

@@ -44,6 +44,7 @@ import {
   getBarber,
   getBookingArchiveLabel,
   hasPaymentReportedOrApproved,
+  hasUnresolvedPaymentReport,
   type Booking,
 } from "@/lib/booking-store";
 import { useAppAuth } from "@/lib/auth-context";
@@ -464,6 +465,10 @@ export function AgendaManager() {
 
   async function cancelBooking(booking: Booking) {
     if (cancellingBookingId || booking.status === "cancelled") return;
+    if (hasUnresolvedPaymentReport(booking)) {
+      toast.error("Primero revisá el pago informado e indicá si fue recibido o no.");
+      return;
+    }
     const appointmentAt = Date.parse(`${booking.date}T${booking.time}:00-03:00`);
     if (!Number.isFinite(appointmentAt) || appointmentAt <= Date.now()) {
       toast.error("No se puede cancelar un turno que ya comenzó o cuya fecha no es válida.");
@@ -820,6 +825,11 @@ export function AgendaManager() {
                           Pago pendiente
                         </Badge>
                       )}
+                      {booking.paymentReportDecision === "not-paid" && (
+                        <Badge variant="outline" className="border-amber-300 text-amber-300">
+                          Pago indicado como no recibido
+                        </Badge>
+                      )}
                       {booking.paymentReportedAt && booking.paymentStatus !== "approved" && (
                         <Badge variant="outline" className="border-amber-300 text-amber-300">
                           Cliente avisó que pagó
@@ -935,10 +945,15 @@ export function AgendaManager() {
                                 size="sm"
                                 variant="destructive"
                                 className={`min-w-0 whitespace-normal px-2 text-center leading-tight ${cancellingBookingId === booking.id ? "opacity-60" : ""}`}
-                                disabled={cancellingBookingId !== null}
+                                disabled={
+                                  cancellingBookingId !== null ||
+                                  hasUnresolvedPaymentReport(booking)
+                                }
                                 onClick={() => void cancelBooking(booking)}
                               >
-                                {cancellingBookingId === booking.id
+                                {hasUnresolvedPaymentReport(booking)
+                                  ? "Revisar pago antes de cancelar"
+                                  : cancellingBookingId === booking.id
                                   ? "Cancelando turno..."
                                   : "Cancelar turno"}
                               </Button>
@@ -1293,13 +1308,15 @@ export function AgendaManager() {
                       selectedBooking &&
                       void updateBooking(
                         selectedBooking.id,
-                        { status: "confirmed", paymentStatus: "approved" },
+                        selectedBooking.paymentReportedAt ||
+                          selectedBooking.paymentReportDecision === "not-paid"
+                          ? { paymentReportDecision: "paid" }
+                          : { status: "confirmed", paymentStatus: "approved" },
                         "Pago confirmado",
                       )
                     }
                   >
-                    {processingBookingId === selectedBooking?.id &&
-                    processingBookingStatus === "confirmed"
+                    {processingBookingId === selectedBooking?.id
                       ? "Procesando..."
                       : "Sí pagó"}
                   </Button>
@@ -1310,13 +1327,16 @@ export function AgendaManager() {
                       selectedBooking &&
                       void updateBooking(
                         selectedBooking.id,
-                        { status: "cancelled" },
-                        "Pago no recibido; turno cancelado y horario liberado",
+                        selectedBooking.paymentReportedAt
+                          ? { paymentReportDecision: "not-paid" }
+                          : { status: "cancelled" },
+                        selectedBooking.paymentReportedAt
+                          ? "Pago indicado como no recibido; ahora podés cancelar el turno."
+                          : "Pago no recibido; turno cancelado y horario liberado",
                       )
                     }
                   >
-                    {processingBookingId === selectedBooking?.id &&
-                    processingBookingStatus === "cancelled"
+                    {processingBookingId === selectedBooking?.id
                       ? "Procesando..."
                       : "No pagó"}
                   </Button>

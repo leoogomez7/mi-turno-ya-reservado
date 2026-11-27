@@ -91,7 +91,7 @@ function canRequestPaymentRefund(booking: Booking) {
     booking.status === "cancelled" && booking.cancelledBy === "professional";
   return (
     booking.paymentStatus === "approved" ||
-    (cancelledByProfessional && Boolean(booking.paymentReportedAt))
+    (cancelledByProfessional && hasPaymentReportedOrApproved(booking))
   );
 }
 
@@ -965,6 +965,11 @@ function MyBookingsPage() {
                           booking.paymentStatus !== "approved")) && (
                         <Badge variant="outline" className="border-amber-300 text-amber-300">
                           Pago pendiente
+                        </Badge>
+                      )}
+                      {booking.paymentReportDecision === "not-paid" && (
+                        <Badge variant="outline" className="border-amber-300 text-amber-300">
+                          El profesional indicó que el pago no se recibió
                         </Badge>
                       )}
                       {booking.paymentReportedAt && booking.paymentStatus !== "approved" && (
