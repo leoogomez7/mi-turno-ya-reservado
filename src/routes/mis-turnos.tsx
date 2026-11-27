@@ -1822,11 +1822,12 @@ function MyBookingsPage() {
                 {paymentBooking.customer.paymentMethod === "tarjeta o mercado pago"
                   ? "La devolución se gestionará por Mercado Pago o tarjeta. Ingresá también un CBU o alias como alternativa por si surge algún inconveniente."
                   : "Ingresá el dato donde el profesional debe devolver el dinero. Indicá si es CBU o alias."}{" "}
-                {cancelledByProfessional
+                {paymentBooking.status === "cancelled" &&
+                paymentBooking.cancelledBy === "professional"
                   ? "Como el profesional canceló el turno, corresponde devolver el 100% del importe."
-                  : cancelledClientPayment
+                  : isEligibleCancelledClientPayment(paymentBooking)
                     ? "El turno ya está cancelado; esta solicitud no lo volverá a cancelar."
-                  : "Al enviar la solicitud, el turno se cancela y el horario queda disponible; recibirás un aviso cuando el profesional confirme la devolución."}
+                    : "Al enviar la solicitud, el turno se cancela y el horario queda disponible; recibirás un aviso cuando el profesional confirme la devolución."}
               </p>
               <label className="grid gap-2 text-muted-foreground">
                 <span>Seleccionar CBU/Alias {paymentBooking.customer.paymentMethod === "tarjeta o mercado pago" ? "(alternativa)" : ""}</span>
