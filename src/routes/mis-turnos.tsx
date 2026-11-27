@@ -130,9 +130,15 @@ function MyBookingsPage() {
   const [refundDestinationType, setRefundDestinationType] = useState<"cbu" | "alias">("cbu");
   const lastBookingsReloadAt = useRef(0);
   const bookingsReloadInFlight = useRef<Promise<void> | null>(null);
+  const bookingsMutationRevision = useRef(0);
   const suppressPaymentClick = useRef(false);
   const [highlightedBookingId, setHighlightedBookingId] = useState("");
   const highlightTimeout = useRef<number | null>(null);
+
+  const applyBookingMutation = (update: (current: Booking[]) => Booking[]) => {
+    bookingsMutationRevision.current += 1;
+    setBookings(update);
+  };
 
   const editableProfessionals = editingBooking
     ? professionals.filter((item) => item.storeCode === editingBooking.storeCode)
@@ -188,11 +194,14 @@ function MyBookingsPage() {
     if (bookingsReloadInFlight.current) return bookingsReloadInFlight.current;
     if (!force && Date.now() - lastBookingsReloadAt.current < 5_000) return Promise.resolve();
     const request = (async () => {
+      const mutationRevision = bookingsMutationRevision.current;
       try {
         const result = await getClientBookings();
-        setBookings(result.bookings);
+        if (mutationRevision === bookingsMutationRevision.current) {
+          setBookings(result.bookings);
+          setOccupiedSlots(result.occupiedSlots);
+        }
         setProfessionals(result.professionals);
-        setOccupiedSlots(result.occupiedSlots);
         setStores(result.stores);
         lastBookingsReloadAt.current = Date.now();
       } catch (error) {
@@ -273,7 +282,7 @@ function MyBookingsPage() {
     setBusyBookingId(booking.id);
     try {
       const result = await reportClientPayment(booking.id);
-      setBookings((current) =>
+      applyBookingMutation((current) =>
         current.map((item) => (item.id === booking.id ? result.booking : item)),
       );
       setPaymentBooking(null);
@@ -367,7 +376,7 @@ function MyBookingsPage() {
         refundDestinationType,
         refundDestination.trim(),
       );
-      setBookings((current) =>
+      applyBookingMutation((current) =>
         current.map((item) => (item.id === booking.id ? result.booking : item)),
       );
       setPaymentBooking(null);
@@ -402,7 +411,7 @@ function MyBookingsPage() {
     setBusyBookingId(changingPaymentBooking.id);
     try {
       const result = await updateClientPaymentMethod(changingPaymentBooking.id, newPaymentMethod);
-      setBookings((current) =>
+      applyBookingMutation((current) =>
         current.map((item) => (item.id === changingPaymentBooking.id ? result.booking : item)),
       );
       setPaymentBooking(result.booking);
@@ -442,7 +451,7 @@ function MyBookingsPage() {
         date: editedDate,
         time: editedTime,
       });
-      setBookings((current) =>
+      applyBookingMutation((current) =>
         current.map((item) => (item.id === editingBooking.id ? result.booking : item)),
       );
       setEditingBooking(null);
@@ -479,7 +488,7 @@ function MyBookingsPage() {
     setCancelingBookingId(booking.id);
     try {
       const result = await cancelClientBooking(booking.id);
-      setBookings((current) =>
+      applyBookingMutation((current) =>
         current.map((item) => (item.id === booking.id ? result.booking : item)),
       );
       toast.success(
@@ -505,7 +514,7 @@ function MyBookingsPage() {
     setDeletingBookingId(booking.id);
     try {
       const result = await archiveBooking(booking.id);
-      setBookings((current) =>
+      applyBookingMutation((current) =>
         current.map((item) => (item.id === booking.id ? result.booking : item)),
       );
       toast.success("Turno archivado. Podés consultarlo en Turnos borrados/antiguos.");
@@ -531,7 +540,9 @@ function MyBookingsPage() {
       );
       if (archived.length) {
         const archivedById = new Map(archived.map((booking) => [booking.id, booking]));
-        setBookings((current) => current.map((booking) => archivedById.get(booking.id) ?? booking));
+        applyBookingMutation((current) =>
+          current.map((booking) => archivedById.get(booking.id) ?? booking),
+        );
       }
       toast[failedCount ? "error" : "success"](
         failedCount
@@ -550,7 +561,7 @@ function MyBookingsPage() {
     setRestoringBookingId(booking.id);
     try {
       const result = await restoreArchivedBooking(booking.id);
-      setBookings((current) =>
+      applyBookingMutation((current) =>
         current.map((item) => (item.id === booking.id ? result.booking : item)),
       );
       toast.success("Turno restaurado en tu lista principal.");
@@ -570,7 +581,9 @@ function MyBookingsPage() {
       );
       if (restoredBookings.length) {
         const restoredById = new Map(restoredBookings.map((booking) => [booking.id, booking]));
-        setBookings((current) => current.map((booking) => restoredById.get(booking.id) ?? booking));
+        applyBookingMutation((current) =>
+          current.map((booking) => restoredById.get(booking.id) ?? booking),
+        );
       }
       if (failedCount) {
         toast.error(
@@ -597,7 +610,7 @@ function MyBookingsPage() {
     setPermanentlyDeletingBookingId(booking.id);
     try {
       await permanentlyDeleteArchivedBooking(booking.id);
-      setBookings((current) => current.filter((item) => item.id !== booking.id));
+      applyBookingMutation((current) => current.filter((item) => item.id !== booking.id));
       toast.success("Turno eliminado definitivamente.");
     } catch (error) {
       toast.error(
@@ -629,7 +642,7 @@ function MyBookingsPage() {
       failedCount += result.failedCount;
       const deletedIds = new Set(result.bookings.map((booking) => booking.id));
       if (deletedIds.size)
-        setBookings((current) => current.filter((booking) => !deletedIds.has(booking.id)));
+        applyBookingMutation((current) => current.filter((booking) => !deletedIds.has(booking.id)));
       if (failedCount) {
         toast.error(
           `Se eliminaron ${deletedCount} turnos; ${failedCount} no cumplen los requisitos para borrarse.`,

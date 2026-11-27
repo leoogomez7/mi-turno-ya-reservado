@@ -126,8 +126,6 @@ async function request<T>(
   requestedStoreCode?: string,
   requestTokenGetter: (() => Promise<string | undefined>) | undefined = tokenGetter,
 ): Promise<T> {
-  const token = await requestTokenGetter?.();
-  if (!token && method === "PUT") throw new Error("No se obtuvo una sesión válida de Kinde.");
   const requestStoreCode =
     requestedStoreCode === undefined ? storeCode : requestedStoreCode.trim().toUpperCase();
   const isWrite = method !== "GET";
@@ -136,6 +134,8 @@ async function request<T>(
     cloudMutationRevision += 1;
   }
   try {
+    const token = await requestTokenGetter?.();
+    if (!token && method === "PUT") throw new Error("No se obtuvo una sesión válida de Kinde.");
     const response = await fetch("/api/data", {
       method,
       headers: {
