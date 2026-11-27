@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "@tanstack/react-router";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 import {
@@ -631,7 +630,7 @@ export function AgendaManager() {
               <Button
                 type="button"
                 variant="destructive"
-                className="col-span-2 h-9 min-w-0 w-full whitespace-nowrap px-2 text-[11px] sm:col-span-1 sm:w-auto sm:px-4 sm:text-sm"
+                className="h-9 min-w-0 w-full whitespace-nowrap px-2 text-[11px] sm:w-auto sm:px-4 sm:text-sm"
                 disabled={
                   deletingVisibleBookings ||
                   deletingBookingId !== null ||
@@ -643,12 +642,6 @@ export function AgendaManager() {
                   ? "Borrando turnos..."
                   : `Borrar turnos (${eligibleVisibleBookings.length})`}
               </Button>
-              <Link
-                to="/reserva"
-                className="inline-flex h-9 min-w-0 w-full items-center justify-center whitespace-nowrap rounded-md bg-gold px-2 text-[11px] font-medium text-primary-foreground transition-colors hover:bg-gold-soft sm:h-10 sm:w-auto sm:px-4 sm:text-sm"
-              >
-                Nuevo turno
-              </Link>
             </div>
           </div>
           <label className="relative mb-4 block">
