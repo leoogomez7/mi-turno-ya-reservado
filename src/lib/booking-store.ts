@@ -80,7 +80,7 @@ export interface Booking {
 }
 
 export function compareBookingsByAppointmentRecency(a: Booking, b: Booking) {
-  const appointmentOrder = `${b.date}T${b.time}`.localeCompare(`${a.date}T${a.time}`);
+  const appointmentOrder = `${a.date}T${a.time}`.localeCompare(`${b.date}T${b.time}`);
   if (appointmentOrder !== 0) return appointmentOrder;
   const updatedAtTimestamp = (booking: Booking) => {
     const value = booking.updatedAt ?? booking.createdAt;

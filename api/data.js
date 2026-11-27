@@ -1812,7 +1812,13 @@ async function updateAdminBooking(db, user, body) {
         statusCode: 409,
       });
     }
-    if (booking.status === "cancelled" && !patch.cancelledBy) booking.cancelledBy = "professional";
+    if (
+      booking.status === "cancelled" &&
+      !patch.cancelledBy &&
+      !cancelledClientPaymentReport
+    ) {
+      booking.cancelledBy = "professional";
+    }
 
     const editFields = ["barberId", "serviceIds", "duration", "totalPrice", "date", "time"];
     if (editFields.some((field) => Object.hasOwn(patch, field))) {
