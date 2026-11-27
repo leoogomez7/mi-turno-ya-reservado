@@ -1,7 +1,7 @@
 import { createClient } from "@libsql/client";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
-import webPush from "web-push";
+import { sendNotification, setVapidDetails } from "web-push";
 
 const COLLECTIONS = ["bookings", "professionals"];
 const FREE_TRIAL_DAYS = 4;
@@ -1405,11 +1405,7 @@ async function sendPushForNotification(executor, statement) {
       args: [recipientKey],
     });
     if (!result.rows.length) return;
-    webPush.setVapidDetails(
-      configuration.subject,
-      configuration.publicKey,
-      configuration.privateKey,
-    );
+    setVapidDetails(configuration.subject, configuration.publicKey, configuration.privateKey);
     const payload = JSON.stringify({
       title: String(title),
       body: String(message).slice(0, 300),
@@ -1422,7 +1418,7 @@ async function sendPushForNotification(executor, statement) {
         try {
           const subscription = JSON.parse(String(row.subscription));
           if (!validPushSubscription(subscription)) throw new Error("Suscripción push inválida.");
-          await webPush.sendNotification(subscription, payload, { TTL: 120, urgency: "high" });
+          await sendNotification(subscription, payload, { TTL: 120, urgency: "high" });
         } catch (error) {
           const statusCode = Number(error?.statusCode);
           if (statusCode === 404 || statusCode === 410) {
