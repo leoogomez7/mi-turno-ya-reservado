@@ -32,6 +32,7 @@ import {
 import { AuthRequired } from "@/components/auth-required";
 import { useAppAuth } from "@/lib/auth-context";
 import { LoadingScreen } from "@/components/loading-screen";
+import { noIndexMeta } from "@/lib/seo";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -52,7 +53,7 @@ const MonthlyComparisonChart = lazy(() =>
 );
 
 export const Route = createFileRoute("/admin")({
-  head: () => ({ meta: [{ title: "Estadísticas" }] }),
+  head: () => ({ meta: [{ title: "Estadísticas" }, noIndexMeta] }),
   component: AdminPage,
 });
 

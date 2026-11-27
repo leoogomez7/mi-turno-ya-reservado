@@ -11,9 +11,10 @@ import { LoadingScreen } from "@/components/loading-screen";
 import { useAppAuth } from "@/lib/auth-context";
 import { bookingStore } from "@/lib/booking-store";
 import { getClientProfile, saveClientProfile } from "@/lib/cloud-sync";
+import { noIndexMeta } from "@/lib/seo";
 
 export const Route = createFileRoute("/mis-datos")({
-  head: () => ({ meta: [{ title: "Mis datos" }] }),
+  head: () => ({ meta: [{ title: "Mis datos" }, noIndexMeta] }),
   component: MyDataPage,
 });
 

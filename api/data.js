@@ -1054,6 +1054,22 @@ function isSubscriptionActive(expiresAt) {
   );
 }
 
+export async function listPublicSitemapStores() {
+  const db = await database();
+  const result = await db.execute(
+    "SELECT code, name, owner_id, subscription_expires_at FROM stores ORDER BY name COLLATE NOCASE",
+  );
+  return result.rows
+    .filter(
+      (row) =>
+        String(row.owner_id) !== "legacy" &&
+        isSubscriptionActive(row.subscription_expires_at) &&
+        Boolean(String(row.name ?? "").trim()) &&
+        Boolean(String(row.code ?? "").trim()),
+    )
+    .map((row) => ({ code: String(row.code), name: String(row.name) }));
+}
+
 export function subscriptionPromoDiscountPercent(code) {
   const normalizedCode = typeof code === "string" ? code.trim().toUpperCase() : "";
   if (!normalizedCode) return 0;
@@ -2934,12 +2950,18 @@ export default async function handler(request, response) {
         }
 
         const method = booking.customer?.paymentMethod;
-        const canDelete =
-          booking.paymentStatus !== "approved" &&
-          !booking.paymentReportedAt &&
+        const policy =
+          validateCancellationPolicy(booking.cancellationPolicyAtBooking) ??
+          (await getStoreCancellationPolicy(db, booking.storeCode));
+        const refundNotAllowed =
+          policy.noRefunds || !policy.allowRefunds || policy.refundPercent <= 0;
+        const paymentCanBeCancelledWithoutRefund =
+          refundNotAllowed || (booking.paymentStatus !== "approved" && !booking.paymentReportedAt);
+        const canCancel =
+          paymentCanBeCancelledWithoutRefund &&
           !booking.paymentCancellationStatus &&
           ["efectivo", "transferencia", "tarjeta o mercado pago"].includes(method);
-        if (!canDelete || !["confirmed", "pending-payment"].includes(booking.status)) {
+        if (!canCancel || !["confirmed", "pending-payment"].includes(booking.status)) {
           return response.status(403).json({
             error: "Este turno no se puede cancelar porque el método de pago no lo permite.",
           });

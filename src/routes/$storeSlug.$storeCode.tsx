@@ -31,7 +31,30 @@ function WhatsAppIcon({ className }: { className?: string }) {
 }
 
 export const Route = createFileRoute("/$storeSlug/$storeCode")({
-  head: () => ({ meta: [{ title: "Sucursal · Mi Turno Ya Reservado" }] }),
+  head: ({ match }) => {
+    const { storeSlug, storeCode } = match.params;
+    const storeName = storeSlug
+      .split(/[-_]+/)
+      .filter(Boolean)
+      .map((part) => part.charAt(0).toLocaleUpperCase("es-AR") + part.slice(1))
+      .join(" ");
+    const title = `${storeName} | Reservá tu turno online`;
+    const description = `Consultá servicios y profesionales de ${storeName}, y reservá tu turno online en Mi Turno Ya Reservado.`;
+    return {
+      meta: [
+        { title },
+        { name: "description", content: description },
+        { property: "og:title", content: title },
+        { property: "og:description", content: description },
+      ],
+      links: [
+        {
+          rel: "canonical",
+          href: `/${encodeURIComponent(storeSlug)}/${encodeURIComponent(storeCode)}`,
+        },
+      ],
+    };
+  },
   component: StoreLandingPage,
 });
 
@@ -113,7 +136,7 @@ function StoreLandingPage() {
     : "";
 
   useEffect(() => {
-    if (store) document.title = store.name;
+    if (store) document.title = `${store.name} | Reservá tu turno online`;
   }, [store?.name]);
 
   if (loading) return <LoadingScreen message="Sincronizando turnos y profesionales" />;

@@ -104,24 +104,22 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
       { name: "google", content: "notranslate" },
-      { title: "Mi Turno Ya Reservado" },
+      { title: "Mi Turno Ya Reservado | Turnos online" },
       {
         name: "description",
         content:
-          "Sistema de reservas para rubros profesionales. Elegí rubro, servicio y horario en segundos.",
+          "Encontrá sucursales y profesionales, consultá servicios y reservá tu próximo turno online de forma simple.",
       },
-      { property: "og:title", content: "Mi Turno Ya Reservado" },
+      { property: "og:title", content: "Mi Turno Ya Reservado | Turnos online" },
       {
         property: "og:description",
-        content:
-          "Sistema de reservas para rubros profesionales. Elegí rubro, servicio y horario en segundos.",
+        content: "Encontrá sucursales y reservá turnos online de forma simple.",
       },
       { property: "og:type", content: "website" },
-      { name: "twitter:title", content: "Mi Turno Ya Reservado" },
+      { name: "twitter:title", content: "Mi Turno Ya Reservado | Turnos online" },
       {
         name: "twitter:description",
-        content:
-          "Sistema de reservas para rubros profesionales. Elegí rubro, servicio y horario en segundos.",
+        content: "Encontrá sucursales y reservá turnos online de forma simple.",
       },
       { name: "twitter:card", content: "summary_large_image" },
     ],

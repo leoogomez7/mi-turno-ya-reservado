@@ -18,8 +18,10 @@ import { Button } from "@/components/ui/button";
 import { bookingStore, getBarber, type Booking } from "@/lib/booking-store";
 import { getProfessionalServiceList } from "@/lib/professional-store";
 import { getAvailableStores, type Store } from "@/lib/cloud-sync";
+import { noIndexMeta } from "@/lib/seo";
 
 export const Route = createFileRoute("/book/success")({
+  head: () => ({ meta: [noIndexMeta] }),
   validateSearch: (s: Record<string, unknown>) => ({ id: (s.id as string) ?? "" }),
   component: SuccessPage,
 });

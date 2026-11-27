@@ -70,6 +70,7 @@ import {
 import { toast } from "sonner";
 import { LoadingScreen } from "@/components/loading-screen";
 import { normalizeWhatsappNumber } from "@/lib/utils";
+import { noIndexMeta } from "@/lib/seo";
 
 function WhatsAppIcon({ className }: { className?: string }) {
   return (
@@ -85,7 +86,7 @@ function WhatsAppIcon({ className }: { className?: string }) {
 }
 
 export const Route = createFileRoute("/mis-turnos")({
-  head: () => ({ meta: [{ title: "Mis turnos" }] }),
+  head: () => ({ meta: [{ title: "Mis turnos" }, noIndexMeta] }),
   component: MyBookingsPage,
 });
 
@@ -453,7 +454,7 @@ function MyBookingsPage() {
         policy?.noRefunds || policy?.allowRefunds === false || (policy?.refundPercent ?? 100) <= 0;
       toast.success(
         refundNotAllowed
-          ? "Turno cancelado. La política no permite devolución; ahora podés borrar el turno."
+          ? "Turno cancelado. No se realizará una devolución y el profesional recibió el aviso."
           : "Turno cancelado. El profesional podrá verlo en su agenda.",
       );
     } catch (error) {
@@ -822,8 +823,9 @@ function MyBookingsPage() {
                   Date.parse(`${booking.date}T${booking.time}:00-03:00`) <= currentTime;
                 const canCancel =
                   isActiveBooking &&
-                  !hasPaymentReport &&
                   !appointmentAlreadyStarted &&
+                  !booking.paymentCancellationStatus &&
+                  (!hasPaymentReport || refundNotAllowed) &&
                   ["efectivo", "transferencia", "tarjeta o mercado pago"].includes(
                     booking.customer.paymentMethod ?? "",
                   );

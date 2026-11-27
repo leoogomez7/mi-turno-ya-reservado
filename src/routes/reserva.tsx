@@ -8,9 +8,15 @@ export const Route = createFileRoute("/reserva")({
       {
         name: "description",
         content:
-          "Reservá tu turno en pocos pasos: elegí el rubro profesional, servicio, fecha y horario.",
+          "Buscá una sucursal, elegí el profesional y el servicio, y reservá fecha y horario para tu próximo turno.",
+      },
+      { property: "og:title", content: "Reservar turno online | Mi Turno Ya Reservado" },
+      {
+        property: "og:description",
+        content: "Encontrá una sucursal y reservá tu turno online en pocos pasos.",
       },
     ],
+    links: [{ rel: "canonical", href: "/reserva" }],
   }),
   component: BookPage,
 });

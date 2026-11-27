@@ -64,8 +64,10 @@ import {
   type StoreDiscountCoupon,
   type Store,
 } from "@/lib/cloud-sync";
+import { noIndexMeta } from "@/lib/seo";
 
 export const Route = createFileRoute("/book")({
+  head: () => ({ meta: [noIndexMeta] }),
   beforeLoad: () => {
     throw redirect({ to: "/reserva" });
   },
@@ -1600,10 +1602,6 @@ Observaciones: ${customer.notes || "Ninguna"}`;
                   setCouponError("");
                 }}
                 onApplyCoupon={applyCouponCode}
-                availableCoupons={
-                  serverActiveCoupons ??
-                  (storeSettings?.discountCoupons ?? []).filter((coupon) => coupon.active)
-                }
                 validatingCoupon={validatingCoupon}
                 onRemoveCoupon={() => {
                   setAppliedCouponCode("");
@@ -2475,7 +2473,6 @@ function StepConfirm({
   appliedCouponCode,
   couponInput,
   couponError,
-  availableCoupons,
   validatingCoupon,
   onCouponInputChange,
   onApplyCoupon,
@@ -2503,7 +2500,6 @@ function StepConfirm({
   appliedCouponCode: string;
   couponInput: string;
   couponError: string;
-  availableCoupons: NonNullable<Store["settings"]["discountCoupons"]>;
   validatingCoupon: boolean;
   onCouponInputChange: (value: string) => void;
   onApplyCoupon: (code?: string) => void | Promise<void>;
@@ -2610,39 +2606,11 @@ function StepConfirm({
                 {validatingCoupon ? "Validando…" : "Aplicar"}
               </Button>
             </div>
-            {availableCoupons.length ? (
-              <div className="flex flex-wrap items-center gap-2 text-xs">
-                <span className="text-muted-foreground">Cupones disponibles:</span>
-                {availableCoupons.map((coupon) => (
-                  <Button
-                    key={coupon.code}
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    className="h-7 border-gold/30 px-2 text-gold"
-                    disabled={validatingCoupon}
-                    onClick={() => void onApplyCoupon(coupon.code)}
-                  >
-                    {coupon.code} · {coupon.discountType === "percent"
-                      ? `${coupon.discountValue}% OFF`
-                      : `$${coupon.discountValue.toLocaleString("es-AR")} OFF`}
-                  </Button>
-                ))}
-              </div>
-            ) : (
-              <p className="text-xs text-muted-foreground">
-                Esta sucursal no tiene cupones activos. El profesional debe agregarlos y guardar la
-                configuración en /configuracion.
-              </p>
-            )}
           </>
         )}
         {couponError && (
           <p role="alert" className="text-sm text-red-300">
-            {couponError}{" "}
-            {availableCoupons.length > 0 && (
-              <>Revisá el código; los disponibles son {availableCoupons.map((coupon) => coupon.code).join(", ")}.</>
-            )}
+            {couponError}
           </p>
         )}
       </div>

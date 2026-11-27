@@ -29,8 +29,15 @@ No subir `.env.local` ni compartir valores privados. Para Vite, los campos públ
 | `MERCADOPAGO_CREDENTIALS_ENCRYPTION_KEY` | Secreto estable para cifrar con AES-256-GCM los Access Token individuales de cada sucursal                      | Solo servidor / Vercel; obligatorio para guardar credenciales por sucursal |
 | `DESCUENTO_OFF`                          | Códigos adicionales válidos para aplicar 10% de descuento; varios valores se separan con coma                   | Solo servidor / Vercel                                                     |
 | `GRATIS2026`                             | Código o códigos válidos para activar gratis el plan seleccionado; varios valores se separan con coma           | Solo servidor / Vercel                                                     |
-| `PUBLIC_APP_URL`                         | Dirección base publicada de la aplicación, sin rutas como `/reserva`; Mercado Pago vuelve allí después del pago | Vercel; opcional local                                                     |
+| `PUBLIC_APP_URL`                         | Dirección base canónica publicada (por ejemplo, `https://tudominio.com`), sin rutas; se usa para los retornos de pago y las URL del sitemap | Vercel; opcional local                                                     |
 | `GOOGLE_MAPS_API_KEY`                    | Clave privada de Google Places API (New) para importar la calificación y cantidad de reseñas de la sucursal    | Solo servidor / Vercel; opcional                                            |
+
+## Indexación en Google
+
+- Configurá `PUBLIC_APP_URL` en Vercel con el dominio público definitivo, incluyendo `https://` y sin una ruta final. Si se omite, `robots.txt` y `sitemap.xml` usan el dominio de la solicitud.
+- Después de desplegar, comprobá que `https://tudominio.com/robots.txt` permita el rastreo y apunte a `https://tudominio.com/sitemap.xml`.
+- El sitemap se genera automáticamente con la página principal, la búsqueda pública de sucursales y las páginas de sucursales con suscripción activa. No incluye paneles, datos de cuenta ni pasos internos de reserva.
+- En Google Search Console, verificá el dominio y enviá `https://tudominio.com/sitemap.xml`. Google decide cuándo rastrear e indexar; enviarlo no garantiza una posición ni una indexación inmediata.
 
 ## Roles y seguridad
 

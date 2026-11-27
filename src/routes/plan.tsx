@@ -21,9 +21,10 @@ import {
   type Store,
 } from "@/lib/cloud-sync";
 import { toast } from "sonner";
+import { noIndexMeta } from "@/lib/seo";
 
 export const Route = createFileRoute("/plan")({
-  head: () => ({ meta: [{ title: "Plan" }] }),
+  head: () => ({ meta: [{ title: "Plan" }, noIndexMeta] }),
   component: PlanPage,
 });
 
