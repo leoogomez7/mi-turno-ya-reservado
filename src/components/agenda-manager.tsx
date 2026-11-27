@@ -940,20 +940,16 @@ export function AgendaManager() {
                               </Button>
                             )}
                           {isActiveBooking &&
-                            !booking.paymentCancellationStatus && (
+                            !booking.paymentCancellationStatus &&
+                            !hasUnresolvedPaymentReport(booking) && (
                               <Button
                                 size="sm"
                                 variant="destructive"
                                 className={`min-w-0 whitespace-normal px-2 text-center leading-tight ${cancellingBookingId === booking.id ? "opacity-60" : ""}`}
-                                disabled={
-                                  cancellingBookingId !== null ||
-                                  hasUnresolvedPaymentReport(booking)
-                                }
+                                disabled={cancellingBookingId !== null}
                                 onClick={() => void cancelBooking(booking)}
                               >
-                                {hasUnresolvedPaymentReport(booking)
-                                  ? "Revisar pago antes de cancelar"
-                                  : cancellingBookingId === booking.id
+                                {cancellingBookingId === booking.id
                                   ? "Cancelando turno..."
                                   : "Cancelar turno"}
                               </Button>
