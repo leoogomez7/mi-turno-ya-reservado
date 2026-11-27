@@ -64,6 +64,7 @@ import {
   loadReservationStore,
   releaseBookingSlot,
   releaseBookingSlotOnPageExit,
+  RESERVATION_SLOT_HOLD_SESSION_KEY,
   selectStore,
   validateStoreCoupon,
   type BookingSlotHold,
@@ -178,8 +179,6 @@ type ReservationResult = {
 const PENDING_PAYMENT_SESSION_KEY = "mi-turno-ya:pending-payment-booking";
 const SELECTED_STORE_SESSION_KEY = "mi-turno-ya:selected-booking-store";
 const RESERVATION_DRAFT_SESSION_KEY = "mi-turno-ya:reservation-draft";
-const RESERVATION_SLOT_HOLD_SESSION_KEY = "mi-turno-ya:reservation-slot-hold";
-
 function getReservationSlotTimestamp(date: Date, time: string) {
   return Date.parse(`${format(date, "yyyy-MM-dd")}T${time}:00-03:00`);
 }
@@ -257,6 +256,7 @@ function clearStoredReservationSlotHold() {
 export function BookPage() {
   const auth = useAppAuth();
   const { isAuthenticated, isLoading, role, user } = auth;
+  const wasAuthenticated = useRef(isAuthenticated);
   const location = useLocation();
   const routeStoreSlug = storeSlugFromPath(location.pathname);
   const routeStoreCode = storeCodeFromPath(location.pathname);
@@ -992,7 +992,7 @@ export function BookPage() {
   const reservationDataLoading =
     Boolean(selectedStoreCode) && (!storeSelectionHydrated || storeLoading);
 
-  async function releaseCurrentSlotHold() {
+  const releaseCurrentSlotHold = useCallback(async () => {
     const hold = slotHoldRef.current ?? readReservationSlotHold();
     if (!hold) return;
     slotHoldRef.current = null;
@@ -1006,7 +1006,15 @@ export function BookPage() {
         "No pudimos liberar el horario anterior. Se liberará automáticamente en unos minutos.",
       );
     }
-  }
+  }, []);
+
+  useEffect(() => {
+    const loggedOut = wasAuthenticated.current && !isAuthenticated;
+    wasAuthenticated.current = isAuthenticated;
+    if (!loggedOut) return;
+    setTime("");
+    void releaseCurrentSlotHold();
+  }, [isAuthenticated, releaseCurrentSlotHold]);
 
   useEffect(() => {
     if (!reservationDraftHydrated || !storeSelectionHydrated || slotClaimInFlight.current) return;
@@ -1026,6 +1034,7 @@ export function BookPage() {
     date,
     duration,
     reservationDraftHydrated,
+    releaseCurrentSlotHold,
     selectedStoreCode,
     step,
     storeSelectionHydrated,

@@ -16,7 +16,11 @@ import { rememberAuthReturnPath, rememberSignupRole } from "@/lib/auth-utils";
 import { useAppAuth } from "@/lib/auth-context";
 import type { AccountRole } from "@/lib/auth";
 import { useLocation } from "@tanstack/react-router";
-import { getAvailableStores, getCurrentStoreCode } from "@/lib/cloud-sync";
+import {
+  getAvailableStores,
+  getCurrentStoreCode,
+  releaseStoredReservationSlotHold,
+} from "@/lib/cloud-sync";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -87,6 +91,11 @@ export function SiteHeader({ openAuthDialogOnMount = false }: { openAuthDialogOn
 
   async function handleLogout() {
     setOpen(false);
+    try {
+      await releaseStoredReservationSlotHold();
+    } catch (error) {
+      console.error("No se pudo liberar el horario temporal antes de cerrar sesión", error);
+    }
     await logout();
     await navigate({ to: "/", replace: true });
   }

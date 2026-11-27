@@ -41,6 +41,7 @@ import {
   bookingStore,
   canArchiveBooking,
   canDeleteBooking,
+  compareBookingsByAppointmentRecency,
   getBarber,
   getBookingArchiveLabel,
   hasPaymentReportedOrApproved,
@@ -523,11 +524,7 @@ export function AgendaManager() {
       (booking) =>
         !booking.adminPermanentlyDeletedAt && getBookingArchiveLabel(booking, currentTime, "admin"),
     )
-    .sort((a, b) =>
-      (b.adminArchivedAt ?? `${b.date}T${b.time}`).localeCompare(
-        a.adminArchivedAt ?? `${a.date}T${a.time}`,
-      ),
-    );
+    .sort(compareBookingsByAppointmentRecency);
   const normalizedArchiveSearch = archiveSearch
     .trim()
     .toLocaleLowerCase("es-AR")
@@ -568,7 +565,7 @@ export function AgendaManager() {
         !getBookingArchiveLabel(booking, currentTime, "admin"),
     )
     .sort((a, b) => {
-      if (!!a.isTest === !!b.isTest) return (a.date + a.time).localeCompare(b.date + b.time);
+      if (!!a.isTest === !!b.isTest) return compareBookingsByAppointmentRecency(a, b);
       return a.isTest ? 1 : -1;
     });
   const normalizedBookingSearch = bookingSearch
@@ -1350,7 +1347,7 @@ export function AgendaManager() {
                             selectedBooking.cancelledBy === "client" &&
                             selectedBooking.clientCancellationRefundEligible === true
                             ? "Pago indicado como no recibido; el cliente debe confirmar la información antes de borrar."
-                            : "Pago indicado como no recibido; ahora podés cancelar el turno."
+                            : "Pago indicado como no recibido; el turno quedó cancelado y el horario fue liberado."
                           : "Pago no recibido; turno cancelado y horario liberado",
                       )
                     }

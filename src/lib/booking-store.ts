@@ -75,7 +75,25 @@ export interface Booking {
   cancellationToken?: string;
   slotHoldId?: string;
   createdAt: string;
+  updatedAt?: string;
   isTest?: boolean;
+}
+
+export function compareBookingsByAppointmentRecency(a: Booking, b: Booking) {
+  const appointmentOrder = `${b.date}T${b.time}`.localeCompare(`${a.date}T${a.time}`);
+  if (appointmentOrder !== 0) return appointmentOrder;
+  const updatedAtTimestamp = (booking: Booking) => {
+    const value = booking.updatedAt ?? booking.createdAt;
+    const utcValue = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(value)
+      ? `${value.replace(" ", "T")}Z`
+      : value;
+    return Date.parse(utcValue);
+  };
+  const aUpdatedAt = updatedAtTimestamp(a);
+  const bUpdatedAt = updatedAtTimestamp(b);
+  if (Number.isFinite(aUpdatedAt) && Number.isFinite(bUpdatedAt))
+    return bUpdatedAt - aUpdatedAt;
+  return (b.updatedAt ?? b.createdAt).localeCompare(a.updatedAt ?? a.createdAt);
 }
 
 export function hasPendingRefund(booking: Booking) {

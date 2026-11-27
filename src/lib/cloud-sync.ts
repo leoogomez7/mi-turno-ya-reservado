@@ -76,6 +76,7 @@ export type BookingNotification = {
   bookingExists?: boolean;
 };
 export const BOOKING_HIGHLIGHT_KEY = "mi-turno-ya:highlight-booking";
+export const RESERVATION_SLOT_HOLD_SESSION_KEY = "mi-turno-ya:reservation-slot-hold";
 export type ClientBookings = {
   bookings: Booking[];
   professionals: Professional[];
@@ -154,9 +155,23 @@ async function request<T>(
       ...(body ? { body: JSON.stringify(body) } : {}),
       cache: "no-store",
     });
-    const result = (await response.json()) as T & { error?: string };
+    const result = (await response.json()) as T & {
+      error?: string;
+      booking?: Booking;
+      bookings?: Booking[];
+    };
     if (!response.ok)
       throw new Error(result.error || "No se pudo sincronizar con la base de datos.");
+    const action =
+      body && typeof body === "object" && "action" in body && typeof body.action === "string"
+        ? body.action
+        : "";
+    if (isWrite && action && !action.startsWith("get-")) {
+      const updatedAt = new Date().toISOString();
+      if (result.booking) result.booking = { ...result.booking, updatedAt };
+      if (result.bookings)
+        result.bookings = result.bookings.map((booking) => ({ ...booking, updatedAt }));
+    }
     return result;
   } finally {
     if (isWrite) activeCloudWrites -= 1;
@@ -986,6 +1001,32 @@ export async function claimBookingSlot(
 
 export async function releaseBookingSlot(storeCode: string, holdId: string) {
   return request<{ ok: boolean }>("POST", { action: "release-booking-slot", holdId }, storeCode);
+}
+
+export async function releaseStoredReservationSlotHold() {
+  if (typeof window === "undefined") return;
+  const saved = window.sessionStorage.getItem(RESERVATION_SLOT_HOLD_SESSION_KEY);
+  if (!saved) return;
+
+  let hold: { holdId?: string; storeCode?: string };
+  try {
+    hold = JSON.parse(saved) as { holdId?: string; storeCode?: string };
+  } catch {
+    window.sessionStorage.removeItem(RESERVATION_SLOT_HOLD_SESSION_KEY);
+    return;
+  }
+  if (
+    typeof hold.holdId !== "string" ||
+    !/^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i.test(hold.holdId) ||
+    typeof hold.storeCode !== "string" ||
+    !hold.storeCode
+  ) {
+    window.sessionStorage.removeItem(RESERVATION_SLOT_HOLD_SESSION_KEY);
+    return;
+  }
+
+  await releaseBookingSlot(hold.storeCode, hold.holdId);
+  window.sessionStorage.removeItem(RESERVATION_SLOT_HOLD_SESSION_KEY);
 }
 
 export async function releaseBookingSlotOnPageExit(storeCode: string, holdId: string) {

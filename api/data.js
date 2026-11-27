@@ -1625,7 +1625,9 @@ function describeAdminBookingChange(previous, next) {
     return [
       "payment_not_received",
       "Pago no recibido",
-      "El profesional indicó que no recibió el pago informado para tu turno.",
+      next.status === "cancelled" && next.cancelledBy === "professional"
+        ? "El profesional indicó que no recibió el pago y canceló el turno. El horario quedó disponible."
+        : "El profesional indicó que no recibió el pago informado para tu turno.",
     ];
   }
   if (previous.status !== next.status && next.status === "cancelled") {
@@ -1738,6 +1740,10 @@ async function updateAdminBooking(db, user, body) {
         booking.paymentStatus = "pending";
         delete booking.paymentReportedAt;
         delete booking.clientPaymentReportAcknowledgedAt;
+        if (!cancelledClientPaymentReport) {
+          booking.status = "cancelled";
+          booking.cancelledBy = "professional";
+        }
       }
     }
     const validStatuses = new Set([
@@ -2466,10 +2472,10 @@ export default async function handler(request, response) {
       }
       const bookingQuery = userStoreCode
         ? db.execute({
-            sql: "SELECT id, value FROM bookings WHERE upper(json_extract(value, '$.storeCode')) = ? ORDER BY updated_at DESC",
+            sql: "SELECT id, value, updated_at FROM bookings WHERE upper(json_extract(value, '$.storeCode')) = ? ORDER BY updated_at DESC",
             args: [userStoreCode],
           })
-        : db.execute("SELECT id, value FROM bookings ORDER BY updated_at DESC");
+        : db.execute("SELECT id, value, updated_at FROM bookings ORDER BY updated_at DESC");
       const professionalQuery = userStoreCode
         ? db.execute({
             sql: "SELECT id, value FROM professionals WHERE substr(id, 1, ?) = ? ORDER BY updated_at DESC",
@@ -2490,7 +2496,10 @@ export default async function handler(request, response) {
         professionalQuery,
         storesQuery,
       ]);
-      const allBookings = bookingRows.rows.map((row) => JSON.parse(String(row.value)));
+      const allBookings = bookingRows.rows.map((row) => ({
+        ...JSON.parse(String(row.value)),
+        updatedAt: String(row.updated_at),
+      }));
       const storeBookings = userStoreCode
         ? allBookings.filter((booking) => normalizeStoreCode(booking.storeCode) === userStoreCode)
         : [];
@@ -3167,11 +3176,14 @@ export default async function handler(request, response) {
             .status(403)
             .json({ error: "Solo un profesional puede consultar los turnos de la sucursal." });
         const result = await db.execute({
-          sql: "SELECT value FROM bookings WHERE upper(json_extract(value, '$.storeCode')) = ? ORDER BY updated_at DESC",
+          sql: "SELECT value, updated_at FROM bookings WHERE upper(json_extract(value, '$.storeCode')) = ? ORDER BY updated_at DESC",
           args: [storeCode],
         });
         return response.status(200).json({
-          bookings: result.rows.map((row) => JSON.parse(String(row.value))),
+          bookings: result.rows.map((row) => ({
+            ...JSON.parse(String(row.value)),
+            updatedAt: String(row.updated_at),
+          })),
         });
       } catch (error) {
         console.error("No se pudieron actualizar los turnos de la agenda", error);
@@ -3209,10 +3221,13 @@ export default async function handler(request, response) {
 
         if (body.action === "get-client-bookings") {
           const bookingRows = await db.execute({
-            sql: "SELECT id, value FROM bookings WHERE lower(trim(json_extract(value, '$.customer.email'))) = ? ORDER BY updated_at DESC",
+            sql: "SELECT id, value, updated_at FROM bookings WHERE lower(trim(json_extract(value, '$.customer.email'))) = ? ORDER BY updated_at DESC",
             args: [user.email],
           });
-          const bookings = bookingRows.rows.map((row) => JSON.parse(String(row.value)));
+          const bookings = bookingRows.rows.map((row) => ({
+            ...JSON.parse(String(row.value)),
+            updatedAt: String(row.updated_at),
+          }));
           const storeCodes = [
             ...new Set(
               bookings.map((booking) => normalizeStoreCode(booking.storeCode)).filter(Boolean),

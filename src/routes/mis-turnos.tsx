@@ -41,6 +41,7 @@ import { useAppAuth } from "@/lib/auth-context";
 import {
   canArchiveBooking,
   canDeleteBooking,
+  compareBookingsByAppointmentRecency,
   getBookingArchiveLabel,
   hasUnresolvedPaymentReport,
   hasPaymentReportedOrApproved,
@@ -737,16 +738,12 @@ function MyBookingsPage() {
         !booking.clientPermanentlyDeletedAt &&
         getBookingArchiveLabel(booking, currentTime, "client"),
     )
-    .sort((a, b) =>
-      (b.clientArchivedAt ?? `${b.date}T${b.time}`).localeCompare(
-        a.clientArchivedAt ?? `${a.date}T${a.time}`,
-      ),
-    );
+    .sort(compareBookingsByAppointmentRecency);
   const visibleBookings = bookings.filter(
     (booking) =>
       !booking.clientPermanentlyDeletedAt &&
       !getBookingArchiveLabel(booking, currentTime, "client"),
-  );
+  ).sort(compareBookingsByAppointmentRecency);
   const normalizeSearch = (value: string) =>
     value
       .trim()
