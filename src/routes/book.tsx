@@ -7,6 +7,7 @@ import {
   Star,
   Clock,
   Calendar as CalIcon,
+  LoaderCircle,
   Briefcase,
   User,
   Copy,
@@ -62,6 +63,7 @@ import {
   getBookingSlotHolds,
   loadReservationStore,
   releaseBookingSlot,
+  releaseBookingSlotOnPageExit,
   selectStore,
   validateStoreCoupon,
   type BookingSlotHold,
@@ -311,7 +313,6 @@ export function BookPage() {
   const [blockedSlotKeys, setBlockedSlotKeys] = useState<Set<string>>(() => new Set());
   const [reservationSlotHolds, setReservationSlotHolds] = useState<BookingSlotHold[]>([]);
   const [slotHoldsLoadedKey, setSlotHoldsLoadedKey] = useState("");
-  const [slotHoldsFetchedAt, setSlotHoldsFetchedAt] = useState(0);
   const [slotHoldsError, setSlotHoldsError] = useState("");
   const slotHoldRef = useRef<{
     holdId: string;
@@ -323,18 +324,26 @@ export function BookPage() {
   } | null>(null);
   const slotClaimInFlight = useRef(false);
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    let releaseStarted = false;
+    const releaseHold = () => {
+      if (releaseStarted) return;
+      releaseStarted = true;
       const hold = slotHoldRef.current ?? readReservationSlotHold();
       if (hold) {
-        void releaseBookingSlot(hold.storeCode, hold.holdId).catch((error: unknown) => {
+        slotHoldRef.current = null;
+        void releaseBookingSlotOnPageExit(hold.storeCode, hold.holdId).catch((error: unknown) => {
           console.error("No se pudo liberar el horario reservado al salir de la reserva", error);
         });
       }
       clearStoredReservationSlotHold();
-    },
-    [],
-  );
+    };
+    window.addEventListener("pagehide", releaseHold);
+    return () => {
+      window.removeEventListener("pagehide", releaseHold);
+      releaseHold();
+    };
+  }, []);
 
   useEffect(() => {
     if (step !== 3 && step !== 4) return;
@@ -748,11 +757,11 @@ export function BookPage() {
     if (!slotHoldsQueryKey || !selectedStoreCode || !barberId || !reservationDateKey) {
       setReservationSlotHolds([]);
       setSlotHoldsLoadedKey("");
-      setSlotHoldsFetchedAt(0);
       setSlotHoldsError("");
       return;
     }
 
+    setSlotHoldsError("");
     let cancelled = false;
     let refreshInFlight = false;
     const refresh = async () => {
@@ -763,11 +772,9 @@ export function BookPage() {
         if (cancelled) return;
         setReservationSlotHolds(holds);
         setSlotHoldsLoadedKey(slotHoldsQueryKey);
-        setSlotHoldsFetchedAt(Date.now());
         setSlotHoldsError("");
       } catch (error) {
         if (cancelled) return;
-        setSlotHoldsLoadedKey("");
         setSlotHoldsError(
           error instanceof Error ? error.message : "No se pudo actualizar la disponibilidad.",
         );
@@ -1890,8 +1897,7 @@ Observaciones: ${customer.notes || "Ninguna"}`;
               slotHolds={reservationSlotHolds}
               slotHoldsReady={
                 slotHoldsLoadedKey === slotHoldsQueryKey &&
-                Boolean(slotHoldsQueryKey) &&
-                Date.now() - slotHoldsFetchedAt < 1500
+                Boolean(slotHoldsQueryKey)
               }
               slotHoldsError={slotHoldsError}
               ownHoldId={slotHoldRef.current?.holdId ?? readReservationSlotHold()?.holdId ?? ""}
@@ -2782,12 +2788,27 @@ function StepDateTime({
           <span className="ml-2 normal-case text-muted-foreground/70">({duration} min)</span>
         )}
       </Label>
+      {date && slotHoldsReady && slotHoldsError && (
+        <p role="status" className="mb-2 text-sm text-muted-foreground">
+          {slotHoldsError}
+        </p>
+      )}
       {!date ? (
         <p className="text-sm text-muted-foreground">Elegí primero una fecha.</p>
       ) : !slotHoldsReady ? (
-        <p role="status" className="text-sm text-muted-foreground">
-          {slotHoldsError || "Actualizando disponibilidad en tiempo real..."}
-        </p>
+        slotHoldsError ? (
+          <p role="status" className="text-sm text-muted-foreground">
+            {slotHoldsError}
+          </p>
+        ) : (
+          <div
+            role="status"
+            aria-label="Cargando disponibilidad"
+            className="flex justify-center py-4"
+          >
+            <LoaderCircle className="size-5 animate-spin text-muted-foreground" />
+          </div>
+        )
       ) : slots.length === 0 ? (
         <p className="text-sm text-muted-foreground">
           No hay horarios disponibles para esta fecha. Elegí otro día o revisá la disponibilidad del

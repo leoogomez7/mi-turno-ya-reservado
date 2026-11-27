@@ -271,7 +271,7 @@ function MyBookingsPage() {
   }, [isAuthenticated, reload, role]);
 
   useEffect(() => {
-    const intervalId = window.setInterval(() => setCurrentTime(Date.now()), 30_000);
+    const intervalId = window.setInterval(() => setCurrentTime(Date.now()), 1000);
     return () => window.clearInterval(intervalId);
   }, []);
 
@@ -1122,6 +1122,7 @@ function MyBookingsPage() {
                           </Button>
                         )}
                         {isActiveBooking &&
+                          !appointmentAlreadyStarted &&
                           booking.paymentStatus !== "approved" &&
                           !hasPaymentReport &&
                           !booking.paymentCancellationStatus && (

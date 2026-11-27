@@ -988,6 +988,24 @@ export async function releaseBookingSlot(storeCode: string, holdId: string) {
   return request<{ ok: boolean }>("POST", { action: "release-booking-slot", holdId }, storeCode);
 }
 
+export async function releaseBookingSlotOnPageExit(storeCode: string, holdId: string) {
+  const normalizedStoreCode = storeCode.trim().toUpperCase();
+  const response = await fetch("/api/data", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Store-Code": normalizedStoreCode,
+    },
+    body: JSON.stringify({ action: "release-booking-slot", holdId }),
+    cache: "no-store",
+    keepalive: true,
+  });
+  if (!response.ok) {
+    const result = (await response.json()) as { error?: string };
+    throw new Error(result.error || "No se pudo liberar el horario.");
+  }
+}
+
 export async function getBookingSlotHolds(storeCode: string, barberId: string, date: string) {
   const result = await request<{ holds: BookingSlotHold[] }>(
     "POST",

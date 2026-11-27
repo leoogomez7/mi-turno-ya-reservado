@@ -164,7 +164,7 @@ export function AgendaManager() {
   }, []);
 
   useEffect(() => {
-    const intervalId = window.setInterval(() => setCurrentTime(Date.now()), 30_000);
+    const intervalId = window.setInterval(() => setCurrentTime(Date.now()), 1000);
     return () => window.clearInterval(intervalId);
   }, []);
 
@@ -959,6 +959,7 @@ export function AgendaManager() {
                             )}
                           {isActiveBooking &&
                             !booking.paymentCancellationStatus &&
+                            !appointmentAlreadyStarted &&
                             !hasUnresolvedPaymentReport(booking) && (
                               <Button
                                 size="sm"
