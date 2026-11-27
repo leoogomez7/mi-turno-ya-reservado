@@ -82,14 +82,27 @@ export function hasPendingRefund(booking: Booking) {
   );
 }
 
+export function requiresRefundResolution(booking: Booking) {
+  if (
+    booking.status !== "cancelled" ||
+    booking.paymentStatus !== "approved" ||
+    booking.paymentCancellationStatus === "refunded"
+  ) {
+    return false;
+  }
+  const policy = booking.cancellationPolicyAtBooking;
+  return (
+    !policy ||
+    (!policy.noRefunds && policy.allowRefunds && policy.refundPercent > 0)
+  );
+}
+
 export function canDeleteBooking(booking: Booking) {
   if (hasPendingRefund(booking)) return false;
   if (Boolean(booking.paymentReportedAt) && booking.paymentStatus !== "approved") return false;
 
   if (booking.status === "cancelled") {
-    // Los cancelados sin pago confirmado se pueden borrar; si se pagó, primero hay que
-    // confirmar la devolución para conservar el registro del dinero recibido.
-    return booking.paymentStatus !== "approved" || booking.paymentCancellationStatus === "refunded";
+    return !requiresRefundResolution(booking);
   }
 
   if (booking.paymentStatus === "pending" || booking.status === "pending-payment") return false;
@@ -101,7 +114,7 @@ export function canDeleteBooking(booking: Booking) {
 }
 
 export function canArchiveBooking(booking: Booking) {
-  if (hasPendingRefund(booking)) return false;
+  if (hasPendingRefund(booking) || requiresRefundResolution(booking)) return false;
   if (booking.status === "cancelled" && booking.cancelledBy === "client") return true;
   return canDeleteBooking(booking);
 }
