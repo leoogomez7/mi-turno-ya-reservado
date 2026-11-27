@@ -1,6 +1,7 @@
 import { createClient } from "@libsql/client";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
+import webPush from "web-push";
 
 const COLLECTIONS = ["bookings", "professionals"];
 const FREE_TRIAL_DAYS = 4;
@@ -928,6 +929,12 @@ async function database() {
       read_at TEXT,
       prompted_at TEXT
     )`,
+      `CREATE TABLE IF NOT EXISTS push_subscriptions (
+      endpoint_hash TEXT PRIMARY KEY,
+      recipient_key TEXT NOT NULL,
+      subscription TEXT NOT NULL,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )`,
       `CREATE TABLE IF NOT EXISTS professionals (
       id TEXT PRIMARY KEY,
       value TEXT NOT NULL,
@@ -982,6 +989,7 @@ async function database() {
       "CREATE INDEX IF NOT EXISTS bookings_updated ON bookings(updated_at)",
       "CREATE INDEX IF NOT EXISTS bookings_store_code ON bookings(upper(json_extract(value, '$.storeCode')))",
       "CREATE INDEX IF NOT EXISTS notifications_recipient ON notifications(recipient_key, created_at)",
+      "CREATE INDEX IF NOT EXISTS push_subscriptions_recipient ON push_subscriptions(recipient_key)",
       "CREATE INDEX IF NOT EXISTS subscription_orders_store ON subscription_orders(store_code, created_at)",
       "CREATE INDEX IF NOT EXISTS subscription_discount_code ON subscription_discount_redemptions(promo_code, store_code)",
       "CREATE INDEX IF NOT EXISTS bookings_schedule_lookup ON bookings(upper(json_extract(value, '$.storeCode')), json_extract(value, '$.barberId'), json_extract(value, '$.date'))",
@@ -1291,8 +1299,8 @@ async function verifyBookingPayment(db, bookingId, paymentId) {
       "Pago recibido",
       `Mercado Pago aprobó el pago de ${booking.customer?.fullName || "un cliente"}.`,
     );
-    if (paymentNotice) await transaction.execute(paymentNotice);
-    if (adminPaymentNotice) await transaction.execute(adminPaymentNotice);
+    if (paymentNotice) await persistNotification(transaction, paymentNotice);
+    if (adminPaymentNotice) await persistNotification(transaction, adminPaymentNotice);
     await transaction.commit();
     return { approved: true, booking: bookingSummary };
   } catch (error) {
@@ -1348,6 +1356,95 @@ function notificationStatement(recipientKey, booking, type, title, message) {
       message,
     ],
   };
+}
+
+function webPushConfiguration() {
+  const publicKey = process.env.WEB_PUSH_PUBLIC_KEY?.trim() ?? "";
+  const privateKey = process.env.WEB_PUSH_PRIVATE_KEY?.trim() ?? "";
+  const subject = process.env.WEB_PUSH_SUBJECT?.trim() ?? "";
+  return publicKey && privateKey && subject ? { publicKey, privateKey, subject } : null;
+}
+
+function validPushSubscription(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const endpoint = typeof value.endpoint === "string" ? value.endpoint : "";
+  const keys = value.keys;
+  if (
+    endpoint.length > 4096 ||
+    !keys ||
+    typeof keys !== "object" ||
+    typeof keys.p256dh !== "string" ||
+    typeof keys.auth !== "string" ||
+    !/^[A-Za-z0-9_-]{20,256}$/.test(keys.p256dh) ||
+    !/^[A-Za-z0-9_-]{10,128}$/.test(keys.auth)
+  )
+    return false;
+  try {
+    const url = new URL(endpoint);
+    return (
+      url.protocol === "https:" &&
+      !url.username &&
+      !url.password &&
+      (url.hostname === "fcm.googleapis.com" ||
+        url.hostname === "web.push.apple.com" ||
+        url.hostname.endsWith(".push.services.mozilla.com") ||
+        url.hostname.endsWith(".notify.windows.com"))
+    );
+  } catch {
+    return false;
+  }
+}
+
+async function sendPushForNotification(executor, statement) {
+  const configuration = webPushConfiguration();
+  if (!configuration || !statement) return;
+  const [notificationId, recipientKey, , bookingId, , title, message] = statement.args;
+  try {
+    const result = await executor.execute({
+      sql: "SELECT endpoint_hash, subscription FROM push_subscriptions WHERE recipient_key = ?",
+      args: [recipientKey],
+    });
+    if (!result.rows.length) return;
+    webPush.setVapidDetails(
+      configuration.subject,
+      configuration.publicKey,
+      configuration.privateKey,
+    );
+    const payload = JSON.stringify({
+      title: String(title),
+      body: String(message).slice(0, 300),
+      tag: `booking-${String(bookingId)}`,
+      url: String(recipientKey).startsWith("admin:") ? "/agenda" : "/mis-turnos",
+      notificationId: String(notificationId),
+    });
+    await Promise.all(
+      result.rows.map(async (row) => {
+        try {
+          const subscription = JSON.parse(String(row.subscription));
+          if (!validPushSubscription(subscription)) throw new Error("Suscripción push inválida.");
+          await webPush.sendNotification(subscription, payload, { TTL: 120, urgency: "high" });
+        } catch (error) {
+          const statusCode = Number(error?.statusCode);
+          if (statusCode === 404 || statusCode === 410) {
+            await executor.execute({
+              sql: "DELETE FROM push_subscriptions WHERE endpoint_hash = ?",
+              args: [String(row.endpoint_hash)],
+            });
+          } else {
+            console.error("No se pudo enviar una notificación push", error);
+          }
+        }
+      }),
+    );
+  } catch (error) {
+    console.error("No se pudieron consultar las suscripciones push", error);
+  }
+}
+
+async function persistNotification(executor, statement) {
+  if (!statement) return;
+  await executor.execute(statement);
+  await sendPushForNotification(executor, statement);
 }
 
 function notificationForAdmin(booking, type, title, message) {
@@ -1575,7 +1672,7 @@ async function updateAdminBooking(db, user, body) {
     const change = describeAdminBookingChange(previous, booking);
     if (change) {
       const notice = notificationForClient(booking, change[0], change[1], change[2]);
-      if (notice) await transaction.execute(notice);
+      if (notice) await persistNotification(transaction, notice);
     }
     await transaction.commit();
     return { status: 200, body: { booking } };
@@ -1688,7 +1785,7 @@ async function saveProfessionalRecords(db, records, deleteIds, storeCode) {
             "Turno cancelado",
             "El profesional canceló tu turno porque no atenderá en esa fecha.",
           );
-          if (notice) await transaction.execute(notice);
+          if (notice) await persistNotification(transaction, notice);
         }
       }
 
@@ -2078,6 +2175,125 @@ export default async function handler(request, response) {
     return response.status(400).json({ error: "El cuerpo JSON no es válido." });
   }
   if (request.method === "POST") {
+    if (
+      [
+        "get-push-config",
+        "get-push-subscription",
+        "save-push-subscription",
+        "delete-push-subscription",
+      ].includes(body?.action)
+    ) {
+      if (!user)
+        return response
+          .status(401)
+          .json({ error: "Iniciá sesión para activar notificaciones." });
+      if (!user.emailVerified)
+        return response
+          .status(403)
+          .json({ error: "Verificá tu correo para activar notificaciones." });
+      try {
+        const account = await db.execute({
+          sql: "SELECT role, store_code FROM account_roles WHERE user_id = ?",
+          args: [user.id],
+        });
+        const role = String(account.rows[0]?.role ?? "");
+        if (role !== "admin" && role !== "client")
+          return response
+            .status(403)
+            .json({ error: "Configurá tu cuenta para activar notificaciones." });
+        const recipientKey =
+          role === "admin"
+            ? `admin:${normalizeStoreCode(account.rows[0]?.store_code)}`
+            : `client:${user.email}`;
+        if (role === "admin" && recipientKey === "admin:")
+          return response
+            .status(403)
+            .json({ error: "La cuenta administradora no tiene una sucursal asignada." });
+
+        if (body.action === "get-push-config") {
+          const configuration = webPushConfiguration();
+          return response.status(200).json({
+            enabled: Boolean(configuration),
+            publicKey: configuration?.publicKey ?? "",
+          });
+        }
+
+        if (body.action === "get-push-subscription") {
+          const endpoint = typeof body.endpoint === "string" ? body.endpoint : "";
+          let endpointHash = "";
+          try {
+            const url = new URL(endpoint);
+            if (
+              url.protocol !== "https:" ||
+              url.username ||
+              url.password ||
+              endpoint.length > 4096
+            )
+              throw new Error("Endpoint inválido.");
+            endpointHash = createHash("sha256").update(url.href, "utf8").digest("hex");
+          } catch {
+            return response
+              .status(400)
+              .json({ error: "El endpoint de notificaciones no es válido." });
+          }
+          const result = await db.execute({
+            sql: "SELECT 1 FROM push_subscriptions WHERE endpoint_hash = ? AND recipient_key = ? LIMIT 1",
+            args: [endpointHash, recipientKey],
+          });
+          return response.status(200).json({ subscribed: result.rows.length > 0 });
+        }
+
+        if (body.action === "save-push-subscription") {
+          if (!webPushConfiguration())
+            return response
+              .status(503)
+              .json({ error: "Las notificaciones push todavía no están configuradas." });
+          const subscription = body.subscription;
+          if (!validPushSubscription(subscription))
+            return response
+              .status(400)
+              .json({ error: "La suscripción del navegador no es válida." });
+          const normalizedSubscription = {
+            endpoint: subscription.endpoint,
+            expirationTime:
+              typeof subscription.expirationTime === "number" ? subscription.expirationTime : null,
+            keys: { p256dh: subscription.keys.p256dh, auth: subscription.keys.auth },
+          };
+          const endpointHash = createHash("sha256")
+            .update(normalizedSubscription.endpoint, "utf8")
+            .digest("hex");
+          await db.execute({
+            sql: `INSERT INTO push_subscriptions (endpoint_hash, recipient_key, subscription, updated_at)
+              VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+              ON CONFLICT(endpoint_hash) DO UPDATE SET recipient_key = excluded.recipient_key,
+              subscription = excluded.subscription, updated_at = CURRENT_TIMESTAMP`,
+            args: [endpointHash, recipientKey, JSON.stringify(normalizedSubscription)],
+          });
+          return response.status(200).json({ ok: true });
+        }
+
+        const endpoint = typeof body.endpoint === "string" ? body.endpoint : "";
+        let endpointHash = "";
+        try {
+          endpointHash = createHash("sha256").update(new URL(endpoint).href, "utf8").digest("hex");
+        } catch {
+          return response
+            .status(400)
+            .json({ error: "El endpoint de notificaciones no es válido." });
+        }
+        await db.execute({
+          sql: "DELETE FROM push_subscriptions WHERE endpoint_hash = ? AND recipient_key = ?",
+          args: [endpointHash, recipientKey],
+        });
+        return response.status(200).json({ ok: true });
+      } catch (error) {
+        console.error("No se pudo gestionar la suscripción push", error);
+        return response
+          .status(500)
+          .json({ error: "No se pudo gestionar la suscripción de notificaciones." });
+      }
+    }
+
     if (body?.action === "validate-store-coupon") {
       try {
         const storeCode = normalizeStoreCode(request.headers["x-store-code"]);
@@ -2598,7 +2814,7 @@ export default async function handler(request, response) {
             "Cliente confirmó el turno",
             `${booking.customer.fullName} confirmó su asistencia al turno.`,
           );
-          if (notice) await db.execute(notice);
+          if (notice) await persistNotification(db, notice);
           return response.status(200).json({ booking });
         }
 
@@ -2624,7 +2840,7 @@ export default async function handler(request, response) {
             "Pago informado por el cliente",
             `${booking.customer.fullName} avisó que realizó el pago.`,
           );
-          if (notice) await db.execute(notice);
+          if (notice) await persistNotification(db, notice);
           return response.status(200).json({ booking });
         }
 
@@ -2731,7 +2947,7 @@ export default async function handler(request, response) {
             "Devolución solicitada",
             `${booking.customer.fullName} solicita devolver $${refundAmount.toLocaleString("es-AR")} (${policy.refundPercent}% del pago). Método: ${paymentMethod}.${destinationMessage}`,
           );
-          if (notice) await db.execute(notice);
+          if (notice) await persistNotification(db, notice);
           return response.status(200).json({ booking, cancellationStatus: "requested" });
         }
 
@@ -2789,7 +3005,7 @@ export default async function handler(request, response) {
               "Método de pago cambiado",
               `${booking.customer.fullName} cambió el método de pago a ${paymentMethod}.`,
             );
-            if (notice) await db.execute(notice);
+            if (notice) await persistNotification(db, notice);
           }
           return response.status(200).json({ booking });
         }
@@ -2956,7 +3172,7 @@ export default async function handler(request, response) {
               "Cliente modificó el turno",
               `${booking.customer.fullName} modificó el turno: ${professional.name}, ${serviceNames}, ${date} a las ${time}.`,
             );
-            if (notice) await transaction.execute(notice);
+            if (notice) await persistNotification(transaction, notice);
             await transaction.commit();
             return response.status(200).json({ booking });
           } catch (error) {
@@ -2993,7 +3209,7 @@ export default async function handler(request, response) {
           "Turno cancelado por el cliente",
           `${booking.customer.fullName} canceló su turno. El horario quedó disponible.${booking.paymentStatus === "approved" ? " No se inició una solicitud de devolución." : ""}`,
         );
-        if (notice) await db.execute(notice);
+        if (notice) await persistNotification(db, notice);
         return response.status(200).json({ booking });
       } catch (error) {
         console.error("No se pudieron gestionar los turnos del cliente", error);
@@ -3050,7 +3266,7 @@ export default async function handler(request, response) {
           "Devolución realizada",
           `El profesional confirmó la devolución de $${Number(booking.refundAmount ?? booking.totalPrice).toLocaleString("es-AR")}.`,
         );
-        if (notice) await db.execute(notice);
+        if (notice) await persistNotification(db, notice);
         return response.status(200).json({ booking });
       } catch (error) {
         console.error("No se pudo confirmar la devolución del turno", error);
@@ -4285,6 +4501,7 @@ export default async function handler(request, response) {
             "Ese horario acaba de ser reservado o completó sus lugares disponibles. Elegí otro horario.",
         });
       }
+      if (notification) await sendPushForNotification(db, notification);
       return response.status(201).json({ ok: true, booking });
     } catch (error) {
       console.error("No se pudo guardar la reserva pública", error);
@@ -4527,7 +4744,7 @@ export default async function handler(request, response) {
               "Nuevo turno reservado",
               `${record.customer.fullName} reservó para el ${record.date} a las ${record.time}.`,
             );
-            if (notice) await transaction.execute(notice);
+            if (notice) await persistNotification(transaction, notice);
             await transaction.commit();
             createdBookings.push(record);
           } catch (error) {

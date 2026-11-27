@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { Bell, Check, ExternalLink, Trash2 } from "lucide-react";
+import { Bell, BellRing, Check, ExternalLink, Trash2, Volume2, VolumeX } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -15,8 +15,12 @@ import {
   BOOKING_HIGHLIGHT_KEY,
   deleteAllNotifications,
   deleteNotification,
+  deleteBrowserPushSubscription,
+  getBrowserPushConfig,
+  getBrowserPushSubscription,
   getNotifications,
   notificationBookingExists,
+  saveBrowserPushSubscription,
   setNotificationRead,
   type BookingNotification,
 } from "@/lib/cloud-sync";
@@ -42,6 +46,23 @@ function formatBuenosAiresTimestamp(value: string) {
   }).format(parseNotificationTimestamp(value));
 }
 
+function initialSoundPreference() {
+  if (typeof window === "undefined") return true;
+  try {
+    return window.localStorage.getItem("mi-turno-ya:notification-sound") !== "false";
+  } catch {
+    return true;
+  }
+}
+
+function decodeVapidPublicKey(value: string) {
+  const padded = value
+    .replace(/-/g, "+")
+    .replace(/_/g, "/")
+    .padEnd(Math.ceil(value.length / 4) * 4, "=");
+  return Uint8Array.from(window.atob(padded), (character) => character.charCodeAt(0));
+}
+
 export function NotificationsCenter({
   isAuthenticated,
   role,
@@ -50,6 +71,12 @@ export function NotificationsCenter({
   role: AccountRole | null;
 }) {
   const [notifications, setNotifications] = useState<BookingNotification[]>([]);
+  const [soundEnabled, setSoundEnabled] = useState(initialSoundPreference);
+  const [pushState, setPushState] = useState<
+    "loading" | "disabled" | "enabled" | "blocked" | "unavailable" | "unconfigured"
+  >("loading");
+  const [pushBusy, setPushBusy] = useState(false);
+  const [pushError, setPushError] = useState("");
   const [newCount, setNewCount] = useState(0);
   const [promptOpen, setPromptOpen] = useState(false);
   const [panelOpen, setPanelOpen] = useState(false);
@@ -67,9 +94,180 @@ export function NotificationsCenter({
   const markingIdsRef = useRef(new Set<string>());
   const pendingReadRef = useRef(new Map<string, string>());
   const refreshSequenceRef = useRef(0);
+  const seenNotificationIdsRef = useRef<Set<string> | null>(null);
+  const soundEnabledRef = useRef(soundEnabled);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const resumeNotificationAudioRef = useRef<() => Promise<AudioContext | null>>(() =>
+    Promise.resolve(null),
+  );
+  const playNotificationSoundRef = useRef<() => void>(() => undefined);
   const bellRef = useRef<HTMLButtonElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
+
+  soundEnabledRef.current = soundEnabled;
+
+  function resumeNotificationAudio() {
+    if (typeof window === "undefined" || !("AudioContext" in window)) return Promise.resolve(null);
+    if (!audioContextRef.current || audioContextRef.current.state === "closed") {
+      audioContextRef.current = new window.AudioContext();
+    }
+    const context = audioContextRef.current;
+    return context.state === "suspended"
+      ? context.resume().then(() => context)
+      : Promise.resolve(context);
+  }
+
+  function playNotificationSound() {
+    if (!soundEnabledRef.current) return;
+    void resumeNotificationAudio()
+      .then((context) => {
+        if (!context || !soundEnabledRef.current) return;
+        const now = context.currentTime;
+        const oscillator = context.createOscillator();
+        const gain = context.createGain();
+        oscillator.type = "sine";
+        oscillator.frequency.setValueAtTime(880, now);
+        oscillator.frequency.setValueAtTime(1174.66, now + 0.12);
+        gain.gain.setValueAtTime(0.001, now);
+        gain.gain.exponentialRampToValueAtTime(0.14, now + 0.025);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.42);
+        oscillator.connect(gain);
+        gain.connect(context.destination);
+        oscillator.start(now);
+        oscillator.stop(now + 0.43);
+      })
+      .catch(() => undefined);
+  }
+
+  resumeNotificationAudioRef.current = resumeNotificationAudio;
+  playNotificationSoundRef.current = playNotificationSound;
+
+  function toggleNotificationSound() {
+    const nextEnabled = !soundEnabledRef.current;
+    soundEnabledRef.current = nextEnabled;
+    setSoundEnabled(nextEnabled);
+    try {
+      window.localStorage.setItem("mi-turno-ya:notification-sound", String(nextEnabled));
+    } catch {
+      // The sound toggle still works for the current page if storage is unavailable.
+    }
+    if (nextEnabled) playNotificationSound();
+  }
+
+  useEffect(() => {
+    if (!isAuthenticated || (role !== "admin" && role !== "client")) {
+      setPushState("unavailable");
+      setPushError("");
+      return;
+    }
+
+    let active = true;
+    async function checkPushAvailability() {
+      try {
+        if (
+          !window.isSecureContext ||
+          !("serviceWorker" in navigator) ||
+          !("PushManager" in window) ||
+          !("Notification" in window)
+        ) {
+          if (active) setPushState("unavailable");
+          return;
+        }
+
+        const config = await getBrowserPushConfig();
+        if (!active) return;
+        if (!config.enabled) {
+          setPushState("unconfigured");
+          return;
+        }
+        if (Notification.permission === "denied") {
+          setPushState("blocked");
+          return;
+        }
+        const registration = await navigator.serviceWorker.register("/service-worker.js");
+        const subscription = await registration.pushManager.getSubscription();
+        if (!active) return;
+        if (!subscription) {
+          setPushState("disabled");
+          return;
+        }
+        const result = await getBrowserPushSubscription(subscription.endpoint);
+        if (active) setPushState(result.subscribed ? "enabled" : "disabled");
+      } catch (reason) {
+        if (!active) return;
+        setPushState("disabled");
+        setPushError(
+          reason instanceof Error
+            ? reason.message
+            : "No se pudo comprobar el estado de las notificaciones push.",
+        );
+      }
+    }
+    void checkPushAvailability();
+    return () => {
+      active = false;
+    };
+  }, [isAuthenticated, role]);
+
+  async function toggleBrowserPush() {
+    setPushBusy(true);
+    setPushError("");
+    try {
+      if (!window.isSecureContext || !("serviceWorker" in navigator) || !("PushManager" in window))
+        throw new Error(
+          "Las notificaciones push requieren un navegador compatible y una conexión segura (HTTPS).",
+        );
+
+      const registration = await navigator.serviceWorker.register("/service-worker.js");
+      if (pushState === "enabled") {
+        const subscription = await registration.pushManager.getSubscription();
+        if (subscription) {
+          await deleteBrowserPushSubscription(subscription.endpoint);
+          await subscription.unsubscribe();
+        }
+        setPushState("disabled");
+        toast.success("Se desactivaron las notificaciones en este dispositivo.");
+        return;
+      }
+
+      const config = await getBrowserPushConfig();
+      if (!config.enabled || !config.publicKey)
+        throw new Error("Las notificaciones push todavía no están configuradas en el servidor.");
+
+      if (!("Notification" in window)) throw new Error("Este navegador no permite notificaciones.");
+      const permission =
+        Notification.permission === "default"
+          ? await Notification.requestPermission()
+          : Notification.permission;
+      if (permission !== "granted") {
+        setPushState(permission === "denied" ? "blocked" : "disabled");
+        throw new Error(
+          permission === "denied"
+            ? "El navegador bloqueó las notificaciones. Habilitalas desde los ajustes del sitio."
+            : "No se concedió permiso para mostrar notificaciones.",
+        );
+      }
+
+      const readyRegistration = await navigator.serviceWorker.ready;
+      const subscription =
+        (await readyRegistration.pushManager.getSubscription()) ??
+        (await readyRegistration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: decodeVapidPublicKey(config.publicKey),
+        }));
+      await saveBrowserPushSubscription(subscription.toJSON());
+      setPushState("enabled");
+      toast.success("Vas a recibir avisos de turnos en este dispositivo.");
+    } catch (reason) {
+      const message =
+        reason instanceof Error ? reason.message : "No se pudieron actualizar las notificaciones.";
+      setPushError(message);
+      toast.error(message);
+    } finally {
+      setPushBusy(false);
+    }
+  }
 
   useEffect(() => {
     if (!isAuthenticated || (role !== "admin" && role !== "client")) {
@@ -77,16 +275,31 @@ export function NotificationsCenter({
       setMissingBookingIds(new Set());
       setPromptOpen(false);
       setPanelOpen(false);
+      seenNotificationIdsRef.current = null;
       return;
     }
     let active = true;
+    let refreshInFlight = false;
+    seenNotificationIdsRef.current = null;
     setLoading(true);
     setError("");
     const refresh = async (showWelcome: boolean) => {
+      if (refreshInFlight) return;
+      refreshInFlight = true;
       const requestSequence = ++refreshSequenceRef.current;
       try {
         const { notifications: loaded, newForPrompt } = await getNotifications();
         if (!active || requestSequence !== refreshSequenceRef.current) return;
+        const seenIds = seenNotificationIdsRef.current;
+        const arrivals = seenIds
+          ? loaded.filter(
+              (notification) =>
+                !seenIds.has(notification.id) &&
+                !deletedNotificationIdsRef.current.has(notification.id),
+            )
+          : [];
+        seenNotificationIdsRef.current = new Set(loaded.map((notification) => notification.id));
+        if (!showWelcome && arrivals.length > 0) playNotificationSoundRef.current();
         setNotifications((current) => {
           return loaded
             .filter((notification) => !deletedNotificationIdsRef.current.has(notification.id))
@@ -111,6 +324,7 @@ export function NotificationsCenter({
             reason instanceof Error ? reason.message : "No se pudieron cargar las notificaciones.",
           );
       } finally {
+        refreshInFlight = false;
         if (active && showWelcome && requestSequence === refreshSequenceRef.current)
           setLoading(false);
       }
@@ -119,14 +333,28 @@ export function NotificationsCenter({
     const refreshQuietly = () => {
       void refresh(false);
     };
-    const intervalId = window.setInterval(refreshQuietly, 30000);
+    const intervalId = window.setInterval(refreshQuietly, 5000);
     window.addEventListener("focus", refreshQuietly);
+    document.addEventListener("visibilitychange", refreshQuietly);
     return () => {
       active = false;
       window.clearInterval(intervalId);
       window.removeEventListener("focus", refreshQuietly);
+      document.removeEventListener("visibilitychange", refreshQuietly);
     };
   }, [isAuthenticated, role]);
+
+  useEffect(() => {
+    const unlockAudio = () => {
+      if (soundEnabledRef.current) void resumeNotificationAudioRef.current().catch(() => undefined);
+    };
+    window.addEventListener("pointerdown", unlockAudio, { once: true });
+    window.addEventListener("keydown", unlockAudio, { once: true });
+    return () => {
+      window.removeEventListener("pointerdown", unlockAudio);
+      window.removeEventListener("keydown", unlockAudio);
+    };
+  }, []);
 
   useEffect(() => {
     if (!panelOpen) return;
@@ -334,6 +562,20 @@ export function NotificationsCenter({
       <div className="mb-3 flex items-center justify-between gap-2 border-b border-border pb-2 pr-8 md:pr-0">
         <h2 className="font-semibold">Notificaciones</h2>
         <div className="flex items-center gap-3">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label={
+              soundEnabled ? "Silenciar notificaciones" : "Activar sonido de notificaciones"
+            }
+            aria-pressed={soundEnabled}
+            title={soundEnabled ? "Silenciar sonido" : "Activar sonido"}
+            className="h-7 w-7 text-muted-foreground hover:text-gold"
+            onClick={toggleNotificationSound}
+          >
+            {soundEnabled ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
+          </Button>
           {unreadCount > 0 && (
             <button
               type="button"
@@ -355,6 +597,48 @@ export function NotificationsCenter({
             </button>
           )}
         </div>
+      </div>
+      <div className="mb-3">
+        <Button
+          type="button"
+          variant="outline"
+          className="h-auto w-full justify-start gap-2 whitespace-normal border-gold/30 text-left"
+          disabled={
+            pushBusy ||
+            pushState === "loading" ||
+            pushState === "unavailable" ||
+            pushState === "unconfigured" ||
+            pushState === "blocked"
+          }
+          onClick={() => void toggleBrowserPush()}
+        >
+          <BellRing className="h-4 w-4 shrink-0 text-gold" />
+          <span>
+            {pushBusy
+              ? "Actualizando notificaciones…"
+              : pushState === "enabled"
+                ? "Desactivar avisos en este dispositivo"
+                : pushState === "loading"
+                  ? "Comprobando notificaciones…"
+                  : pushState === "blocked"
+                    ? "Notificaciones bloqueadas en el navegador"
+                    : pushState === "unconfigured"
+                      ? "Notificaciones push no configuradas"
+                      : pushState === "unavailable"
+                        ? "Notificaciones no disponibles en este navegador"
+                        : "Activar avisos en este dispositivo"}
+          </span>
+        </Button>
+        {pushError && (
+          <p role="alert" className="mt-1 text-xs text-red-300">
+            {pushError}
+          </p>
+        )}
+        {pushState === "blocked" && (
+          <p className="mt-1 text-xs text-muted-foreground">
+            Permitilas desde los ajustes de notificaciones del navegador.
+          </p>
+        )}
       </div>
       {error && (
         <p role="alert" className="mb-2 rounded-lg bg-red-500/10 p-2 text-xs text-red-300">

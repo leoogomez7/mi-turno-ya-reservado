@@ -106,6 +106,9 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
       { name: "google", content: "notranslate" },
+      { name: "apple-mobile-web-app-capable", content: "yes" },
+      { name: "apple-mobile-web-app-title", content: "Mi Turno Ya" },
+      { name: "apple-mobile-web-app-status-bar-style", content: "black-translucent" },
       { title: "Mi Turno Ya Reservado | Turnos online" },
       {
         name: "description",
@@ -126,6 +129,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { name: "twitter:card", content: "summary_large_image" },
     ],
     links: [
+      { rel: "manifest", href: "/manifest.webmanifest" },
       { rel: "icon", type: "image/png", sizes: "512x512", href: "/logo.png?v=12" },
       { rel: "shortcut icon", type: "image/png", sizes: "512x512", href: "/logo.png?v=12" },
       { rel: "apple-touch-icon", sizes: "512x512", href: "/logo.png?v=12" },

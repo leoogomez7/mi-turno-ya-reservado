@@ -581,6 +581,33 @@ export async function getNotifications() {
   );
 }
 
+export async function getBrowserPushConfig() {
+  return request<{ enabled: boolean; publicKey: string }>("POST", {
+    action: "get-push-config",
+  });
+}
+
+export async function getBrowserPushSubscription(endpoint: string) {
+  return request<{ subscribed: boolean }>("POST", {
+    action: "get-push-subscription",
+    endpoint,
+  });
+}
+
+export async function saveBrowserPushSubscription(subscription: PushSubscriptionJSON) {
+  return request<{ ok: boolean }>("POST", {
+    action: "save-push-subscription",
+    subscription,
+  });
+}
+
+export async function deleteBrowserPushSubscription(endpoint: string) {
+  return request<{ ok: boolean }>("POST", {
+    action: "delete-push-subscription",
+    endpoint,
+  });
+}
+
 export async function notificationBookingExists(notificationId: string) {
   return request<{ exists: boolean }>("POST", {
     action: "check-notification-booking",

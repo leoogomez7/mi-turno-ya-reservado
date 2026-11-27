@@ -31,6 +31,11 @@ No subir `.env.local` ni compartir valores privados. Para Vite, los campos públ
 | `GRATIS2026`                             | Código o códigos válidos para activar gratis el plan seleccionado; varios valores se separan con coma           | Solo servidor / Vercel                                                     |
 | `PUBLIC_APP_URL`                         | Dirección base canónica publicada (por ejemplo, `https://tudominio.com`), sin rutas; se usa para los retornos de pago y las URL del sitemap | Vercel; opcional local                                                     |
 | `GOOGLE_MAPS_API_KEY`                    | Clave privada de Google Places API (New) para importar la calificación y cantidad de reseñas de la sucursal    | Solo servidor / Vercel; opcional                                            |
+| `WEB_PUSH_PUBLIC_KEY`                    | Clave pública VAPID para crear suscripciones de notificaciones web                                             | Solo servidor / Vercel                                                      |
+| `WEB_PUSH_PRIVATE_KEY`                   | Clave privada VAPID; no compartir ni exponer al navegador                                                      | Solo servidor / Vercel                                                      |
+| `WEB_PUSH_SUBJECT`                       | Contacto VAPID en formato `mailto:...` o URL HTTPS                                                             | Solo servidor / Vercel                                                      |
+
+Para configurar avisos push, generá una sola pareja VAPID ejecutando `npx web-push generate-vapid-keys` y guardá sus claves en `WEB_PUSH_PUBLIC_KEY` y `WEB_PUSH_PRIVATE_KEY`. Configurá también `WEB_PUSH_SUBJECT` con un correo de contacto. Usá la misma pareja en todos los entornos y no cambies la privada después de que los usuarios se suscriban. Las notificaciones requieren HTTPS y permiso explícito en cada dispositivo. En iPhone/iPad, Safari requiere agregar la web app a la pantalla de inicio y usar iOS/iPadOS 16.4 o posterior.
 
 ## Indexación en Google
 
