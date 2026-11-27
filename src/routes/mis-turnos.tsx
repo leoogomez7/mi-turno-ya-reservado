@@ -42,6 +42,7 @@ import {
   canArchiveBooking,
   canDeleteBooking,
   getBookingArchiveLabel,
+  hasPaymentReportedOrApproved,
   type Booking,
 } from "@/lib/booking-store";
 import {
@@ -82,6 +83,15 @@ function WhatsAppIcon({ className }: { className?: string }) {
     >
       <path d="M12.04 2a9.86 9.86 0 0 0-8.48 14.89L2 22l5.28-1.38A9.93 9.93 0 1 0 12.04 2Zm0 18.02a8.1 8.1 0 0 1-4.13-1.13l-.3-.18-3.13.82.84-3.05-.2-.32a8.08 8.08 0 1 1 6.92 3.86Zm4.44-6.06c-.24-.12-1.43-.7-1.65-.78-.22-.08-.38-.12-.54.12-.16.24-.62.78-.76.94-.14.16-.28.18-.52.06-.24-.12-1.01-.37-1.93-1.18-.71-.63-1.19-1.41-1.33-1.65-.14-.24-.02-.37.1-.49.1-.1.24-.28.36-.42.12-.14.16-.24.24-.4.08-.16.04-.3-.02-.42-.06-.12-.54-1.3-.74-1.78-.2-.47-.4-.4-.54-.4h-.46c-.16 0-.42.06-.64.3-.22.24-.84.82-.84 2s.86 2.32.98 2.48c.12.16 1.69 2.58 4.1 3.62.57.25 1.02.4 1.37.51.58.18 1.11.16 1.53.1.47-.07 1.43-.58 1.63-1.14.2-.56.2-1.04.14-1.14-.06-.1-.22-.16-.46-.28Z" />
     </svg>
+  );
+}
+
+function canRequestPaymentRefund(booking: Booking) {
+  const cancelledByProfessional =
+    booking.status === "cancelled" && booking.cancelledBy === "professional";
+  return (
+    booking.paymentStatus === "approved" ||
+    (cancelledByProfessional && Boolean(booking.paymentReportedAt))
   );
 }
 
@@ -347,9 +357,9 @@ function MyBookingsPage() {
     }
     const appointmentAt = Date.parse(`${booking.date}T${booking.time}:00-03:00`);
     const windowMinutes = policy?.cancellationWindowMinutes ?? 30;
-    if (booking.paymentStatus !== "approved") {
+    if (!canRequestPaymentRefund(booking)) {
       toast.error(
-        "Solo podés solicitar la devolución cuando el profesional haya confirmado el pago.",
+        "Solo podés solicitar la devolución cuando el profesional haya confirmado el pago, salvo que haya cancelado un pago que el cliente informó.",
       );
       return;
     }
@@ -849,7 +859,7 @@ function MyBookingsPage() {
                 const cancelledByProfessional =
                   booking.status === "cancelled" && booking.cancelledBy === "professional";
                 const professionalCancellationNeedsRefund =
-                  cancelledByProfessional && booking.paymentStatus === "approved";
+                  cancelledByProfessional && hasPaymentReportedOrApproved(booking);
                 const refundNotAllowed =
                   !professionalCancellationNeedsRefund &&
                   (policy?.noRefunds ||
@@ -880,7 +890,7 @@ function MyBookingsPage() {
                 const canRequestPaymentCancellation =
                   (isActiveBooking ||
                     cancelledByProfessional) &&
-                  booking.paymentStatus === "approved" &&
+                  canRequestPaymentRefund(booking) &&
                   !refundNotAllowed &&
                   (booking.cancelledBy === "professional" || !refundRequestTooLate) &&
                   ["efectivo", "transferencia", "tarjeta o mercado pago"].includes(
@@ -1395,7 +1405,7 @@ function MyBookingsPage() {
                 const cancelledByProfessional =
                   booking.status === "cancelled" && booking.cancelledBy === "professional";
                 const professionalCancellationNeedsRefund =
-                  cancelledByProfessional && booking.paymentStatus === "approved";
+                  cancelledByProfessional && hasPaymentReportedOrApproved(booking);
                 const refundNotAllowed =
                   !professionalCancellationNeedsRefund &&
                   (policy?.noRefunds ||
@@ -1630,8 +1640,11 @@ function MyBookingsPage() {
                 ? "Datos para la transferencia"
                 : paymentBooking?.paymentCancellationStatus
                   ? "Solicitud enviada"
-                  : paymentBooking?.paymentStatus === "approved"
-                    ? "Cancelar turno y solicitar devolución"
+                  : paymentBooking && canRequestPaymentRefund(paymentBooking)
+                    ? paymentBooking.status === "cancelled" &&
+                      paymentBooking.cancelledBy === "professional"
+                      ? "Solicitar devolución"
+                      : "Cancelar turno y solicitar devolución"
                     : "Confirmar pago"}
             </DialogTitle>
             <DialogDescription>
@@ -1639,8 +1652,11 @@ function MyBookingsPage() {
                 ? `Realizá la transferencia bancaria.`
                 : paymentBooking?.paymentCancellationStatus
                   ? "La solicitud quedó registrada. El turno está cancelado y el horario disponible; el profesional confirmará la devolución."
-                  : paymentBooking?.paymentStatus === "approved"
-                    ? "Al enviar la solicitud, el turno se cancelará y el horario quedará disponible. El profesional recibirá el aviso para gestionar la devolución."
+                  : paymentBooking && canRequestPaymentRefund(paymentBooking)
+                    ? paymentBooking.status === "cancelled" &&
+                      paymentBooking.cancelledBy === "professional"
+                      ? "El profesional canceló el turno, por lo que corresponde devolver el 100% del pago. Enviá tus datos para que gestione la devolución."
+                      : "Al enviar la solicitud, el turno se cancelará y el horario quedará disponible. El profesional recibirá el aviso para gestionar la devolución."
                     : "Revisá el método de pago elegido y seleccioná cómo querés continuar."}
             </DialogDescription>
           </DialogHeader>
@@ -1705,7 +1721,7 @@ function MyBookingsPage() {
                 </p>
               )}
             </div>
-          ) : paymentBooking?.paymentStatus === "approved" ? (
+          ) : paymentBooking && canRequestPaymentRefund(paymentBooking) ? (
             <div className="space-y-3 rounded-xl border border-gold/30 bg-gold/5 p-4 text-sm">
               {(() => {
                 const policy = cancellationPolicyFor(paymentBooking);
@@ -1834,7 +1850,7 @@ function MyBookingsPage() {
                 >
                   Cerrar
                 </Button>
-              ) : paymentBooking.paymentStatus === "approved" ? (
+              ) : canRequestPaymentRefund(paymentBooking) ? (
                 <>
                   <Button
                     type="button"

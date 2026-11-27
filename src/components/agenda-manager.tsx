@@ -43,6 +43,7 @@ import {
   canDeleteBooking,
   getBarber,
   getBookingArchiveLabel,
+  hasPaymentReportedOrApproved,
   type Booking,
 } from "@/lib/booking-store";
 import { useAppAuth } from "@/lib/auth-context";
@@ -134,7 +135,6 @@ export function AgendaManager() {
   }, [bookings, currentTime]);
 
   useEffect(() => {
-    if (!selectedBooking?.id || editMode !== "turno") return;
     let active = true;
     let refreshInFlight = false;
     const refresh = () => {
@@ -159,7 +159,7 @@ export function AgendaManager() {
       window.removeEventListener("focus", refresh);
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };
-  }, [editMode, selectedBooking?.id]);
+  }, []);
 
   useEffect(() => {
     const intervalId = window.setInterval(() => setCurrentTime(Date.now()), 30_000);
@@ -473,7 +473,9 @@ export function AgendaManager() {
     try {
       await bookingStore.update(booking.id, { status: "cancelled", cancelledBy: "professional" });
       toast.success(
-        "Turno cancelado. Si la política permite una devolución, el cliente podrá solicitarla desde Mis turnos.",
+        hasPaymentReportedOrApproved(booking)
+          ? "Turno cancelado. Corresponde devolver el 100% del pago; el cliente podrá solicitarlo desde Mis turnos."
+          : "Turno cancelado. No había un pago informado o confirmado para devolver.",
       );
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "No se pudo cancelar el turno.");
@@ -690,7 +692,7 @@ export function AgendaManager() {
                 const professionalCancellationNeedsRefund =
                   booking.status === "cancelled" &&
                   booking.cancelledBy === "professional" &&
-                  booking.paymentStatus === "approved";
+                  hasPaymentReportedOrApproved(booking);
                 const refundNotAllowed =
                   !professionalCancellationNeedsRefund &&
                   (cancellationPolicy?.noRefunds ||

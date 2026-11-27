@@ -87,12 +87,13 @@ function hasPendingRefund(booking) {
 function requiresRefundResolution(booking) {
   if (
     booking.status !== "cancelled" ||
-    booking.paymentStatus !== "approved" ||
     booking.paymentCancellationStatus === "refunded"
   ) {
     return false;
   }
-  if (booking.cancelledBy === "professional") return true;
+  if (booking.cancelledBy === "professional")
+    return booking.paymentStatus === "approved" || Boolean(booking.paymentReportedAt);
+  if (booking.paymentStatus !== "approved") return false;
   if (booking.cancelledBy === "client")
     return booking.clientCancellationRefundEligible === true;
   const policy = booking.cancellationPolicyAtBooking;
@@ -111,6 +112,7 @@ function canDeleteBooking(booking) {
   if (
     Boolean(booking.paymentReportedAt) &&
     booking.paymentStatus !== "approved" &&
+    booking.paymentCancellationStatus !== "refunded" &&
     !cancelledWithoutRefundEligibility
   )
     return false;
@@ -3195,10 +3197,13 @@ export default async function handler(request, response) {
           ) {
             return response.status(409).json({ error: "Este turno ya no está activo." });
           }
-          if (booking.paymentStatus !== "approved") {
+          if (
+            booking.paymentStatus !== "approved" &&
+            !(cancelledByProfessional && booking.paymentReportedAt)
+          ) {
             return response.status(409).json({
               error:
-                "Solo podés solicitar una devolución después de que el profesional confirme el pago.",
+                "Solo podés solicitar una devolución después de que el profesional confirme el pago o si el cliente ya informó el pago y el profesional canceló el turno.",
             });
           }
           if (booking.paymentCancellationStatus) {

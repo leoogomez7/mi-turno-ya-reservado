@@ -83,15 +83,19 @@ export function hasPendingRefund(booking: Booking) {
   );
 }
 
+export function hasPaymentReportedOrApproved(booking: Booking) {
+  return booking.paymentStatus === "approved" || Boolean(booking.paymentReportedAt);
+}
+
 export function requiresRefundResolution(booking: Booking) {
   if (
     booking.status !== "cancelled" ||
-    booking.paymentStatus !== "approved" ||
     booking.paymentCancellationStatus === "refunded"
   ) {
     return false;
   }
-  if (booking.cancelledBy === "professional") return true;
+  if (booking.cancelledBy === "professional") return hasPaymentReportedOrApproved(booking);
+  if (booking.paymentStatus !== "approved") return false;
   if (booking.cancelledBy === "client")
     return booking.clientCancellationRefundEligible === true;
   const policy = booking.cancellationPolicyAtBooking;
@@ -110,6 +114,7 @@ export function canDeleteBooking(booking: Booking) {
   if (
     Boolean(booking.paymentReportedAt) &&
     booking.paymentStatus !== "approved" &&
+    booking.paymentCancellationStatus !== "refunded" &&
     !cancelledWithoutRefundEligibility
   )
     return false;
