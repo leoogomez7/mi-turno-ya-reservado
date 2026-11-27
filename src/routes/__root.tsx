@@ -50,7 +50,17 @@ async function bootstrapWithInitialRouteStore(
   storeCode: string,
 ) {
   if (account === "guest" && storeCode) {
-    return bootstrapCloudData(account, getToken, storeCode);
+    try {
+      return await bootstrapCloudData(account, getToken, storeCode);
+    } catch (error) {
+      if (
+        !(error instanceof Error) ||
+        error.message !== "Esta sucursal no está disponible para reservas en este momento."
+      ) {
+        throw error;
+      }
+      return bootstrapCloudData(account, getToken);
+    }
   }
   const branchData = storeCode
     ? loadReservationStore(storeCode, getToken).catch(() => undefined)

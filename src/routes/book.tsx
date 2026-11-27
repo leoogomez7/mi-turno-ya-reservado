@@ -546,10 +546,8 @@ export function BookPage() {
         ? stores.find((store) => store.code === routeStoreCode)
         : stores.find((store) => slugifyStoreName(store.name) === routeStoreSlug);
       if (!branchFromUrl) {
-        if (selectedStoreCode) setSelectedStoreCode("");
-        if (step !== 0) setStep(0);
-        void navigate({ to: "/reserva", replace: true });
-        setStepError("No encontramos una sucursal activa con ese enlace.");
+        setStorePickerOpen(false);
+        setStepError(null);
         return;
       }
       const branchIsActive = Boolean(
@@ -557,10 +555,8 @@ export function BookPage() {
         Date.parse(branchFromUrl.subscriptionExpiresAt) > Date.now(),
       );
       if (!branchIsActive) {
-        if (selectedStoreCode) setSelectedStoreCode("");
-        if (step !== 0) setStep(0);
-        void navigate({ to: "/reserva", replace: true });
-        setStepError("Esta sucursal no está aceptando reservas actualmente.");
+        setStorePickerOpen(false);
+        setStepError(null);
         return;
       }
       if (branchFromUrl.code !== selectedStoreCode) {
@@ -578,6 +574,8 @@ export function BookPage() {
       currentStore?.subscriptionExpiresAt &&
       Date.parse(currentStore.subscriptionExpiresAt) > Date.now(),
     );
+
+    if (currentStore && !hasActiveStore) setStorePickerOpen(false);
 
     if (hasActiveStore) {
       if (currentCode !== selectedStoreCode) setSelectedStoreCode(currentCode);
@@ -836,6 +834,25 @@ export function BookPage() {
   const activeStores = stores.filter((store) =>
     Boolean(store.subscriptionExpiresAt && Date.parse(store.subscriptionExpiresAt) > Date.now()),
   );
+  const routeStore = routeStoreSlug
+    ? routeStoreCode
+      ? stores.find((store) => store.code === routeStoreCode)
+      : stores.find((store) => slugifyStoreName(store.name) === routeStoreSlug)
+    : undefined;
+  const currentReservationStoreCode =
+    selectedStoreCode || getCurrentStoreCode() || accountStoreCode;
+  const reservationStore = routeStoreSlug
+    ? routeStore
+    : stores.find((store) => store.code === currentReservationStoreCode);
+  const inactiveStore =
+    reservationStore &&
+    !(
+      reservationStore.subscriptionExpiresAt &&
+      Date.parse(reservationStore.subscriptionExpiresAt) > Date.now()
+    )
+      ? reservationStore
+      : undefined;
+  const routeStoreUnavailable = Boolean(routeStoreSlug && !routeStore);
   const matchingStores = activeStores.filter((store) =>
     `${store.name} ${store.code}`.toLowerCase().includes(storeSearch.trim().toLowerCase()),
   );
@@ -1671,6 +1688,27 @@ Observaciones: ${customer.notes || "Ninguna"}`;
     setCouponStoreCode("");
     setServerActiveCoupons(null);
     goToStep(0);
+  }
+
+  if (cloudDataReady && (inactiveStore || routeStoreUnavailable)) {
+    return (
+      <div className="min-h-screen bg-gradient-dark">
+        <SiteHeader />
+        <main className="mx-auto w-full max-w-7xl px-4 py-10 sm:px-6">
+          <section className="mx-auto w-full max-w-2xl rounded-3xl border border-gold/30 bg-card p-6 text-center sm:p-8">
+            <h1 className="font-display text-2xl font-semibold">
+              La sucursal no está habilitada
+            </h1>
+            <p className="mt-3 text-muted-foreground">
+              Para volver a recibir reservas, el responsable debe renovar el plan de la sucursal.
+            </p>
+            <Button asChild className="mt-6 bg-gold text-primary-foreground hover:bg-gold-soft">
+              <Link to="/plan">Renovar plan</Link>
+            </Button>
+          </section>
+        </main>
+      </div>
+    );
   }
 
   return (
