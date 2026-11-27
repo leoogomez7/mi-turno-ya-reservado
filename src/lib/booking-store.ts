@@ -70,6 +70,7 @@ export interface Booking {
   };
   appointmentConfirmation?: "confirmed" | "pending";
   cancellationToken?: string;
+  slotHoldId?: string;
   createdAt: string;
   isTest?: boolean;
 }

@@ -58,7 +58,9 @@ import {
   getCurrentStoreCode,
   isCloudInitialized,
   isCloudReady,
+  claimBookingSlot,
   loadReservationStore,
+  releaseBookingSlot,
   selectStore,
   validateStoreCoupon,
   type StoreDiscountCoupon,
@@ -90,6 +92,7 @@ const STEP_BY_PATH: Record<string, ReservationStep> = {
   "/reserva/confirmacion": 4,
 };
 const STEP_SEGMENTS = ["", "profesional", "servicios", "horario", "confirmacion"] as const;
+const BOOKING_SLOT_HOLD_DURATION_MS = 5 * 60 * 1000;
 const STEP_BY_SEGMENT: Record<string, ReservationStep> = {
   "": 0,
   profesional: 1,
@@ -171,9 +174,59 @@ type ReservationResult = {
 const PENDING_PAYMENT_SESSION_KEY = "mi-turno-ya:pending-payment-booking";
 const SELECTED_STORE_SESSION_KEY = "mi-turno-ya:selected-booking-store";
 const RESERVATION_DRAFT_SESSION_KEY = "mi-turno-ya:reservation-draft";
+const RESERVATION_SLOT_HOLD_SESSION_KEY = "mi-turno-ya:reservation-slot-hold";
 
 function getReservationSlotTimestamp(date: Date, time: string) {
   return Date.parse(`${format(date, "yyyy-MM-dd")}T${time}:00-03:00`);
+}
+
+function reservationSlotKey(
+  storeCode: string,
+  barberId: string,
+  date: string,
+  duration: number,
+  time: string,
+) {
+  return [storeCode, barberId, date, duration, time].join(":");
+}
+
+function readReservationSlotHold() {
+  if (typeof window === "undefined") return null;
+  try {
+    const saved = window.sessionStorage.getItem(RESERVATION_SLOT_HOLD_SESSION_KEY);
+    if (!saved) return null;
+    const hold = JSON.parse(saved) as { holdId?: string; storeCode?: string };
+    if (
+      typeof hold.holdId === "string" &&
+      /^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i.test(hold.holdId) &&
+      typeof hold.storeCode === "string" &&
+      hold.storeCode
+    ) {
+      return { holdId: hold.holdId, storeCode: hold.storeCode };
+    }
+  } catch {
+    clearStoredReservationSlotHold();
+  }
+  return null;
+}
+
+function saveReservationSlotHold(holdId: string, storeCode: string) {
+  try {
+    window.sessionStorage.setItem(
+      RESERVATION_SLOT_HOLD_SESSION_KEY,
+      JSON.stringify({ holdId, storeCode }),
+    );
+  } catch (error) {
+    console.error("No se pudo guardar la reserva temporal en esta sesión", error);
+  }
+}
+
+function clearStoredReservationSlotHold() {
+  try {
+    window.sessionStorage.removeItem(RESERVATION_SLOT_HOLD_SESSION_KEY);
+  } catch (error) {
+    console.error("No se pudo limpiar la reserva temporal de esta sesión", error);
+  }
 }
 
 export function BookPage() {
@@ -230,6 +283,30 @@ export function BookPage() {
   const [serverActiveCoupons, setServerActiveCoupons] = useState<StoreDiscountCoupon[] | null>(null);
   const [validatingCoupon, setValidatingCoupon] = useState(false);
   const [currentTime, setCurrentTime] = useState(() => Date.now());
+  const [claimingSlot, setClaimingSlot] = useState(false);
+  const [blockedSlotKeys, setBlockedSlotKeys] = useState<Set<string>>(() => new Set());
+  const slotHoldRef = useRef<{
+    holdId: string;
+    storeCode: string;
+    barberId: string;
+    date: string;
+    time: string;
+    duration: number;
+  } | null>(null);
+  const slotClaimInFlight = useRef(false);
+
+  useEffect(
+    () => () => {
+      const hold = slotHoldRef.current ?? readReservationSlotHold();
+      if (hold) {
+        void releaseBookingSlot(hold.storeCode, hold.holdId).catch((error: unknown) => {
+          console.error("No se pudo liberar el horario reservado al salir de la reserva", error);
+        });
+      }
+      clearStoredReservationSlotHold();
+    },
+    [],
+  );
 
   useEffect(() => {
     if (step !== 3 && step !== 4) return;
@@ -700,20 +777,27 @@ export function BookPage() {
   }
 
   async function saveBooking(input: Omit<Booking, "id" | "createdAt">) {
+    const holdId = slotHoldRef.current?.holdId;
+    const bookingInput = holdId ? { ...input, slotHoldId: holdId } : input;
+    let booking: Booking;
     if (role === "admin" && selectedStoreCode !== accountStoreCode) {
-      return createPublicBooking(selectedStoreCode, input);
+      booking = await createPublicBooking(selectedStoreCode, bookingInput);
+    } else {
+      if (isAuthenticated && !user?.email) {
+        throw new Error("No pudimos identificar tu cuenta para guardar el turno.");
+      }
+      if (isAuthenticated ? !isCloudReady() : !isCloudInitialized()) {
+        await bootstrapCloudData(
+          isAuthenticated ? user!.email! : "guest",
+          isAuthenticated ? auth.getIdToken : async () => undefined,
+          selectedStoreCode,
+        );
+      }
+      booking = await bookingStore.add(bookingInput);
     }
-    if (isAuthenticated && !user?.email) {
-      throw new Error("No pudimos identificar tu cuenta para guardar el turno.");
-    }
-    if (isAuthenticated ? !isCloudReady() : !isCloudInitialized()) {
-      await bootstrapCloudData(
-        isAuthenticated ? user!.email! : "guest",
-        isAuthenticated ? auth.getIdToken : async () => undefined,
-        selectedStoreCode,
-      );
-    }
-    return bookingStore.add(input);
+    slotHoldRef.current = null;
+    window.sessionStorage.removeItem(RESERVATION_SLOT_HOLD_SESSION_KEY);
+    return booking;
   }
 
   const selectedProfessional = reservationProfessionals.find(
@@ -812,6 +896,97 @@ export function BookPage() {
   const reservationDataLoading =
     Boolean(selectedStoreCode) && (!storeSelectionHydrated || storeLoading);
 
+  async function releaseCurrentSlotHold() {
+    const hold = slotHoldRef.current ?? readReservationSlotHold();
+    if (!hold) return;
+    slotHoldRef.current = null;
+    clearStoredReservationSlotHold();
+    try {
+      await releaseBookingSlot(hold.storeCode, hold.holdId);
+    } catch (error) {
+      console.error("No se pudo liberar el horario reservado temporalmente", error);
+      toast.error(
+        "No pudimos liberar el horario anterior. Se liberará automáticamente en unos minutos.",
+      );
+    }
+  }
+
+  async function claimSelectedSlot(slot = time) {
+    if (!date || !selectedProfessional || !selectedStoreCode || !slot || duration <= 0) {
+      throw new Error("Volvé a elegir la fecha y el horario antes de confirmar.");
+    }
+    if (slotClaimInFlight.current) return;
+    slotClaimInFlight.current = true;
+    setClaimingSlot(true);
+    const previousHold = slotHoldRef.current ?? readReservationSlotHold();
+    const holdId = previousHold?.holdId ?? crypto.randomUUID();
+    const dateKey = format(date, "yyyy-MM-dd");
+    const slotKey = reservationSlotKey(selectedStoreCode, barberId, dateKey, duration, slot);
+    try {
+      await claimBookingSlot(
+        selectedStoreCode,
+        { barberId, serviceIds: selectedServiceIds, date: dateKey, time: slot, duration },
+        holdId,
+      );
+      slotHoldRef.current = {
+        holdId,
+        storeCode: selectedStoreCode,
+        barberId,
+        date: dateKey,
+        time: slot,
+        duration,
+      };
+      saveReservationSlotHold(holdId, selectedStoreCode);
+      setBlockedSlotKeys((current) => {
+        const next = new Set(current);
+        next.delete(slotKey);
+        return next;
+      });
+      setTime(slot);
+      setStepError(null);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "No se pudo reservar temporalmente el horario.";
+      const isConflict =
+        message.toLowerCase().includes("reservado") ||
+        message.toLowerCase().includes("disponible") ||
+        message.toLowerCase().includes("coincide") ||
+        message.toLowerCase().includes("pasó");
+      if (isConflict) {
+        setBlockedSlotKeys((current) => new Set(current).add(slotKey));
+        window.setTimeout(() => {
+          setBlockedSlotKeys((current) => {
+            if (!current.has(slotKey)) return current;
+            const next = new Set(current);
+            next.delete(slotKey);
+            return next;
+          });
+        }, BOOKING_SLOT_HOLD_DURATION_MS);
+      }
+      slotHoldRef.current = null;
+      clearStoredReservationSlotHold();
+      setTime("");
+      setStepError(message);
+      try {
+        await releaseBookingSlot(previousHold?.storeCode ?? selectedStoreCode, holdId);
+      } catch (releaseError) {
+        console.error("No se pudo limpiar una reserva temporal fallida", releaseError);
+      }
+      throw error;
+    } finally {
+      slotClaimInFlight.current = false;
+      setClaimingSlot(false);
+    }
+  }
+
+  async function handleSlotSelect(slot: string) {
+    try {
+      await claimSelectedSlot(slot);
+    } catch (error) {
+      await handleBookingSaveError(error, "No se pudo reservar el horario.");
+    }
+  }
+
   useEffect(() => {
     if (!date || !time || !selectedProfessional || duration <= 0) return;
     const availableSlots = getAvailableSlotCapacities(
@@ -853,7 +1028,15 @@ export function BookPage() {
 
   async function handleBookingSaveError(error: unknown, fallback: string) {
     const message = error instanceof Error ? error.message : fallback;
-    if (!message.toLowerCase().includes("acaba de ser reservado")) {
+    const normalizedMessage = message.toLowerCase();
+    const isAvailabilityConflict = [
+      "acaba de ser reservado",
+      "completó sus lugares",
+      "reservado temporalmente",
+      "no está disponible",
+      "horario ya pasó",
+    ].some((phrase) => normalizedMessage.includes(phrase));
+    if (!isAvailabilityConflict) {
       toast.error(message);
       return;
     }
@@ -869,6 +1052,7 @@ export function BookPage() {
     } catch {
       // The next availability refresh will reconcile the list if this immediate retry fails.
     }
+    await releaseCurrentSlotHold();
     setTime("");
     setStep(3);
     setStepError("Ese horario ya fue reservado. Actualizamos la disponibilidad; elegí otro.");
@@ -989,12 +1173,26 @@ Observaciones: ${customer.notes || "Ninguna"}`;
     if (step === 1) return !!barberId;
     if (step === 2)
       return selectedServiceIds.length > 0 && selectedServiceIds.length === serviceIds.length;
-    if (step === 3) return !!date && !!time && !selectedSlotIsPast;
+    if (step === 3) return !!date && !!time && !selectedSlotIsPast && !claimingSlot;
     return true;
-  }, [step, customer, barberId, serviceIds, selectedServiceIds, date, time, selectedSlotIsPast]);
+  }, [
+    step,
+    customer,
+    barberId,
+    serviceIds,
+    selectedServiceIds,
+    date,
+    time,
+    selectedSlotIsPast,
+    claimingSlot,
+  ]);
 
   async function confirm() {
     if (confirmingBooking) return;
+    if (slotClaimInFlight.current) {
+      toast.error("Esperá a que terminemos de reservar el horario.");
+      return;
+    }
     if (
       isAuthenticated &&
       role === "client" &&
@@ -1025,6 +1223,12 @@ Observaciones: ${customer.notes || "Ninguna"}`;
 
     setConfirmingBooking(true);
     try {
+      try {
+        await claimSelectedSlot();
+      } catch (error) {
+        await handleBookingSaveError(error, "No se pudo reservar el horario.");
+        return;
+      }
       if (customer.paymentMethod === "transferencia") {
         try {
           await saveBooking({
@@ -1560,10 +1764,18 @@ Observaciones: ${customer.notes || "Ninguna"}`;
             <StepDateTime
               professional={selectedProfessional}
               bookings={reservationBookings}
+              storeCode={selectedStoreCode}
               date={date}
-              setDate={setDate}
               time={time}
               setTime={setTime}
+              onSelectDate={(nextDate) => {
+                setDate(nextDate);
+                setTime("");
+                setStepError(null);
+              }}
+              onSelectTime={handleSlotSelect}
+              blockedSlots={blockedSlotKeys}
+              claimingSlot={claimingSlot}
               barberId={barberId}
               duration={duration}
               currentTime={currentTime}
@@ -2246,23 +2458,31 @@ function StepServices({
 
 function StepDateTime({
   date,
-  setDate,
+  onSelectDate,
   time,
   setTime,
+  onSelectTime,
   barberId,
   duration,
   professional,
   bookings,
+  storeCode,
+  blockedSlots,
+  claimingSlot,
   currentTime,
 }: {
   date: Date | null;
-  setDate: (d: Date) => void;
+  onSelectDate: (d: Date) => void;
   time: string;
   setTime: (t: string) => void;
+  onSelectTime: (t: string) => void;
   barberId: string;
   duration: number;
   professional?: Professional;
   bookings: Booking[];
+  storeCode: string;
+  blockedSlots: Set<string>;
+  claimingSlot: boolean;
   currentTime: number;
 }) {
   const today = startOfToday();
@@ -2341,7 +2561,13 @@ function StepDateTime({
   }
 
   function isSlotAvailable(slot: string): boolean {
-    return !isSlotPast(slot) && fitsSelectedDuration(slot) && remainingForSlot(slot) > 0;
+    return (
+      !claimingSlot &&
+      !blockedSlots.has(reservationSlotKey(storeCode, barberId, dateKey, duration, slot)) &&
+      !isSlotPast(slot) &&
+      fitsSelectedDuration(slot) &&
+      remainingForSlot(slot) > 0
+    );
   }
 
   useEffect(() => {
@@ -2368,11 +2594,8 @@ function StepDateTime({
             <button
               type="button"
               key={d.toISOString()}
-              disabled={disabled}
-              onClick={() => {
-                setDate(d);
-                setTime("");
-              }}
+              disabled={disabled || claimingSlot}
+              onClick={() => onSelectDate(d)}
               className={cn(
                 "flex w-16 shrink-0 flex-col items-center rounded-xl border px-2 py-3 transition",
                 selected
@@ -2422,7 +2645,7 @@ function StepDateTime({
                 type="button"
                 key={s}
                 disabled={!avail}
-                onClick={() => setTime(s)}
+                onClick={() => onSelectTime(s)}
                 className={cn(
                   "flex flex-col items-center rounded-lg border px-2 py-2 text-sm font-medium transition",
                   selected
@@ -2437,14 +2660,26 @@ function StepDateTime({
                     ? "Fuera de horario"
                     : !durationFits
                       ? "Se sobrepasa el turno"
-                      : avail
-                        ? `${remaining} disponible${remaining === 1 ? "" : "s"}`
-                        : "Completo"}
+                      : claimingSlot
+                        ? "Reservando..."
+                        : blockedSlots.has(
+                            reservationSlotKey(storeCode, barberId, dateKey, duration, s),
+                          )
+                          ? "Ocupado"
+                          : avail
+                            ? `${remaining} disponible${remaining === 1 ? "" : "s"}`
+                            : "Completo"}
                 </span>
               </button>
             );
           })}
         </div>
+      )}
+      {time && !claimingSlot && (
+        <p role="status" className="mt-3 text-xs text-muted-foreground">
+          Este horario queda reservado temporalmente por hasta 5 minutos mientras completás la
+          confirmación.
+        </p>
       )}
     </div>
   );

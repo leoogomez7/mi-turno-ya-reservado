@@ -161,32 +161,14 @@ async function writeRecords(
   deleteIds: string[] = [],
   requestedStoreCode?: string,
 ): Promise<Booking[]> {
-  const createdBookings: Booking[] = [];
+  if (records.length === 0 && deleteIds.length === 0) return [];
   const targetStoreCode = requestedStoreCode?.trim().toUpperCase() || undefined;
-  for (let offset = 0; offset < records.length; offset += 100) {
-    const result = await request<{ bookings?: Booking[] }>(
-      "PUT",
-      {
-        collection,
-        records: records.slice(offset, offset + 100),
-        ...(offset === 0 && deleteIds.length ? { deleteIds } : {}),
-      },
-      targetStoreCode,
-    );
-    if (collection === "bookings" && Array.isArray(result.bookings)) {
-      createdBookings.push(...result.bookings);
-    }
-  }
-  if (records.length === 0 && deleteIds.length) {
-    for (let offset = 0; offset < deleteIds.length; offset += 100) {
-      await request(
-        "PUT",
-        { collection, records: [], deleteIds: deleteIds.slice(offset, offset + 100) },
-        targetStoreCode,
-      );
-    }
-  }
-  return createdBookings;
+  const result = await request<{ bookings?: Booking[] }>(
+    "PUT",
+    { collection, records, ...(deleteIds.length ? { deleteIds } : {}) },
+    targetStoreCode,
+  );
+  return collection === "bookings" && Array.isArray(result.bookings) ? result.bookings : [];
 }
 
 export async function bootstrapCloudData(
@@ -938,6 +920,22 @@ export async function createPublicBooking(
   const result = (await response.json()) as { error?: string; booking?: Booking };
   if (!response.ok) throw new Error(result.error || "No se pudo guardar el turno.");
   return result.booking ?? createdBooking;
+}
+
+export async function claimBookingSlot(
+  storeCode: string,
+  booking: Pick<Booking, "barberId" | "serviceIds" | "date" | "time" | "duration">,
+  holdId: string,
+) {
+  return request<{ holdId: string; expiresAt: string }>(
+    "POST",
+    { action: "claim-booking-slot", ...booking, holdId },
+    storeCode,
+  );
+}
+
+export async function releaseBookingSlot(storeCode: string, holdId: string) {
+  return request<{ ok: boolean }>("POST", { action: "release-booking-slot", holdId }, storeCode);
 }
 
 export async function updateStoreCancellationPolicy(policy: StoreCancellationPolicy) {

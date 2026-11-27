@@ -5,6 +5,7 @@ import { sendNotification, setVapidDetails } from "web-push";
 
 const COLLECTIONS = ["bookings", "professionals"];
 const FREE_TRIAL_DAYS = 4;
+const BOOKING_SLOT_HOLD_MS = 5 * 60 * 1000;
 const SUBSCRIPTION_PLANS = new Map([
   ["15d", { days: 15, months: 0, amount: 5999, label: "15 días" }],
   ["1m", { days: 0, months: 1, amount: 9999, label: "1 mes" }],
@@ -935,6 +936,15 @@ async function database() {
       subscription TEXT NOT NULL,
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     )`,
+      `CREATE TABLE IF NOT EXISTS booking_slot_holds (
+      hold_id TEXT PRIMARY KEY,
+      store_code TEXT NOT NULL,
+      barber_id TEXT NOT NULL,
+      date TEXT NOT NULL,
+      time TEXT NOT NULL,
+      duration INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL
+    )`,
       `CREATE TABLE IF NOT EXISTS professionals (
       id TEXT PRIMARY KEY,
       value TEXT NOT NULL,
@@ -990,6 +1000,7 @@ async function database() {
       "CREATE INDEX IF NOT EXISTS bookings_store_code ON bookings(upper(json_extract(value, '$.storeCode')))",
       "CREATE INDEX IF NOT EXISTS notifications_recipient ON notifications(recipient_key, created_at)",
       "CREATE INDEX IF NOT EXISTS push_subscriptions_recipient ON push_subscriptions(recipient_key)",
+      "CREATE INDEX IF NOT EXISTS booking_slot_holds_lookup ON booking_slot_holds(store_code, barber_id, date, expires_at)",
       "CREATE INDEX IF NOT EXISTS subscription_orders_store ON subscription_orders(store_code, created_at)",
       "CREATE INDEX IF NOT EXISTS subscription_discount_code ON subscription_discount_redemptions(promo_code, store_code)",
       "CREATE INDEX IF NOT EXISTS bookings_schedule_lookup ON bookings(upper(json_extract(value, '$.storeCode')), json_extract(value, '$.barberId'), json_extract(value, '$.date'))",
@@ -1255,6 +1266,7 @@ async function verifyBookingPayment(db, bookingId, paymentId) {
   if (!payment) return { approved: false, booking: bookingSummary };
 
   const transaction = await db.transaction("write");
+  const notifications = [];
   try {
     const result = await transaction.execute({
       sql: "SELECT value FROM bookings WHERE id = ?",
@@ -1283,10 +1295,14 @@ async function verifyBookingPayment(db, bookingId, paymentId) {
     booking.paymentStatus = "approved";
     booking.mercadoPagoPaymentId = String(payment.id);
     delete booking.cancellationToken;
-    await transaction.execute({
+    const updated = await transaction.execute({
       sql: "UPDATE bookings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
       args: [JSON.stringify(booking), bookingId],
     });
+    if (!updated.rowsAffected)
+      throw Object.assign(new Error("El turno cambió mientras se verificaba el pago."), {
+        statusCode: 409,
+      });
     const paymentNotice = notificationForClient(
       booking,
       "payment_confirmed",
@@ -1299,9 +1315,16 @@ async function verifyBookingPayment(db, bookingId, paymentId) {
       "Pago recibido",
       `Mercado Pago aprobó el pago de ${booking.customer?.fullName || "un cliente"}.`,
     );
-    if (paymentNotice) await persistNotification(transaction, paymentNotice);
-    if (adminPaymentNotice) await persistNotification(transaction, adminPaymentNotice);
+    if (paymentNotice) {
+      await persistNotification(transaction, paymentNotice);
+      notifications.push(paymentNotice);
+    }
+    if (adminPaymentNotice) {
+      await persistNotification(transaction, adminPaymentNotice);
+      notifications.push(adminPaymentNotice);
+    }
     await transaction.commit();
+    for (const notice of notifications) await sendPushForNotification(db, notice);
     return { approved: true, booking: bookingSummary };
   } catch (error) {
     await transaction.rollback().catch(() => undefined);
@@ -1440,7 +1463,85 @@ async function sendPushForNotification(executor, statement) {
 async function persistNotification(executor, statement) {
   if (!statement) return;
   await executor.execute(statement);
-  await sendPushForNotification(executor, statement);
+}
+
+async function withWriteTransaction(db, operation) {
+  const transaction = await db.transaction("write");
+  try {
+    const result = await operation(transaction);
+    await transaction.commit();
+    return result;
+  } catch (error) {
+    await transaction.rollback().catch((rollbackError) => {
+      console.error("No se pudo revertir la transacción de escritura", rollbackError);
+    });
+    throw error;
+  }
+}
+
+async function assertStoreAdmin(transaction, userId, storeCode) {
+  const account = await transaction.execute({
+    sql: "SELECT role, store_code FROM account_roles WHERE user_id = ?",
+    args: [userId],
+  });
+  if (
+    account.rows[0]?.role !== "admin" ||
+    normalizeStoreCode(account.rows[0]?.store_code) !== storeCode
+  ) {
+    throw Object.assign(new Error("Solo el administrador de la sucursal puede modificarla."), {
+      statusCode: 403,
+    });
+  }
+}
+
+async function updateStoreSettings(db, storeCode, userId, update, requireOwner = false) {
+  return withWriteTransaction(db, async (transaction) => {
+    await assertStoreAdmin(transaction, userId, storeCode);
+    const store = await transaction.execute({
+      sql: requireOwner
+        ? "SELECT settings FROM stores WHERE code = ? AND owner_id = ?"
+        : "SELECT settings FROM stores WHERE code = ?",
+      args: requireOwner ? [storeCode, userId] : [storeCode],
+    });
+    if (!store.rows[0])
+      throw Object.assign(new Error("No encontramos la sucursal."), { statusCode: 404 });
+
+    const settings = update(parseStoreSettings(store.rows[0].settings));
+    const saved = await transaction.execute({
+      sql: requireOwner
+        ? "UPDATE stores SET settings = ? WHERE code = ? AND owner_id = ?"
+        : "UPDATE stores SET settings = ? WHERE code = ?",
+      args: requireOwner
+        ? [JSON.stringify(settings), storeCode, userId]
+        : [JSON.stringify(settings), storeCode],
+    });
+    if (!saved.rowsAffected)
+      throw Object.assign(
+        new Error("La sucursal cambió en otra operación. Actualizá e intentá de nuevo."),
+        { statusCode: 409 },
+      );
+    return settings;
+  });
+}
+
+async function persistBookingUpdate(db, bookingId, previousValue, booking, notice = null) {
+  const transaction = await db.transaction("write");
+  try {
+    const update = await transaction.execute({
+      sql: "UPDATE bookings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND value = ?",
+      args: [JSON.stringify(booking), bookingId, previousValue],
+    });
+    if (!update.rowsAffected)
+      throw Object.assign(new Error("El turno cambió en otra operación. Actualizá e intentá de nuevo."), {
+        statusCode: 409,
+      });
+    if (notice) await persistNotification(transaction, notice);
+    await transaction.commit();
+  } catch (error) {
+    await transaction.rollback().catch(() => undefined);
+    throw error;
+  }
+  if (notice) await sendPushForNotification(db, notice);
 }
 
 function notificationForAdmin(booking, type, title, message) {
@@ -1535,6 +1636,7 @@ async function updateAdminBooking(db, user, body) {
   }
 
   const transaction = await db.transaction("write");
+  let notificationToSend = null;
   try {
     const stored = await transaction.execute({
       sql: "SELECT value FROM bookings WHERE id = ?",
@@ -1661,16 +1763,24 @@ async function updateAdminBooking(db, user, body) {
       if (availabilityError) throw Object.assign(new Error(availabilityError), { statusCode: 409 });
     }
 
-    await transaction.execute({
+    const updated = await transaction.execute({
       sql: "UPDATE bookings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
       args: [JSON.stringify(booking), bookingId],
     });
+    if (!updated.rowsAffected)
+      throw Object.assign(new Error("El turno cambió en otra operación. Actualizá e intentá de nuevo."), {
+        statusCode: 409,
+      });
     const change = describeAdminBookingChange(previous, booking);
     if (change) {
       const notice = notificationForClient(booking, change[0], change[1], change[2]);
-      if (notice) await persistNotification(transaction, notice);
+      if (notice) {
+        await persistNotification(transaction, notice);
+        notificationToSend = notice;
+      }
     }
     await transaction.commit();
+    if (notificationToSend) await sendPushForNotification(db, notificationToSend);
     return { status: 200, body: { booking } };
   } catch (error) {
     await transaction.rollback().catch(() => undefined);
@@ -1698,6 +1808,7 @@ function scheduleForDate(professional, date) {
 
 async function saveProfessionalRecords(db, records, deleteIds, storeCode) {
   const transaction = await db.transaction("write");
+  const notifications = [];
   try {
     for (const record of records) {
       const id = recordId(record);
@@ -1771,17 +1882,24 @@ async function saveProfessionalRecords(db, records, deleteIds, storeCode) {
         for (const { row, booking } of affectedBookings) {
           booking.status = "cancelled";
           booking.cancelledBy = "professional";
-          await transaction.execute({
+          const updated = await transaction.execute({
             sql: "UPDATE bookings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
             args: [JSON.stringify(booking), String(row.id)],
           });
+          if (!updated.rowsAffected)
+            throw Object.assign(new Error("Un turno cambió mientras se actualizaba el horario."), {
+              statusCode: 409,
+            });
           const notice = notificationForClient(
             booking,
             "booking_cancelled",
             "Turno cancelado",
             "El profesional canceló tu turno porque no atenderá en esa fecha.",
           );
-          if (notice) await persistNotification(transaction, notice);
+          if (notice) {
+            await persistNotification(transaction, notice);
+            notifications.push(notice);
+          }
         }
       }
 
@@ -1810,6 +1928,7 @@ async function saveProfessionalRecords(db, records, deleteIds, storeCode) {
     }
 
     await transaction.commit();
+    for (const notice of notifications) await sendPushForNotification(db, notice);
     return { status: 200, body: { ok: true } };
   } catch (error) {
     await transaction.rollback().catch(() => undefined);
@@ -1859,27 +1978,49 @@ function bookingFitsProfessionalSchedule(professional, booking) {
   return Number.isFinite(duration) && duration > 0 && startMinute + duration <= generated.endMinute;
 }
 
-async function hasBookingConflict(db, booking, storeCode, capacity = 1, bookingId = "") {
+async function hasBookingConflict(
+  db,
+  booking,
+  storeCode,
+  capacity = 1,
+  bookingId = "",
+  holdId = "",
+) {
   const existingResult = await db.execute({
-    sql: `SELECT id, value FROM bookings
+    sql: `SELECT json_extract(value, '$.time') AS time,
+        json_extract(value, '$.duration') AS duration
+      FROM bookings
       WHERE upper(json_extract(value, '$.storeCode')) = ?
         AND json_extract(value, '$.barberId') = ?
         AND json_extract(value, '$.date') = ?
-        AND json_extract(value, '$.status') <> 'cancelled'`,
-    args: [storeCode, booking.barberId, booking.date],
+        AND json_extract(value, '$.status') <> 'cancelled'
+        AND id <> ?
+      UNION ALL
+      SELECT time, duration FROM booking_slot_holds
+      WHERE store_code = ? AND barber_id = ? AND date = ?
+        AND expires_at > ? AND hold_id <> ?`,
+    args: [
+      storeCode,
+      booking.barberId,
+      booking.date,
+      bookingId,
+      storeCode,
+      booking.barberId,
+      booking.date,
+      Date.now(),
+      holdId,
+    ],
   });
   const [hours, minutes] = String(booking.time).split(":").map(Number);
   const startMinute = hours * 60 + minutes;
-  const existingBookings = existingResult.rows
-    .map((row) => {
-      const existing = JSON.parse(String(row.value));
-      if (normalizeStoreCode(existing.storeCode) !== storeCode || existing.id === bookingId)
-        return null;
-      const [existingHours, existingMinutes] = String(existing.time).split(":").map(Number);
-      const existingStart = existingHours * 60 + existingMinutes;
-      return { start: existingStart, end: existingStart + Number(existing.duration) };
-    })
-    .filter(Boolean);
+  const existingBookings = existingResult.rows.map((row) => {
+    const [existingHours, existingMinutes] = String(row.time).split(":").map(Number);
+    const existingStart = existingHours * 60 + existingMinutes;
+    return {
+      start: existingStart,
+      end: existingStart + Number(row.duration),
+    };
+  });
   const bookingEnd = startMinute + Number(booking.duration);
   for (let minute = startMinute; minute < bookingEnd; minute += 15) {
     const overlapping = existingBookings.filter(
@@ -1890,7 +2031,7 @@ async function hasBookingConflict(db, booking, storeCode, capacity = 1, bookingI
   return false;
 }
 
-async function validateBookingAvailability(db, booking, storeCode, bookingId = "") {
+async function validateBookingAvailability(db, booking, storeCode, bookingId = "", holdId = "") {
   const storeResult = await db.execute({
     sql: "SELECT subscription_expires_at FROM stores WHERE code = ?",
     args: [storeCode],
@@ -1989,10 +2130,157 @@ async function validateBookingAvailability(db, booking, storeCode, bookingId = "
     storeCode,
     bookingCapacityForDate(professional, booking.date),
     bookingId,
+    holdId,
   );
   return hasConflict
     ? "Ese horario acaba de ser reservado o completó sus lugares disponibles. Elegí otro horario."
     : null;
+}
+
+function validBookingSlotHoldId(value) {
+  return typeof value === "string" && /^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i.test(value);
+}
+
+function slotTimeFitsDuration(slots, time, duration) {
+  const allowedSlots = new Set(slots);
+  const [hours, minutes] = time.split(":").map(Number);
+  const start = hours * 60 + minutes;
+  for (let minute = start; minute < start + duration; minute += 15) {
+    const slot = `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`;
+    if (!allowedSlots.has(slot)) return false;
+  }
+  return true;
+}
+
+async function claimBookingSlot(db, body, storeCode) {
+  const holdId = body.holdId;
+  if (!validBookingSlotHoldId(holdId))
+    throw Object.assign(new Error("La reserva temporal del horario no es válida."), {
+      statusCode: 400,
+    });
+  if (!storeCode)
+    throw Object.assign(new Error("Seleccioná una sucursal para reservar."), { statusCode: 400 });
+  const barberId = typeof body.barberId === "string" ? body.barberId.trim() : "";
+  const date = typeof body.date === "string" ? body.date : "";
+  const time = typeof body.time === "string" ? body.time : "";
+  const serviceIds = Array.isArray(body.serviceIds) ? body.serviceIds : [];
+  const duration = Number(body.duration);
+  if (
+    !barberId ||
+    barberId.length > 200 ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
+    !/^([01]\d|2[0-3]):[0-5]\d$/.test(time) ||
+    !serviceIds.length ||
+    serviceIds.length > 20 ||
+    serviceIds.some((id) => typeof id !== "string" || !id.trim() || id.length > 200) ||
+    new Set(serviceIds).size !== serviceIds.length ||
+    !Number.isInteger(duration) ||
+    duration <= 0 ||
+    duration > 1440
+  ) {
+    throw Object.assign(new Error("Los datos del horario elegido no son válidos."), {
+      statusCode: 400,
+    });
+  }
+  const parsedDate = new Date(`${date}T12:00:00Z`);
+  const todayInArgentina = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Argentina/Buenos_Aires",
+  }).format(new Date());
+  if (
+    Number.isNaN(parsedDate.getTime()) ||
+    parsedDate.toISOString().slice(0, 10) !== date ||
+    date < todayInArgentina
+  )
+    throw Object.assign(new Error("La fecha del horario no es válida."), { statusCode: 400 });
+  if (Date.parse(`${date}T${time}:00-03:00`) <= Date.now())
+    throw Object.assign(new Error("Ese horario ya pasó. Elegí otro horario."), { statusCode: 409 });
+
+  const transaction = await db.transaction("write");
+  try {
+    const now = Date.now();
+    await transaction.execute({
+      sql: "DELETE FROM booking_slot_holds WHERE expires_at <= ?",
+      args: [now],
+    });
+    const eligibility = await transaction.execute({
+      sql: `SELECT stores.subscription_expires_at, professionals.value AS professional_value
+        FROM stores LEFT JOIN professionals ON professionals.id = ?
+        WHERE stores.code = ?`,
+      args: [storedRecordId(storeCode, barberId), storeCode],
+    });
+    if (
+      !eligibility.rows[0] ||
+      !isSubscriptionActive(eligibility.rows[0].subscription_expires_at)
+    )
+      throw Object.assign(new Error("La sucursal no tiene un plan activo para aceptar reservas."), {
+        statusCode: 403,
+      });
+    if (!eligibility.rows[0].professional_value)
+      throw Object.assign(new Error("El profesional elegido ya no está disponible."), {
+        statusCode: 409,
+      });
+    const professional = JSON.parse(String(eligibility.rows[0].professional_value));
+    if (professional.isTest)
+      throw Object.assign(new Error("No se pueden reservar turnos de prueba."), {
+        statusCode: 400,
+      });
+    const services = serviceIds.map((serviceId) =>
+      professional.services?.find((service) => service.id === serviceId),
+    );
+    if (
+      services.some((service) => !service) ||
+      services.reduce((total, service) => total + Number(service.duration), 0) !== duration
+    ) {
+      throw Object.assign(new Error("Los servicios elegidos cambiaron. Volvé a seleccionarlos."), {
+        statusCode: 409,
+      });
+    }
+
+    const schedule = scheduleForDate(professional, date);
+    const slots = schedule
+      ? schedule.closed
+        ? []
+        : (scheduleSlots(schedule)?.slots ?? [])
+      : (professional.availableSlots ?? []);
+    if (!slotTimeFitsDuration(slots, time, duration))
+      throw Object.assign(
+        new Error("Ese horario ya no está disponible para los servicios elegidos."),
+        { statusCode: 409 },
+      );
+
+    const booking = {
+      id: holdId,
+      storeCode,
+      barberId,
+      serviceIds,
+      date,
+      time,
+      duration,
+    };
+    const capacity = bookingCapacityForDate(professional, date);
+    if (await hasBookingConflict(transaction, booking, storeCode, capacity, "", holdId)) {
+      throw Object.assign(
+        new Error("Ese horario acaba de ser reservado. Elegí otro horario disponible."),
+        { statusCode: 409 },
+      );
+    }
+
+    const expiresAt = now + BOOKING_SLOT_HOLD_MS;
+    await transaction.execute({
+      sql: `INSERT INTO booking_slot_holds
+        (hold_id, store_code, barber_id, date, time, duration, expires_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(hold_id) DO UPDATE SET store_code = excluded.store_code,
+        barber_id = excluded.barber_id, date = excluded.date, time = excluded.time,
+        duration = excluded.duration, expires_at = excluded.expires_at`,
+      args: [holdId, storeCode, barberId, date, time, duration, expiresAt],
+    });
+    await transaction.commit();
+    return { holdId, expiresAt: new Date(expiresAt).toISOString() };
+  } catch (error) {
+    await transaction.rollback().catch(() => undefined);
+    throw error;
+  }
 }
 
 export default async function handler(request, response) {
@@ -2171,6 +2459,39 @@ export default async function handler(request, response) {
     return response.status(400).json({ error: "El cuerpo JSON no es válido." });
   }
   if (request.method === "POST") {
+    if (body?.action === "claim-booking-slot" || body?.action === "release-booking-slot") {
+      const storeCode = normalizeStoreCode(request.headers["x-store-code"]);
+      if (!storeCode)
+        return response.status(400).json({ error: "Seleccioná una sucursal para reservar." });
+      if (body.action === "release-booking-slot") {
+        if (!validBookingSlotHoldId(body.holdId))
+          return response
+            .status(400)
+            .json({ error: "La reserva temporal del horario no es válida." });
+        try {
+          await db.execute({
+            sql: "DELETE FROM booking_slot_holds WHERE hold_id = ? AND store_code = ?",
+            args: [body.holdId, storeCode],
+          });
+          return response.status(200).json({ ok: true });
+        } catch (error) {
+          console.error("No se pudo liberar el horario reservado temporalmente", error);
+          return response.status(500).json({ error: "No se pudo liberar el horario." });
+        }
+      }
+      try {
+        const hold = await claimBookingSlot(db, body, storeCode);
+        return response.status(200).json(hold);
+      } catch (error) {
+        const statusCode = Number(error?.statusCode);
+        if (statusCode === 409 || statusCode === 400 || statusCode === 403)
+          return response.status(statusCode).json({ error: error.message });
+        console.error("No se pudo reservar temporalmente el horario", error);
+        return response
+          .status(500)
+          .json({ error: "No se pudo reservar temporalmente el horario." });
+      }
+    }
     if (
       [
         "get-push-config",
@@ -2390,7 +2711,8 @@ export default async function handler(request, response) {
         });
         if (!existing.rows[0])
           return response.status(404).json({ error: "No encontramos ese turno." });
-        const booking = JSON.parse(String(existing.rows[0].value));
+        const previousValue = String(existing.rows[0].value);
+        const booking = JSON.parse(previousValue);
         const storeCode = normalizeStoreCode(booking.storeCode);
         if (role === "client") {
           if (booking.customer?.email?.trim().toLowerCase() !== user.email)
@@ -2416,15 +2738,14 @@ export default async function handler(request, response) {
         if (!booking[archiveField]) {
           booking[archiveField] = new Date().toISOString();
           delete booking[role === "client" ? "clientRestoredAt" : "adminRestoredAt"];
-          await db.execute({
-            sql: "UPDATE bookings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-            args: [JSON.stringify(booking), bookingId],
-          });
+          await persistBookingUpdate(db, bookingId, previousValue, booking);
         }
         return response.status(200).json({ booking });
       } catch (error) {
         console.error("No se pudo archivar el turno", error);
-        return response.status(500).json({ error: "No se pudo archivar el turno." });
+        return response
+          .status(Number.isInteger(error?.statusCode) ? error.statusCode : 500)
+          .json({ error: error instanceof Error ? error.message : "No se pudo archivar el turno." });
       }
     }
     if (user && body?.action === "restore-archived-booking") {
@@ -2449,7 +2770,8 @@ export default async function handler(request, response) {
         });
         if (!existing.rows[0])
           return response.status(404).json({ error: "No encontramos ese turno." });
-        const booking = JSON.parse(String(existing.rows[0].value));
+        const previousValue = String(existing.rows[0].value);
+        const booking = JSON.parse(previousValue);
         if (role === "client") {
           if (booking.customer?.email?.trim().toLowerCase() !== user.email)
             return response
@@ -2472,14 +2794,13 @@ export default async function handler(request, response) {
           return response.status(409).json({ error: "Este turno no está eliminado de tu lista." });
         delete booking[archiveField];
         booking[restoredField] = new Date().toISOString();
-        await db.execute({
-          sql: "UPDATE bookings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-          args: [JSON.stringify(booking), bookingId],
-        });
+        await persistBookingUpdate(db, bookingId, previousValue, booking);
         return response.status(200).json({ booking });
       } catch (error) {
         console.error("No se pudo restaurar el turno", error);
-        return response.status(500).json({ error: "No se pudo restaurar el turno." });
+        return response
+          .status(Number.isInteger(error?.statusCode) ? error.statusCode : 500)
+          .json({ error: error instanceof Error ? error.message : "No se pudo restaurar el turno." });
       }
     }
     if (user && body?.action === "permanently-delete-archived-booking") {
@@ -2502,7 +2823,8 @@ export default async function handler(request, response) {
         });
         if (!existing.rows[0])
           return response.status(404).json({ error: "No encontramos ese turno." });
-        const booking = JSON.parse(String(existing.rows[0].value));
+        const previousValue = String(existing.rows[0].value);
+        const booking = JSON.parse(previousValue);
         if (role === "client") {
           if (booking.customer?.email?.trim().toLowerCase() !== user.email)
             return response
@@ -2542,14 +2864,18 @@ export default async function handler(request, response) {
         }
         booking[role === "client" ? "clientPermanentlyDeletedAt" : "adminPermanentlyDeletedAt"] =
           new Date().toISOString();
-        await db.execute({
-          sql: "UPDATE bookings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-          args: [JSON.stringify(booking), bookingId],
-        });
+        await persistBookingUpdate(db, bookingId, previousValue, booking);
         return response.status(200).json({ ok: true, booking });
       } catch (error) {
         console.error("No se pudo borrar definitivamente el turno", error);
-        return response.status(500).json({ error: "No se pudo borrar definitivamente el turno." });
+        return response
+          .status(Number.isInteger(error?.statusCode) ? error.statusCode : 500)
+          .json({
+            error:
+              error instanceof Error
+                ? error.message
+                : "No se pudo borrar definitivamente el turno.",
+          });
       }
     }
     if (
@@ -2789,7 +3115,8 @@ export default async function handler(request, response) {
         });
         if (!storedBooking.rows[0])
           return response.status(404).json({ error: "No encontramos ese turno." });
-        const booking = JSON.parse(String(storedBooking.rows[0].value));
+        const previousBookingValue = String(storedBooking.rows[0].value);
+        const booking = JSON.parse(previousBookingValue);
         if (booking.customer?.email?.trim().toLowerCase() !== user.email) {
           return response.status(403).json({ error: "Solo puedes gestionar tus propios turnos." });
         }
@@ -2800,17 +3127,13 @@ export default async function handler(request, response) {
               .status(400)
               .json({ error: "Este turno todavía no se puede confirmar." });
           booking.appointmentConfirmation = "confirmed";
-          await db.execute({
-            sql: "UPDATE bookings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-            args: [JSON.stringify(booking), bookingId],
-          });
           const notice = notificationForAdmin(
             booking,
             "booking_confirmed_by_client",
             "Cliente confirmó el turno",
             `${booking.customer.fullName} confirmó su asistencia al turno.`,
           );
-          if (notice) await persistNotification(db, notice);
+          await persistBookingUpdate(db, bookingId, previousBookingValue, booking, notice);
           return response.status(200).json({ booking });
         }
 
@@ -2826,17 +3149,13 @@ export default async function handler(request, response) {
               .json({ error: "Este turno no está pendiente de informar un pago." });
           }
           booking.paymentReportedAt = new Date().toISOString();
-          await db.execute({
-            sql: "UPDATE bookings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-            args: [JSON.stringify(booking), bookingId],
-          });
           const notice = notificationForAdmin(
             booking,
             "payment_reported",
             "Pago informado por el cliente",
             `${booking.customer.fullName} avisó que realizó el pago.`,
           );
-          if (notice) await persistNotification(db, notice);
+          await persistBookingUpdate(db, bookingId, previousBookingValue, booking, notice);
           return response.status(200).json({ booking });
         }
 
@@ -2930,10 +3249,6 @@ export default async function handler(request, response) {
           booking.paymentCancellationRequestedAt = booking.refundRequestedAt;
           booking.status = "cancelled";
           booking.cancelledBy = cancelledByProfessional ? "professional" : "client";
-          await db.execute({
-            sql: "UPDATE bookings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-            args: [JSON.stringify(booking), bookingId],
-          });
           const destinationMessage = refundDestination
             ? ` ${refundDestinationType.toUpperCase()}: ${refundDestination}.`
             : "";
@@ -2943,7 +3258,7 @@ export default async function handler(request, response) {
             "Devolución solicitada",
             `${booking.customer.fullName} solicita devolver $${refundAmount.toLocaleString("es-AR")} (${policy.refundPercent}% del pago). Método: ${paymentMethod}.${destinationMessage}`,
           );
-          if (notice) await persistNotification(db, notice);
+          await persistBookingUpdate(db, bookingId, previousBookingValue, booking, notice);
           return response.status(200).json({ booking, cancellationStatus: "requested" });
         }
 
@@ -2990,19 +3305,16 @@ export default async function handler(request, response) {
           booking.status = "confirmed";
           booking.paymentStatus = "pending";
           delete booking.paymentReportedAt;
-          await db.execute({
-            sql: "UPDATE bookings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-            args: [JSON.stringify(booking), bookingId],
-          });
-          if (previousMethod !== paymentMethod) {
-            const notice = notificationForAdmin(
-              booking,
-              "payment_method_changed",
-              "Método de pago cambiado",
-              `${booking.customer.fullName} cambió el método de pago a ${paymentMethod}.`,
-            );
-            if (notice) await persistNotification(db, notice);
-          }
+          const notice =
+            previousMethod !== paymentMethod
+              ? notificationForAdmin(
+                  booking,
+                  "payment_method_changed",
+                  "Método de pago cambiado",
+                  `${booking.customer.fullName} cambió el método de pago a ${paymentMethod}.`,
+                )
+              : null;
+          await persistBookingUpdate(db, bookingId, previousBookingValue, booking, notice);
           return response.status(200).json({ booking });
         }
 
@@ -3157,10 +3469,16 @@ export default async function handler(request, response) {
             booking.totalPrice = candidate.totalPrice;
             booking.date = date;
             booking.time = time;
-            await transaction.execute({
-              sql: "UPDATE bookings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-              args: [JSON.stringify(booking), bookingId],
+            const update = await transaction.execute({
+              sql: "UPDATE bookings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND value = ?",
+              args: [JSON.stringify(booking), bookingId, previousBookingValue],
             });
+            if (!update.rowsAffected) {
+              await transaction.rollback();
+              return response.status(409).json({
+                error: "El turno cambió en otra operación. Actualizá e intentá de nuevo.",
+              });
+            }
             const serviceNames = services.map((service) => service.name).join(", ");
             const notice = notificationForAdmin(
               booking,
@@ -3170,6 +3488,7 @@ export default async function handler(request, response) {
             );
             if (notice) await persistNotification(transaction, notice);
             await transaction.commit();
+            if (notice) await sendPushForNotification(db, notice);
             return response.status(200).json({ booking });
           } catch (error) {
             await transaction.rollback().catch(() => undefined);
@@ -3195,21 +3514,22 @@ export default async function handler(request, response) {
         booking.status = "cancelled";
         booking.cancelledBy = "client";
         delete booking.cancellationToken;
-        await db.execute({
-          sql: "UPDATE bookings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-          args: [JSON.stringify(booking), bookingId],
-        });
         const notice = notificationForAdmin(
           booking,
           "booking_cancelled_by_client",
           "Turno cancelado por el cliente",
           `${booking.customer.fullName} canceló su turno. El horario quedó disponible.${booking.paymentStatus === "approved" ? " No se inició una solicitud de devolución." : ""}`,
         );
-        if (notice) await persistNotification(db, notice);
+        await persistBookingUpdate(db, bookingId, previousBookingValue, booking, notice);
         return response.status(200).json({ booking });
       } catch (error) {
         console.error("No se pudieron gestionar los turnos del cliente", error);
-        return response.status(500).json({ error: "No se pudieron gestionar tus turnos." });
+        return response
+          .status(Number.isInteger(error?.statusCode) ? error.statusCode : 500)
+          .json({
+            error:
+              error instanceof Error ? error.message : "No se pudieron gestionar tus turnos.",
+          });
       }
     }
     if (user && body?.action === "admin-confirm-booking-refund") {
@@ -3235,7 +3555,8 @@ export default async function handler(request, response) {
         });
         if (!stored.rows[0])
           return response.status(404).json({ error: "No encontramos ese turno." });
-        const booking = JSON.parse(String(stored.rows[0].value));
+        const previousBookingValue = String(stored.rows[0].value);
+        const booking = JSON.parse(previousBookingValue);
         if (
           normalizeStoreCode(booking.storeCode) !== normalizeStoreCode(account.rows[0]?.store_code)
         ) {
@@ -3252,21 +3573,21 @@ export default async function handler(request, response) {
         }
         booking.paymentCancellationStatus = "refunded";
         booking.refundConfirmedAt = new Date().toISOString();
-        await db.execute({
-          sql: "UPDATE bookings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-          args: [JSON.stringify(booking), bookingId],
-        });
         const notice = notificationForClient(
           booking,
           "payment_refunded",
           "Devolución realizada",
           `El profesional confirmó la devolución de $${Number(booking.refundAmount ?? booking.totalPrice).toLocaleString("es-AR")}.`,
         );
-        if (notice) await persistNotification(db, notice);
+        await persistBookingUpdate(db, bookingId, previousBookingValue, booking, notice);
         return response.status(200).json({ booking });
       } catch (error) {
         console.error("No se pudo confirmar la devolución del turno", error);
-        return response.status(500).json({ error: "No se pudo confirmar la devolución." });
+        return response
+          .status(Number.isInteger(error?.statusCode) ? error.statusCode : 500)
+          .json({
+            error: error instanceof Error ? error.message : "No se pudo confirmar la devolución.",
+          });
       }
     }
     if (user && (body?.action === "get-client-profile" || body?.action === "save-client-profile")) {
@@ -3298,15 +3619,27 @@ export default async function handler(request, response) {
             .status(400)
             .json({ error: "El teléfono debe tener entre 6 y 40 caracteres." });
         }
-        await db.execute({
-          sql: `INSERT INTO client_profiles (user_id, phone, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)
-            ON CONFLICT(user_id) DO UPDATE SET phone = excluded.phone, updated_at = CURRENT_TIMESTAMP`,
-          args: [user.id, phone],
+        await withWriteTransaction(db, async (transaction) => {
+          const currentRole = await transaction.execute({
+            sql: "SELECT role FROM account_roles WHERE user_id = ?",
+            args: [user.id],
+          });
+          if (currentRole.rows[0]?.role !== "client")
+            throw Object.assign(new Error("Esta sección es solo para cuentas de cliente."), {
+              statusCode: 403,
+            });
+          await transaction.execute({
+            sql: `INSERT INTO client_profiles (user_id, phone, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)
+              ON CONFLICT(user_id) DO UPDATE SET phone = excluded.phone, updated_at = CURRENT_TIMESTAMP`,
+            args: [user.id, phone],
+          });
         });
         return response.status(200).json({ phone });
       } catch (error) {
         console.error("No se pudieron guardar los datos del cliente", error);
-        return response.status(500).json({ error: "No se pudieron guardar tus datos." });
+        return response.status(Number.isInteger(error?.statusCode) ? error.statusCode : 500).json({
+          error: error instanceof Error ? error.message : "No se pudieron guardar tus datos.",
+        });
       }
     }
     if (
@@ -3330,12 +3663,12 @@ export default async function handler(request, response) {
             .json({ error: "Solo un administrador con sucursal puede configurar los cobros." });
         }
 
-        const currentResult = await db.execute({
-          sql: "SELECT public_key, encrypted_access_token FROM store_payment_credentials WHERE store_code = ?",
-          args: [storeCode],
-        });
-        const current = currentResult.rows[0];
         if (body.action === "get-store-payment-credentials") {
+          const currentResult = await db.execute({
+            sql: "SELECT public_key, encrypted_access_token FROM store_payment_credentials WHERE store_code = ?",
+            args: [storeCode],
+          });
+          const current = currentResult.rows[0];
           return response.status(200).json({
             publicKeyConfigured: Boolean(current?.public_key),
             accessTokenConfigured: Boolean(current?.encrypted_access_token),
@@ -3349,29 +3682,41 @@ export default async function handler(request, response) {
             .status(400)
             .json({ error: "Las credenciales superan el tamaño permitido." });
         }
-        if (!publicKey && !current?.public_key)
-          return response.status(400).json({ error: "Ingresá la Public Key de Mercado Pago." });
-        if (!accessToken && !current?.encrypted_access_token) {
-          return response.status(400).json({ error: "Ingresá el Access Token de Mercado Pago." });
-        }
+        await withWriteTransaction(db, async (transaction) => {
+          await assertStoreAdmin(transaction, user.id, storeCode);
+          const currentResult = await transaction.execute({
+            sql: "SELECT public_key, encrypted_access_token FROM store_payment_credentials WHERE store_code = ?",
+            args: [storeCode],
+          });
+          const current = currentResult.rows[0];
+          if (!publicKey && !current?.public_key)
+            throw Object.assign(new Error("Ingresá la Public Key de Mercado Pago."), {
+              statusCode: 400,
+            });
+          if (!accessToken && !current?.encrypted_access_token) {
+            throw Object.assign(new Error("Ingresá el Access Token de Mercado Pago."), {
+              statusCode: 400,
+            });
+          }
 
-        const nextPublicKey = publicKey || String(current.public_key);
-        const encryptedAccessToken = accessToken
-          ? encryptPaymentAccessToken(accessToken)
-          : String(current.encrypted_access_token);
-        await db.execute({
-          sql: `INSERT INTO store_payment_credentials (store_code, public_key, encrypted_access_token, updated_at)
-            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-            ON CONFLICT(store_code) DO UPDATE SET public_key = excluded.public_key,
-              encrypted_access_token = excluded.encrypted_access_token, updated_at = CURRENT_TIMESTAMP`,
-          args: [storeCode, nextPublicKey, encryptedAccessToken],
+          const nextPublicKey = publicKey || String(current.public_key);
+          const encryptedAccessToken = accessToken
+            ? encryptPaymentAccessToken(accessToken)
+            : String(current.encrypted_access_token);
+          await transaction.execute({
+            sql: `INSERT INTO store_payment_credentials (store_code, public_key, encrypted_access_token, updated_at)
+              VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+              ON CONFLICT(store_code) DO UPDATE SET public_key = excluded.public_key,
+                encrypted_access_token = excluded.encrypted_access_token, updated_at = CURRENT_TIMESTAMP`,
+            args: [storeCode, nextPublicKey, encryptedAccessToken],
+          });
         });
         return response
           .status(200)
           .json({ publicKeyConfigured: true, accessTokenConfigured: true });
       } catch (error) {
         console.error("No se pudieron guardar las credenciales de Mercado Pago", error);
-        return response.status(500).json({
+        return response.status(Number.isInteger(error?.statusCode) ? error.statusCode : 500).json({
           error:
             error instanceof Error
               ? error.message
@@ -4062,23 +4407,19 @@ export default async function handler(request, response) {
           return response
             .status(400)
             .json({ error: "Revisá el porcentaje de devolución y el plazo de cancelación." });
-        const storeResult = await db.execute({
-          sql: "SELECT settings FROM stores WHERE code = ?",
-          args: [storeCode],
-        });
-        if (!storeResult.rows[0])
-          return response.status(404).json({ error: "No encontramos la sucursal." });
-        const settings = { ...parseStoreSettings(storeResult.rows[0].settings), ...policy };
-        await db.execute({
-          sql: "UPDATE stores SET settings = ? WHERE code = ?",
-          args: [JSON.stringify(settings), storeCode],
-        });
+        const settings = await updateStoreSettings(db, storeCode, user.id, (current) => ({
+          ...current,
+          ...policy,
+        }));
         return response.status(200).json({ code: storeCode, settings });
       } catch (error) {
         console.error("No se pudieron guardar las políticas de cancelación", error);
-        return response
-          .status(500)
-          .json({ error: "No se pudieron guardar las políticas de cancelación." });
+        return response.status(Number.isInteger(error?.statusCode) ? error.statusCode : 500).json({
+          error:
+            error instanceof Error
+              ? error.message
+              : "No se pudieron guardar las políticas de cancelación.",
+        });
       }
     }
     if (user && body?.action === "update-store-settings") {
@@ -4104,16 +4445,23 @@ export default async function handler(request, response) {
           return response
             .status(400)
             .json({ error: "Completá el CBU o el alias para recibir transferencias bancarias." });
-        await db.execute({
-          sql: "UPDATE stores SET settings = ? WHERE code = ?",
-          args: [JSON.stringify(settings), storeCode],
+        await withWriteTransaction(db, async (transaction) => {
+          await assertStoreAdmin(transaction, user.id, storeCode);
+          const updated = await transaction.execute({
+            sql: "UPDATE stores SET settings = ? WHERE code = ?",
+            args: [JSON.stringify(settings), storeCode],
+          });
+          if (!updated.rowsAffected)
+            throw Object.assign(new Error("No encontramos la sucursal."), { statusCode: 404 });
         });
         return response.status(200).json({ code: storeCode, settings });
       } catch (error) {
         console.error("No se pudieron guardar los datos de la sucursal", error);
-        return response
-          .status(500)
-          .json({ error: "No se pudieron guardar los datos de la sucursal." });
+        return response.status(Number.isInteger(error?.statusCode) ? error.statusCode : 500).json({
+          error: error instanceof Error
+            ? error.message
+            : "No se pudieron guardar los datos de la sucursal.",
+        });
       }
     }
     if (user && body?.action === "update-store-pricing") {
@@ -4127,35 +4475,31 @@ export default async function handler(request, response) {
           return response.status(403).json({
             error: "Solo un administrador puede configurar descuentos y ajustes de precios.",
           });
-        const storeResult = await db.execute({
-          sql: "SELECT settings FROM stores WHERE code = ?",
-          args: [storeCode],
-        });
-        if (!storeResult.rows[0])
-          return response.status(404).json({ error: "No encontramos la sucursal." });
-        const currentSettings = parseStoreSettings(storeResult.rows[0].settings);
         const pricing =
           body.pricing && typeof body.pricing === "object" && !Array.isArray(body.pricing)
             ? body.pricing
             : {};
-        const settings = validateStoreSettings({
-          ...currentSettings,
-          discountCoupons: pricing.discountCoupons,
-          paymentPriceAdjustments: pricing.paymentPriceAdjustments,
-        });
-        if (!settings)
-          return response.status(400).json({
-            error: "Revisá los códigos, descuentos y ajustes porcentuales configurados.",
+        const settings = await updateStoreSettings(db, storeCode, user.id, (current) => {
+          const next = validateStoreSettings({
+            ...current,
+            discountCoupons: pricing.discountCoupons,
+            paymentPriceAdjustments: pricing.paymentPriceAdjustments,
           });
-        await db.execute({
-          sql: "UPDATE stores SET settings = ? WHERE code = ?",
-          args: [JSON.stringify(settings), storeCode],
+          if (!next)
+            throw Object.assign(
+              new Error("Revisá los códigos, descuentos y ajustes porcentuales configurados."),
+              { statusCode: 400 },
+            );
+          return next;
         });
         return response.status(200).json({ code: storeCode, settings });
       } catch (error) {
         console.error("No se pudieron guardar descuentos y ajustes de precio", error);
-        return response.status(500).json({
-          error: "No se pudieron guardar los descuentos y ajustes de precio.",
+        return response.status(Number.isInteger(error?.statusCode) ? error.statusCode : 500).json({
+          error:
+            error instanceof Error
+              ? error.message
+              : "No se pudieron guardar los descuentos y ajustes de precio.",
         });
       }
     }
@@ -4177,7 +4521,6 @@ export default async function handler(request, response) {
         });
         if (!storeResult.rows[0])
           return response.status(404).json({ error: "No encontramos la sucursal." });
-        const currentSettings = parseStoreSettings(storeResult.rows[0].settings);
         const profile =
           body.profile && typeof body.profile === "object" && !Array.isArray(body.profile)
             ? body.profile
@@ -4186,35 +4529,67 @@ export default async function handler(request, response) {
           profile.contact && typeof profile.contact === "object" && !Array.isArray(profile.contact)
             ? profile.contact
             : {};
-        const settings = validateStoreSettings({
-          ...currentSettings,
-          street: contact.street ?? currentSettings.street,
-          height: contact.height ?? currentSettings.height,
-          city: contact.city ?? currentSettings.city,
-          province: contact.province ?? currentSettings.province,
-          postalCode: contact.postalCode ?? currentSettings.postalCode,
-          whatsapp: contact.whatsapp ?? currentSettings.whatsapp,
-          instagram: contact.instagram ?? currentSettings.instagram,
-          description: profile.description ?? currentSettings.description,
-          googleMapsUrl: profile.googleMapsUrl ?? currentSettings.googleMapsUrl,
-          googleReviewUrl: profile.googleReviewUrl ?? currentSettings.googleReviewUrl,
-          coverImage: profile.coverImage ?? currentSettings.coverImage,
+        const profileChanges = {
+          street: contact.street,
+          height: contact.height,
+          city: contact.city,
+          province: contact.province,
+          postalCode: contact.postalCode,
+          whatsapp: contact.whatsapp,
+          instagram: contact.instagram,
+          description: profile.description,
+          googleMapsUrl: profile.googleMapsUrl,
+          googleReviewUrl: profile.googleReviewUrl,
+          coverImage: profile.coverImage,
+        };
+        const settingsToRate = validateStoreSettings({
+          ...parseStoreSettings(storeResult.rows[0].settings),
+          ...Object.fromEntries(
+            Object.entries(profileChanges).filter(
+              ([, value]) => value !== undefined && value !== null,
+            ),
+          ),
         });
-        if (!settings)
+        if (!settingsToRate)
           return response.status(400).json({
             error: "Información guardada.",
           });
-        const rating = await getGoogleMapsRating(settings.googleMapsUrl);
-        settings.googleRating = rating.rating;
-        settings.googleReviewCount = rating.reviewCount;
-        await db.execute({
-          sql: "UPDATE stores SET settings = ? WHERE code = ?",
-          args: [JSON.stringify(settings), storeCode],
-        });
+        const rating = await getGoogleMapsRating(settingsToRate.googleMapsUrl);
+        const settings = await updateStoreSettings(
+          db,
+          storeCode,
+          user.id,
+          (current) => {
+            const updated = validateStoreSettings({
+              ...current,
+              ...Object.fromEntries(
+                Object.entries(profileChanges).filter(
+                  ([, value]) => value !== undefined && value !== null,
+                ),
+              ),
+            });
+            if (!updated)
+              throw Object.assign(new Error("Revisá los datos del perfil de la sucursal."), {
+                statusCode: 400,
+              });
+            if (updated.googleMapsUrl !== settingsToRate.googleMapsUrl)
+              throw Object.assign(
+                new Error("El perfil cambió en otra operación. Actualizá e intentá de nuevo."),
+                { statusCode: 409 },
+              );
+            updated.googleRating = rating.rating;
+            updated.googleReviewCount = rating.reviewCount;
+            return updated;
+          },
+          true,
+        );
         return response.status(200).json({ code: storeCode, settings });
       } catch (error) {
         console.error("No se pudo guardar el perfil de la sucursal", error);
-        return response.status(500).json({ error: "No se pudo guardar el perfil de la sucursal." });
+        return response.status(Number.isInteger(error?.statusCode) ? error.statusCode : 500).json({
+          error:
+            error instanceof Error ? error.message : "No se pudo guardar el perfil de la sucursal.",
+        });
       }
     }
     if (user && body?.action === "update-store-logo") {
@@ -4238,20 +4613,32 @@ export default async function handler(request, response) {
           return response
             .status(400)
             .json({ error: "El logo debe ser una imagen válida de hasta 2 MB." });
-        const storeResult = await db.execute({
-          sql: "SELECT code FROM stores WHERE code = ? AND owner_id = ?",
-          args: [storeCode, user.id],
-        });
-        if (!storeResult.rows[0])
-          return response.status(404).json({ error: "No encontramos la sucursal." });
-        await db.execute({
-          sql: "UPDATE stores SET logo = ? WHERE code = ?",
-          args: [logo, storeCode],
+        await withWriteTransaction(db, async (transaction) => {
+          await assertStoreAdmin(transaction, user.id, storeCode);
+          const storeResult = await transaction.execute({
+            sql: "SELECT code FROM stores WHERE code = ? AND owner_id = ?",
+            args: [storeCode, user.id],
+          });
+          if (!storeResult.rows[0])
+            throw Object.assign(new Error("No encontramos la sucursal."), { statusCode: 404 });
+          const updated = await transaction.execute({
+            sql: "UPDATE stores SET logo = ? WHERE code = ? AND owner_id = ?",
+            args: [logo, storeCode, user.id],
+          });
+          if (!updated.rowsAffected)
+            throw Object.assign(new Error("La sucursal cambió en otra operación."), {
+              statusCode: 409,
+            });
         });
         return response.status(200).json({ code: storeCode, logo });
       } catch (error) {
         console.error("No se pudo guardar el logo de la sucursal", error);
-        return response.status(500).json({ error: "No se pudo guardar el logo de la sucursal." });
+        return response.status(Number.isInteger(error?.statusCode) ? error.statusCode : 500).json({
+          error:
+            error instanceof Error
+              ? error.message
+              : "No se pudo guardar el logo de la sucursal.",
+        });
       }
     }
     if (user && body?.action === "update-store-contact") {
@@ -4266,39 +4653,42 @@ export default async function handler(request, response) {
           return response.status(403).json({
             error: "Solo el administrador de una sucursal puede modificar sus datos de contacto.",
           });
-        const storeResult = await db.execute({
-          sql: "SELECT settings FROM stores WHERE code = ?",
-          args: [storeCode],
-        });
-        if (!storeResult.rows[0])
-          return response.status(404).json({ error: "No encontramos la sucursal." });
-        const currentSettings = parseStoreSettings(storeResult.rows[0].settings);
         const contact =
           body.contact && typeof body.contact === "object" && !Array.isArray(body.contact)
             ? body.contact
             : {};
-        const settings = validateStoreSettings({
-          ...currentSettings,
-          street: contact.street ?? currentSettings.street,
-          height: contact.height ?? currentSettings.height,
-          city: contact.city ?? currentSettings.city,
-          province: contact.province ?? currentSettings.province,
-          postalCode: contact.postalCode ?? currentSettings.postalCode,
-          whatsapp: contact.whatsapp ?? currentSettings.whatsapp,
-          instagram: contact.instagram ?? currentSettings.instagram,
-        });
-        if (!settings)
-          return response.status(400).json({ error: "Revisá los datos de contacto ingresados." });
-        await db.execute({
-          sql: "UPDATE stores SET settings = ? WHERE code = ?",
-          args: [JSON.stringify(settings), storeCode],
+        const contactChanges = {
+          street: contact.street,
+          height: contact.height,
+          city: contact.city,
+          province: contact.province,
+          postalCode: contact.postalCode,
+          whatsapp: contact.whatsapp,
+          instagram: contact.instagram,
+        };
+        const settings = await updateStoreSettings(db, storeCode, user.id, (current) => {
+          const next = validateStoreSettings({
+            ...current,
+            ...Object.fromEntries(
+              Object.entries(contactChanges).filter(
+                ([, value]) => value !== undefined && value !== null,
+              ),
+            ),
+          });
+          if (!next)
+            throw Object.assign(new Error("Revisá los datos de contacto ingresados."), {
+              statusCode: 400,
+            });
+          return next;
         });
         return response.status(200).json({ code: storeCode, settings });
       } catch (error) {
         console.error("No se pudieron guardar los datos de contacto", error);
-        return response
-          .status(500)
-          .json({ error: "No se pudieron guardar los datos de contacto." });
+        return response.status(Number.isInteger(error?.statusCode) ? error.statusCode : 500).json({
+          error: error instanceof Error
+            ? error.message
+            : "No se pudieron guardar los datos de contacto.",
+        });
       }
     }
     if (user || body?.action !== "guest-booking") {
@@ -4307,6 +4697,10 @@ export default async function handler(request, response) {
     const booking = body.booking;
     const customer = booking?.customer;
     const id = recordId(booking);
+    const slotHoldId = booking?.slotHoldId ?? "";
+    if (slotHoldId && !validBookingSlotHoldId(slotHoldId))
+      return response.status(400).json({ error: "La reserva temporal del horario no es válida." });
+    if (booking && typeof booking === "object") delete booking.slotHoldId;
     const validEmail =
       typeof customer?.email === "string" && /^.+@.+\..+$/.test(customer.email.trim());
     const parsedDate =
@@ -4383,6 +4777,25 @@ export default async function handler(request, response) {
       const professional = JSON.parse(String(professionalResult.rows[0].value));
       if (professional.isTest)
         return response.status(400).json({ error: "No se pueden reservar turnos de prueba." });
+      if (slotHoldId) {
+        const holdResult = await db.execute({
+          sql: `SELECT store_code, barber_id, date, time, duration FROM booking_slot_holds
+            WHERE hold_id = ? AND expires_at > ?`,
+          args: [slotHoldId, Date.now()],
+        });
+        const hold = holdResult.rows[0];
+        if (
+          hold &&
+          (String(hold.store_code) !== storeCode ||
+            String(hold.barber_id) !== booking.barberId ||
+            String(hold.date) !== booking.date ||
+            String(hold.time) !== booking.time ||
+            Number(hold.duration) !== booking.duration)
+        )
+          return response
+            .status(409)
+            .json({ error: "El horario reservado temporalmente ya no coincide. Elegí otro." });
+      }
       const serviceIds = [...new Set(booking.serviceIds)];
       if (serviceIds.length !== booking.serviceIds.length)
         return response.status(400).json({ error: "La selección de servicios no es válida." });
@@ -4451,21 +4864,46 @@ export default async function handler(request, response) {
           WHERE NOT EXISTS (
             SELECT 1 FROM candidate_slots AS slot
             WHERE (
-              SELECT COUNT(*) FROM bookings AS existing
-              WHERE upper(json_extract(existing.value, '$.storeCode')) = ?
-                AND json_extract(existing.value, '$.barberId') = ?
-                AND json_extract(existing.value, '$.date') = ?
-                AND json_extract(existing.value, '$.status') <> 'cancelled'
-                AND slot.minute < (
-                  CAST(substr(json_extract(existing.value, '$.time'), 1, 2) AS INTEGER) * 60 +
-                  CAST(substr(json_extract(existing.value, '$.time'), 4, 2) AS INTEGER) +
-                  CAST(json_extract(existing.value, '$.duration') AS INTEGER)
-                )
-                AND (
-                  CAST(substr(json_extract(existing.value, '$.time'), 1, 2) AS INTEGER) * 60 +
-                  CAST(substr(json_extract(existing.value, '$.time'), 4, 2) AS INTEGER)
-                ) < slot.minute + 15
+              (
+                SELECT COUNT(*) FROM bookings AS existing
+                WHERE upper(json_extract(existing.value, '$.storeCode')) = ?
+                  AND json_extract(existing.value, '$.barberId') = ?
+                  AND json_extract(existing.value, '$.date') = ?
+                  AND json_extract(existing.value, '$.status') <> 'cancelled'
+                  AND slot.minute < (
+                    CAST(substr(json_extract(existing.value, '$.time'), 1, 2) AS INTEGER) * 60 +
+                    CAST(substr(json_extract(existing.value, '$.time'), 4, 2) AS INTEGER) +
+                    CAST(json_extract(existing.value, '$.duration') AS INTEGER)
+                  )
+                  AND (
+                    CAST(substr(json_extract(existing.value, '$.time'), 1, 2) AS INTEGER) * 60 +
+                    CAST(substr(json_extract(existing.value, '$.time'), 4, 2) AS INTEGER)
+                  ) < slot.minute + 15
+              ) + (
+                SELECT COUNT(*) FROM booking_slot_holds AS active_hold
+                WHERE active_hold.store_code = ?
+                  AND active_hold.barber_id = ?
+                  AND active_hold.date = ?
+                  AND active_hold.hold_id <> ?
+                  AND active_hold.expires_at > ?
+                  AND slot.minute < (
+                    CAST(substr(active_hold.time, 1, 2) AS INTEGER) * 60 +
+                    CAST(substr(active_hold.time, 4, 2) AS INTEGER) + active_hold.duration
+                  )
+                  AND (
+                    CAST(substr(active_hold.time, 1, 2) AS INTEGER) * 60 +
+                    CAST(substr(active_hold.time, 4, 2) AS INTEGER)
+                  ) < slot.minute + 15
+              )
             ) >= ?
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM booking_slot_holds AS own_hold
+            WHERE own_hold.hold_id = ? AND own_hold.expires_at > ?
+            AND (
+              own_hold.store_code <> ? OR own_hold.barber_id <> ? OR
+              own_hold.date <> ? OR own_hold.time <> ? OR own_hold.duration <> ?
+            )
           )`,
           args: [
             startMinute,
@@ -4475,8 +4913,26 @@ export default async function handler(request, response) {
             storeCode,
             booking.barberId,
             booking.date,
+            storeCode,
+            booking.barberId,
+            booking.date,
+            slotHoldId,
+            Date.now(),
             bookingCapacityForDate(professional, booking.date),
+            slotHoldId,
+            Date.now(),
+            storeCode,
+            booking.barberId,
+            booking.date,
+            booking.time,
+            booking.duration,
           ],
+        },
+        {
+          sql: `DELETE FROM booking_slot_holds
+            WHERE hold_id = ? AND store_code = ?
+              AND EXISTS (SELECT 1 FROM bookings WHERE id = ?)`,
+          args: [slotHoldId, storeCode, id],
         },
         ...(notification
           ? [
@@ -4510,14 +4966,18 @@ export default async function handler(request, response) {
   }
 
   const records = body.records;
-  const deleteIds = Array.isArray(body.deleteIds)
-    ? body.deleteIds
-        .filter((id) => typeof id === "string" && id.length > 0 && id.length <= 200)
-        .slice(0, 100)
-    : [];
-  if (!Array.isArray(records) || records.length > 100 || JSON.stringify(body).length > 4_000_000) {
+  if (!Array.isArray(records) || records.length > 2000 || JSON.stringify(body).length > 4_000_000) {
     return response.status(413).json({ error: "La sincronización supera el tamaño permitido." });
   }
+  if (
+    body.deleteIds !== undefined &&
+    (!Array.isArray(body.deleteIds) ||
+      body.deleteIds.length > 2000 ||
+      body.deleteIds.some((id) => typeof id !== "string" || !id || id.length > 200))
+  ) {
+    return response.status(400).json({ error: "La lista de registros para eliminar no es válida." });
+  }
+  const deleteIds = [...new Set(body.deleteIds ?? [])];
   let role = "client";
   let storeCode = normalizeStoreCode(request.headers["x-store-code"]);
   try {
@@ -4568,6 +5028,12 @@ export default async function handler(request, response) {
       const id = recordId(record);
       if (!id)
         return response.status(400).json({ error: "Hay un registro con identificador inválido." });
+      const slotHoldId = body.collection === "bookings" ? (record.slotHoldId ?? "") : "";
+      if (slotHoldId && !validBookingSlotHoldId(slotHoldId))
+        return response
+          .status(400)
+          .json({ error: "La reserva temporal del horario no es válida." });
+      if (body.collection === "bookings") delete record.slotHoldId;
       record.storeCode = storeCode;
       const databaseId = body.collection === "professionals" ? storedRecordId(storeCode, id) : id;
       const storedRecord = await db.execute({
@@ -4605,6 +5071,92 @@ export default async function handler(request, response) {
           discountCoupons: storeSettings.discountCoupons,
           paymentPriceAdjustments: storeSettings.paymentPriceAdjustments,
         };
+      }
+      if (body.collection === "bookings" && role === "admin" && !storedRecord.rows[0]) {
+        const availabilityError = await validateBookingAvailability(
+          db,
+          record,
+          storeCode,
+          id,
+          slotHoldId,
+        );
+        if (availabilityError) {
+          const conflict =
+            availabilityError.includes("acaba de ser reservado") ||
+            availabilityError.includes("completó sus lugares");
+          return response.status(conflict ? 409 : 400).json({ error: availabilityError });
+        }
+        const transaction = await db.transaction("write");
+        try {
+          const capacityProfessional = await transaction.execute({
+            sql: "SELECT value FROM professionals WHERE id = ?",
+            args: [storedRecordId(storeCode, record.barberId)],
+          });
+          if (!capacityProfessional.rows[0]) {
+            await transaction.rollback();
+            return response
+              .status(400)
+              .json({ error: "El profesional elegido ya no está disponible." });
+          }
+          if (slotHoldId) {
+            const holdResult = await transaction.execute({
+              sql: `SELECT store_code, barber_id, date, time, duration FROM booking_slot_holds
+                WHERE hold_id = ? AND expires_at > ?`,
+              args: [slotHoldId, Date.now()],
+            });
+            const hold = holdResult.rows[0];
+            if (
+              hold &&
+              (String(hold.store_code) !== storeCode ||
+                String(hold.barber_id) !== record.barberId ||
+                String(hold.date) !== record.date ||
+                String(hold.time) !== record.time ||
+                Number(hold.duration) !== record.duration)
+            ) {
+              await transaction.rollback();
+              return response.status(409).json({
+                error: "El horario reservado temporalmente ya no coincide. Elegí otro.",
+              });
+            }
+          }
+          const professionalForCapacity = JSON.parse(String(capacityProfessional.rows[0].value));
+          if (
+            await hasBookingConflict(
+              transaction,
+              record,
+              storeCode,
+              bookingCapacityForDate(professionalForCapacity, record.date),
+              id,
+              slotHoldId,
+            )
+          ) {
+            await transaction.rollback();
+            return response.status(409).json({
+              error:
+                "Ese horario acaba de ser reservado o completó sus lugares disponibles. Elegí otro horario.",
+            });
+          }
+          const insertedBooking = await transaction.execute({
+            sql: "INSERT INTO bookings (id, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) ON CONFLICT(id) DO NOTHING",
+            args: [databaseId, JSON.stringify(record)],
+          });
+          if (!insertedBooking.rowsAffected) {
+            await transaction.rollback();
+            return response.status(409).json({ error: "El turno ya fue registrado." });
+          }
+          if (slotHoldId) {
+            await transaction.execute({
+              sql: "DELETE FROM booking_slot_holds WHERE hold_id = ? AND store_code = ?",
+              args: [slotHoldId, storeCode],
+            });
+          }
+          await transaction.commit();
+          createdBookings.push(record);
+        } catch (error) {
+          await transaction.rollback().catch(() => undefined);
+          throw error;
+        }
+        continue;
       }
       if (body.collection === "bookings" && role !== "admin") {
         if (normalizeStoreCode(record.storeCode) !== storeCode)
@@ -4697,7 +5249,13 @@ export default async function handler(request, response) {
           ) {
             return response.status(400).json({ error: "Los datos del turno no son válidos." });
           }
-          const availabilityError = await validateBookingAvailability(db, record, storeCode, id);
+          const availabilityError = await validateBookingAvailability(
+            db,
+            record,
+            storeCode,
+            id,
+            slotHoldId,
+          );
           if (availabilityError) {
             const conflict = availabilityError.includes("acaba de ser reservado");
             return response.status(conflict ? 409 : 400).json({ error: availabilityError });
@@ -4715,6 +5273,27 @@ export default async function handler(request, response) {
                 .json({ error: "El profesional elegido ya no está disponible." });
             }
             const professionalForCapacity = JSON.parse(String(capacityProfessional.rows[0].value));
+            if (slotHoldId) {
+              const holdResult = await transaction.execute({
+                sql: `SELECT store_code, barber_id, date, time, duration FROM booking_slot_holds
+                  WHERE hold_id = ? AND expires_at > ?`,
+                args: [slotHoldId, Date.now()],
+              });
+              const hold = holdResult.rows[0];
+              if (
+                hold &&
+                (String(hold.store_code) !== storeCode ||
+                  String(hold.barber_id) !== record.barberId ||
+                  String(hold.date) !== record.date ||
+                  String(hold.time) !== record.time ||
+                  Number(hold.duration) !== record.duration)
+              ) {
+                await transaction.rollback();
+                return response.status(409).json({
+                  error: "El horario reservado temporalmente ya no coincide. Elegí otro.",
+                });
+              }
+            }
             if (
               await hasBookingConflict(
                 transaction,
@@ -4722,6 +5301,7 @@ export default async function handler(request, response) {
                 storeCode,
                 bookingCapacityForDate(professionalForCapacity, record.date),
                 id,
+                slotHoldId,
               )
             ) {
               await transaction.rollback();
@@ -4730,10 +5310,20 @@ export default async function handler(request, response) {
                   "Ese horario acaba de ser reservado o completó sus lugares disponibles. Elegí otro horario.",
               });
             }
-            await transaction.execute({
+            const insertedBooking = await transaction.execute({
               sql: "INSERT INTO bookings (id, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) ON CONFLICT(id) DO NOTHING",
               args: [databaseId, JSON.stringify(record)],
             });
+            if (!insertedBooking.rowsAffected) {
+              await transaction.rollback();
+              return response.status(409).json({ error: "El turno ya fue registrado." });
+            }
+            if (slotHoldId) {
+              await transaction.execute({
+                sql: "DELETE FROM booking_slot_holds WHERE hold_id = ? AND store_code = ?",
+                args: [slotHoldId, storeCode],
+              });
+            }
             const notice = notificationForAdmin(
               record,
               "new_booking",

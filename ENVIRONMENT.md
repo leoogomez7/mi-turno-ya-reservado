@@ -12,6 +12,12 @@ El servidor Vite simple no ejecuta los handlers de `api/`; para probar Kinde/Tur
 
 No subir `.env.local` ni compartir valores privados. Para Vite, los campos públicos deben empezar con `VITE_` para que lleguen al navegador. Nunca poner tokens, secretos ni contraseñas en variables `VITE_`.
 
+## Transacciones y consistencia de datos
+
+Turso/libSQL es la fuente persistente de la aplicación. Cada sentencia de escritura es atómica; las operaciones que cambian varias filas o dependen de leer el estado actual se ejecutan en una transacción de escritura. Si una validación o escritura falla, se revierte la transacción y la API informa el error, en lugar de confirmar solo una parte del cambio. Las reservas, sus horarios temporales y sus notificaciones de base de datos se confirman juntas; lo mismo aplica a los cambios relacionados de profesionales, sucursales, cuentas y suscripciones.
+
+Las integraciones externas, como Mercado Pago y las notificaciones push, no forman parte de una transacción de Turso. La aplicación confirma primero los cambios persistentes y ejecuta esos efectos externos después; las confirmaciones de pago se verifican en el servidor mediante Mercado Pago y su webhook. Por lo tanto, la garantía ACID cubre las operaciones de base de datos, no una transacción distribuida entre Turso y terceros.
+
 ## Variables
 
 | Variable                                 | Uso                                                                                                             | Dónde se configura                                                         |
